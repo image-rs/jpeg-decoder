@@ -1,0 +1,23 @@
+[package]
+name = "jpeg-decoder"
+version = "0.0.1"
+authors = ["kaksmet"]
+description = "JPEG decoder"
+license = "MIT / Apache-2.0"
+readme = "README.md"
+
+exclude = ["tests/**/*"]
+
+[dependencies]
+byteorder = "0.4"
+euclid = "0.6"
+rayon = "0.2"
+
+[dependencies.num]
+version = "0.1.25"
+default-features = false
+features = ["rational"]
+
+[dev-dependencies]
+walkdir = "0.1"
+png = "0.4.1"
