@@ -4,6 +4,7 @@ extern crate num;
 extern crate rayon;
 
 pub use decoder::{Decoder, ImageInfo, PixelFormat};
+pub use error::{Error, UnsupportedFeature};
 
 mod decoder;
 mod error;
