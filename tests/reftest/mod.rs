@@ -1,17 +1,14 @@
-extern crate jpeg_decoder as jpeg;
-extern crate png;
-extern crate walkdir;
-
-use png::HasParameters;
+use jpeg;
+use png::{self, HasParameters};
 use std::cmp;
 use std::fs::File;
 use std::path::Path;
 
-mod common;
+use super::common;
 
 #[test]
 fn reftest() {
-    let files = common::test_files(&Path::new("tests").join("reftest"));
+    let files = common::test_files(&Path::new("tests").join("reftest").join("images"));
 
     for path in &files {
         reftest_file(path);

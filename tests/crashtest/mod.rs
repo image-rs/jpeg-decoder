@@ -1,15 +1,13 @@
-extern crate jpeg_decoder as jpeg;
-extern crate walkdir;
-
+use jpeg;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
-mod common;
+use super::common;
 
 #[test]
 fn crashtest() {
-    let files = common::test_files(&Path::new("tests").join("crashtest"));
+    let files = common::test_files(&Path::new("tests").join("crashtest").join("images"));
 
     for path in &files {
         let file = File::open(path).unwrap();

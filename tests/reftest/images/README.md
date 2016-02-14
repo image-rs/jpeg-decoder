@@ -1,5 +1,5 @@
 # PNG files
-All .png files were generated using `convert <input>.jpg <input>.png`
+All .png files in this directory were generated using `convert <input>.jpg <input>.png`
 
 # File sources
 File     | Source
