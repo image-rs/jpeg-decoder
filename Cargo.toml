@@ -13,7 +13,7 @@ exclude = ["tests/*"]
 [dependencies]
 byteorder = "0.4"
 euclid = "0.6"
-rayon = "0.2"
+rayon = "0.3"
 
 [dependencies.num]
 version = "0.1.25"
