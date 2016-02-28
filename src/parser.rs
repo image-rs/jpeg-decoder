@@ -1,7 +1,7 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use error::{Error, Result, UnsupportedFeature};
 use euclid::Size2D;
-use huffman::HuffmanTable;
+use huffman::{HuffmanTable, HuffmanTableClass};
 use marker::Marker;
 use marker::Marker::*;
 use std::io::Read;
@@ -408,11 +408,9 @@ pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<(
         let mut values = vec![0u8; size];
         try!(reader.read_exact(&mut values));
 
-        let table = try!(HuffmanTable::new(&counts, &values));
-
         match class {
-            0 => dc_tables[index] = Some(table),
-            1 => ac_tables[index] = Some(table),
+            0 => dc_tables[index] = Some(try!(HuffmanTable::new(&counts, &values, HuffmanTableClass::DC))),
+            1 => ac_tables[index] = Some(try!(HuffmanTable::new(&counts, &values, HuffmanTableClass::AC))),
             _ => unreachable!(),
         }
 

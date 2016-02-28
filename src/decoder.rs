@@ -564,33 +564,45 @@ impl<R: Read> Decoder<R> {
 
         // Section F.1.2.2.1
         while index <= spectral_selection_end {
-            let byte = try!(huffman.decode(&mut self.reader, ac_table.unwrap()));
-            let r = byte >> 4;
-            let s = byte & 0x0f;
-
-            if s == 0 {
-                match r {
-                    15 => index += 16, // Run length of 16 zero coefficients.
-                    _  => {
-                        *eob_run = (1 << r) - 1;
-
-                        if r > 0 {
-                            *eob_run += try!(huffman.receive(&mut self.reader, r)) as u16;
-                        }
-
-                        break;
-                    },
-                }
-            }
-            else {
-                index += r;
+            if let Some((value, run)) = try!(huffman.decode_fast_ac(&mut self.reader, ac_table.unwrap())) {
+                index += run;
 
                 if index > spectral_selection_end {
                     break;
                 }
 
-                coefficients[UNZIGZAG[index as usize] as usize] = try!(huffman.receive_extend(&mut self.reader, s)) << successive_approximation_low;
+                coefficients[UNZIGZAG[index as usize] as usize] = value << successive_approximation_low;
                 index += 1;
+            }
+            else {
+                let byte = try!(huffman.decode(&mut self.reader, ac_table.unwrap()));
+                let r = byte >> 4;
+                let s = byte & 0x0f;
+
+                if s == 0 {
+                    match r {
+                        15 => index += 16, // Run length of 16 zero coefficients.
+                        _  => {
+                            *eob_run = (1 << r) - 1;
+
+                            if r > 0 {
+                                *eob_run += try!(huffman.receive(&mut self.reader, r)) as u16;
+                            }
+
+                            break;
+                        },
+                    }
+                }
+                else {
+                    index += r;
+
+                    if index > spectral_selection_end {
+                        break;
+                    }
+
+                    coefficients[UNZIGZAG[index as usize] as usize] = try!(huffman.receive_extend(&mut self.reader, s)) << successive_approximation_low;
+                    index += 1;
+                }
             }
         }
 
