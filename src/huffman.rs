@@ -6,15 +6,22 @@ use std::iter::repeat;
 
 const LUT_BITS: u8 = 8;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum HuffmanTableClass {
+    DC,
+    AC,
+}
+
 pub struct HuffmanTable {
     values: Vec<u8>,
     value_offset: [isize; 16],
     maxcode: [isize; 16],
     lut: [(u8, u8); 1 << LUT_BITS],
+    fast_ac: Option<[i16; 1 << LUT_BITS]>,
 }
 
 impl HuffmanTable {
-    pub fn new(bits: &[u8; 16], values: &[u8]) -> Result<HuffmanTable> {
+    pub fn new(bits: &[u8; 16], values: &[u8], class: HuffmanTableClass) -> Result<HuffmanTable> {
         let (huffcode, huffsize) = try!(derive_huffman_codes(bits));
 
         // Section F.2.2.3
@@ -44,31 +51,37 @@ impl HuffmanTable {
             }
         }
 
+        let mut fast_ac = None;
+
+        if class == HuffmanTableClass::AC {
+            let mut table = [0i16; 1 << LUT_BITS];
+
+            for (i, &(value, size)) in lut.iter().enumerate() {
+                if value < 255 {
+                    let run = (value >> 4) & 0x0f;
+                    let magnitude_bits = value & 0x0f;
+
+                    if magnitude_bits > 0 && size + magnitude_bits <= LUT_BITS {
+                        let unextended_ac_value = ((i << size) & ((1 << LUT_BITS) - 1)) >> (LUT_BITS - magnitude_bits);
+                        let ac_value = extend(unextended_ac_value as i32, magnitude_bits);
+
+                        if ac_value >= -128 && ac_value <= 127 {
+                            table[i] = ((ac_value as i16) << 8) + ((run as i16) << 4) + (size + magnitude_bits) as i16;
+                        }
+                    }
+                }
+            }
+
+            fast_ac = Some(table);
+        }
+
         Ok(HuffmanTable {
             values: values.to_vec(),
             value_offset: value_offset,
             maxcode: maxcode,
             lut: lut,
+            fast_ac: fast_ac,
         })
-    }
-}
-
-// This is a workaround for
-// "error: the trait `core::clone::Clone` is not implemented for the type `[(u8, u8); 256]`"
-impl Clone for HuffmanTable {
-    fn clone(&self) -> HuffmanTable {
-        let mut lut = [(0u8, 0u8); 1 << LUT_BITS];
-
-        for (i, &(value, size)) in self.lut.iter().enumerate() {
-            lut[i] = (value, size);
-        }
-
-        HuffmanTable {
-            values: self.values.clone(),
-            value_offset: self.value_offset.clone(),
-            maxcode: self.maxcode.clone(),
-            lut: lut,
-        }
     }
 }
 
@@ -102,6 +115,18 @@ fn derive_huffman_codes(bits: &[u8; 16]) -> Result<(Vec<u16>, Vec<u8>)> {
     }
 
     Ok((huffcode, huffsize))
+}
+
+// Section F.2.2.1
+// Figure F.12
+fn extend(value: i32, count: u8) -> i32 {
+    let vt = 1 << (count as u32 - 1);
+
+    if value < vt {
+        value + (-1 << count as i32) + 1
+    } else {
+        value
+    }
 }
 
 #[derive(Debug)]
@@ -160,6 +185,27 @@ impl HuffmanDecoder {
         Err(Error::Format("failed to decode huffman code".to_owned()))
     }
 
+    pub fn decode_fast_ac<R: Read>(&mut self, reader: &mut R, table: &HuffmanTable) -> Result<Option<(i32, u8)>> {
+        if let Some(ref fast_ac) = table.fast_ac {
+            if self.num_bits < LUT_BITS {
+                try!(self.read_bits(reader));
+            }
+
+            let index = ((self.bits >> (32 - LUT_BITS)) & ((1 << LUT_BITS) - 1)) as usize;
+            let value = fast_ac[index];
+
+            if value != 0 {
+                let run = ((value >> 4) & 0x0f) as u8;
+                let size = (value & 0x0f) as u8;
+
+                self.consume_bits(size);
+                return Ok(Some(((value >> 8) as i32, run)));
+            }
+        }
+
+        Ok(None)
+    }
+
     pub fn receive<R: Read>(&mut self, reader: &mut R, count: u8) -> Result<u32> {
         if self.num_bits < count {
             try!(self.read_bits(reader));
@@ -180,17 +226,8 @@ impl HuffmanDecoder {
     }
 
     pub fn receive_extend<R: Read>(&mut self, reader: &mut R, count: u8) -> Result<i32> {
-        let mut value = try!(self.receive(reader, count)) as i32;
-
-        // Section F.2.2.1
-        // Figure F.12
-        let vt = 1 << (count as u32 - 1);
-
-        if value < vt {
-            value += (-1 << count as i32) + 1;
-        }
-
-        Ok(value)
+        let value = try!(self.receive(reader, count)) as i32;
+        Ok(extend(value, count))
     }
 
     // Section F.2.2.5

@@ -1,7 +1,7 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use error::{Error, Result, UnsupportedFeature};
 use euclid::Size2D;
-use huffman::HuffmanTable;
+use huffman::{HuffmanTable, HuffmanTableClass};
 use marker::Marker;
 use marker::Marker::*;
 use std::io::Read;
@@ -369,10 +369,10 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u8; 64]>; 4]> {
 }
 
 // Section B.2.4.2
-pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<([Option<HuffmanTable>; 4], [Option<HuffmanTable>; 4])> {
+pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<(Vec<Option<HuffmanTable>>, Vec<Option<HuffmanTable>>)> {
     let mut length = try!(read_length(reader, DHT));
-    let mut dc_tables = [None, None, None, None];
-    let mut ac_tables = [None, None, None, None];
+    let mut dc_tables = vec![None, None, None, None];
+    let mut ac_tables = vec![None, None, None, None];
 
     // Each DHT segment may contain multiple huffman tables.
     while length > 17 {
@@ -408,11 +408,9 @@ pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<(
         let mut values = vec![0u8; size];
         try!(reader.read_exact(&mut values));
 
-        let table = try!(HuffmanTable::new(&counts, &values));
-
         match class {
-            0 => dc_tables[index] = Some(table),
-            1 => ac_tables[index] = Some(table),
+            0 => dc_tables[index] = Some(try!(HuffmanTable::new(&counts, &values, HuffmanTableClass::DC))),
+            1 => ac_tables[index] = Some(try!(HuffmanTable::new(&counts, &values, HuffmanTableClass::AC))),
             _ => unreachable!(),
         }
 
