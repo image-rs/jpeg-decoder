@@ -53,25 +53,6 @@ impl HuffmanTable {
     }
 }
 
-// This is a workaround for
-// "error: the trait `core::clone::Clone` is not implemented for the type `[(u8, u8); 256]`"
-impl Clone for HuffmanTable {
-    fn clone(&self) -> HuffmanTable {
-        let mut lut = [(0u8, 0u8); 1 << LUT_BITS];
-
-        for (i, &(value, size)) in self.lut.iter().enumerate() {
-            lut[i] = (value, size);
-        }
-
-        HuffmanTable {
-            values: self.values.clone(),
-            value_offset: self.value_offset.clone(),
-            maxcode: self.maxcode.clone(),
-            lut: lut,
-        }
-    }
-}
-
 fn derive_huffman_codes(bits: &[u8; 16]) -> Result<(Vec<u16>, Vec<u8>)> {
     // Figure C.1
     let huffsize = bits.iter()

@@ -9,6 +9,7 @@ use rayon::par_iter::*;
 use resampler::Resampler;
 use std::cmp;
 use std::io::Read;
+use std::mem;
 use std::sync::mpsc::channel;
 use worker_thread::{RowData, samples_from_coefficients, spawn_worker_thread, WorkerMsg};
 
@@ -48,8 +49,8 @@ pub struct Decoder<R> {
     coefficients: Vec<Vec<[i32; 64]>>,
 
     frame: Option<FrameInfo>,
-    dc_huffman_tables: [Option<HuffmanTable>; 4],
-    ac_huffman_tables: [Option<HuffmanTable>; 4],
+    dc_huffman_tables: Vec<Option<HuffmanTable>>,
+    ac_huffman_tables: Vec<Option<HuffmanTable>>,
     quantization_tables: [Option<[u8; 64]>; 4],
 
     restart_interval: u16,
@@ -64,8 +65,8 @@ impl<R: Read> Decoder<R> {
             component_data: Vec::new(),
             coefficients: Vec::new(),
             frame: None,
-            dc_huffman_tables: [None, None, None, None],
-            ac_huffman_tables: [None, None, None, None],
+            dc_huffman_tables: vec![None, None, None, None],
+            ac_huffman_tables: vec![None, None, None, None],
             quantization_tables: [None; 4],
             restart_interval: 0,
             color_transform: None,
@@ -216,12 +217,17 @@ impl<R: Read> Decoder<R> {
                     let is_baseline = self.frame.as_ref().map(|frame| frame.is_baseline);
                     let (dc_tables, ac_tables) = try!(parse_dht(&mut self.reader, is_baseline));
 
-                    for (i, table) in dc_tables.into_iter().enumerate().filter(|&(_, table)| table.is_some()) {
-                        self.dc_huffman_tables[i] = table.clone();
-                    }
-                    for (i, table) in ac_tables.into_iter().enumerate().filter(|&(_, table)| table.is_some()) {
-                        self.ac_huffman_tables[i] = table.clone();
-                    }
+                    let current_dc_tables = mem::replace(&mut self.dc_huffman_tables, vec![]);
+                    self.dc_huffman_tables = dc_tables.into_iter()
+                                                      .zip(current_dc_tables.into_iter())
+                                                      .map(|(a, b)| a.or(b))
+                                                      .collect();
+
+                    let current_ac_tables = mem::replace(&mut self.ac_huffman_tables, vec![]);
+                    self.ac_huffman_tables = ac_tables.into_iter()
+                                                      .zip(current_ac_tables.into_iter())
+                                                      .map(|(a, b)| a.or(b))
+                                                      .collect();
                 },
                 // Arithmetic conditioning table-specification
                 Marker::DAC => return Err(Error::Unsupported(UnsupportedFeature::ArithmeticEntropyCoding)),
@@ -349,15 +355,6 @@ impl<R: Read> Decoder<R> {
             return Err(Error::Format("scan makes use of unset ac huffman table".to_owned()));
         }
 
-        let dummy_table = try!(HuffmanTable::new(&[0; 16], &[]));
-        let mut dc_tables = Vec::with_capacity(components.len());
-        let mut ac_tables = Vec::with_capacity(components.len());
-
-        for i in 0 .. components.len() {
-            dc_tables.push(self.dc_huffman_tables[scan.dc_table_indices[i]].clone().unwrap_or(dummy_table.clone()));
-            ac_tables.push(self.ac_huffman_tables[scan.ac_table_indices[i]].clone().unwrap_or(dummy_table.clone()));
-        }
-
         let blocks_per_mcu: Vec<u16> = components.iter()
                                                  .map(|c| c.horizontal_sampling_factor as u16 * c.vertical_sampling_factor as u16)
                                                  .collect();
@@ -435,8 +432,8 @@ impl<R: Read> Decoder<R> {
                         if scan.successive_approximation_high == 0 {
                             let dc_diff = try!(self.decode_block(&mut coefficients,
                                                                  &mut huffman,
-                                                                 &dc_tables[i],
-                                                                 &ac_tables[i],
+                                                                 scan.dc_table_indices[i],
+                                                                 scan.ac_table_indices[i],
                                                                  scan.spectral_selection_start,
                                                                  scan.spectral_selection_end,
                                                                  scan.successive_approximation_low,
@@ -447,7 +444,7 @@ impl<R: Read> Decoder<R> {
                         else {
                             try!(self.decode_block_successive_approximation(&mut coefficients,
                                                                             &mut huffman,
-                                                                            &ac_tables[i],
+                                                                            scan.ac_table_indices[i],
                                                                             scan.spectral_selection_start,
                                                                             scan.spectral_selection_end,
                                                                             scan.successive_approximation_low,
@@ -534,8 +531,8 @@ impl<R: Read> Decoder<R> {
     fn decode_block(&mut self,
                     coefficients: &mut [i32; 64],
                     huffman: &mut HuffmanDecoder,
-                    dc_table: &HuffmanTable,
-                    ac_table: &HuffmanTable,
+                    dc_table_index: usize,
+                    ac_table_index: usize,
                     spectral_selection_start: u8,
                     spectral_selection_end: u8,
                     successive_approximation_low: u8,
@@ -545,6 +542,7 @@ impl<R: Read> Decoder<R> {
 
         if spectral_selection_start == 0 {
             // Section F.2.2.1
+            let dc_table = self.dc_huffman_tables[dc_table_index].as_ref().unwrap();
             let value = try!(huffman.decode(&mut self.reader, dc_table));
             let diff = match value {
                 0 => 0,
@@ -562,9 +560,11 @@ impl<R: Read> Decoder<R> {
             return Ok(dc_diff);
         }
 
+        let ac_table = self.ac_huffman_tables[ac_table_index].as_ref();
+
         // Section F.1.2.2.1
         while index <= spectral_selection_end {
-            let byte = try!(huffman.decode(&mut self.reader, ac_table));
+            let byte = try!(huffman.decode(&mut self.reader, ac_table.unwrap()));
             let r = byte >> 4;
             let s = byte & 0x0f;
 
@@ -600,7 +600,7 @@ impl<R: Read> Decoder<R> {
     fn decode_block_successive_approximation(&mut self,
                                              coefficients: &mut [i32; 64],
                                              huffman: &mut HuffmanDecoder,
-                                             ac_table: &HuffmanTable,
+                                             ac_table_index: usize,
                                              spectral_selection_start: u8,
                                              spectral_selection_end: u8,
                                              successive_approximation_low: u8,
@@ -626,7 +626,7 @@ impl<R: Read> Decoder<R> {
             let mut index = spectral_selection_start;
 
             while index <= spectral_selection_end {
-                let byte = try!(huffman.decode(&mut self.reader, ac_table));
+                let byte = try!(huffman.decode(&mut self.reader, self.ac_huffman_tables[ac_table_index].as_ref().unwrap()));
                 let r = byte >> 4;
                 let s = byte & 0x0f;
 
