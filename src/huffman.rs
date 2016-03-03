@@ -185,7 +185,7 @@ impl HuffmanDecoder {
         Err(Error::Format("failed to decode huffman code".to_owned()))
     }
 
-    pub fn decode_fast_ac<R: Read>(&mut self, reader: &mut R, table: &HuffmanTable) -> Result<Option<(i32, u8)>> {
+    pub fn decode_fast_ac<R: Read>(&mut self, reader: &mut R, table: &HuffmanTable) -> Result<Option<(i16, u8)>> {
         if let Some(ref fast_ac) = table.fast_ac {
             if self.num_bits < LUT_BITS {
                 try!(self.read_bits(reader));
@@ -199,7 +199,7 @@ impl HuffmanDecoder {
                 let size = (value & 0x0f) as u8;
 
                 self.consume_bits(size);
-                return Ok(Some(((value >> 8) as i32, run)));
+                return Ok(Some((value >> 8, run)));
             }
         }
 
