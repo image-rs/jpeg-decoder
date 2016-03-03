@@ -46,7 +46,7 @@ pub struct Decoder<R> {
     component_data: Vec<Vec<u8>>,
 
     // Used for progressive JPEGs.
-    coefficients: Vec<Vec<[i32; 64]>>,
+    coefficients: Vec<Vec<[i16; 64]>>,
 
     frame: Option<FrameInfo>,
     dc_huffman_tables: Vec<Option<HuffmanTable>>,
@@ -163,11 +163,11 @@ impl<R: Read> Decoder<R> {
                             let block_count = component.block_size.width as usize * component.block_size.height as usize;
 
                             // This is a workaround for
-                            // "error: the trait `core::clone::Clone` is not implemented for the type `[i32; 64]`".
-                            // let coefficients = vec![[0i32; 64]; block_count];
+                            // "error: the trait `core::clone::Clone` is not implemented for the type `[i16; 64]`".
+                            // let coefficients = vec![[0i16; 64]; block_count];
                             let mut coefficients = Vec::with_capacity(block_count);
                             for _ in 0 .. block_count {
-                                coefficients.push([0i32; 64]);
+                                coefficients.push([0i16; 64]);
                             }
 
                             self.coefficients.push(coefficients);
@@ -361,7 +361,7 @@ impl<R: Read> Decoder<R> {
         let is_progressive = frame.coding_process == CodingProcess::DctProgressive;
         let is_interleaved = components.len() > 1;
         let mut huffman = HuffmanDecoder::new();
-        let mut dc_predictors = [0i32; MAX_COMPONENTS];
+        let mut dc_predictors = [0i16; MAX_COMPONENTS];
         let mut restarts_left = self.restart_interval;
         let mut expected_rst_num = 0;
         let mut eob_run = 0;
@@ -372,7 +372,7 @@ impl<R: Read> Decoder<R> {
         }
 
         for mcu_y in 0 .. frame.mcu_size.height {
-            let mut component_blocks: Vec<Vec<[i32; 64]>>;
+            let mut component_blocks: Vec<Vec<[i16; 64]>>;
 
             if !is_progressive {
                 component_blocks = components.iter()
@@ -380,11 +380,11 @@ impl<R: Read> Decoder<R> {
                             let blocks_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize;
 
                             // This is a workaround for
-                            // "error: the trait `core::clone::Clone` is not implemented for the type `[i32; 64]`".
-                            // let blocks = vec![[0i32; 64]; blocks_per_mcu_row];
+                            // "error: the trait `core::clone::Clone` is not implemented for the type `[i16; 64]`".
+                            // let blocks = vec![[0i16; 64]; blocks_per_mcu_row];
                             let mut blocks = Vec::with_capacity(blocks_per_mcu_row);
                             for _ in 0 .. blocks_per_mcu_row {
-                                blocks.push([0i32; 64]);
+                                blocks.push([0i16; 64]);
                             }
 
                             blocks
@@ -426,7 +426,7 @@ impl<R: Read> Decoder<R> {
                         let mut coefficients = if is_progressive {
                             self.coefficients[scan.component_indices[i]][block_index]
                         } else {
-                            [0i32; 64]
+                            [0i16; 64]
                         };
 
                         if scan.successive_approximation_high == 0 {
@@ -487,7 +487,7 @@ impl<R: Read> Decoder<R> {
 
                         huffman.reset();
                         // Section 2.1.3.1
-                        dc_predictors = [0i32; MAX_COMPONENTS];
+                        dc_predictors = [0i16; MAX_COMPONENTS];
                         // Section G.1.2.2
                         eob_run = 0;
 
@@ -529,7 +529,7 @@ impl<R: Read> Decoder<R> {
     }
 
     fn decode_block(&mut self,
-                    coefficients: &mut [i32; 64],
+                    coefficients: &mut [i16; 64],
                     huffman: &mut HuffmanDecoder,
                     dc_table_index: usize,
                     ac_table_index: usize,
@@ -537,7 +537,7 @@ impl<R: Read> Decoder<R> {
                     spectral_selection_end: u8,
                     successive_approximation_low: u8,
                     eob_run: &mut u16,
-                    dc_predictor: i32) -> Result<i32> {
+                    dc_predictor: i16) -> Result<i16> {
         let mut dc_diff = 0;
 
         if spectral_selection_start == 0 {
@@ -546,7 +546,7 @@ impl<R: Read> Decoder<R> {
             let value = try!(huffman.decode(&mut self.reader, dc_table));
             let diff = match value {
                 0 => 0,
-                _ => try!(huffman.receive_extend(&mut self.reader, value)),
+                _ => try!(huffman.receive_extend(&mut self.reader, value)) as i16,
             };
 
             coefficients[0] = (dc_predictor + diff) << successive_approximation_low;
@@ -600,7 +600,7 @@ impl<R: Read> Decoder<R> {
                         break;
                     }
 
-                    coefficients[UNZIGZAG[index as usize] as usize] = try!(huffman.receive_extend(&mut self.reader, s)) << successive_approximation_low;
+                    coefficients[UNZIGZAG[index as usize] as usize] = (try!(huffman.receive_extend(&mut self.reader, s)) << successive_approximation_low) as i16;
                     index += 1;
                 }
             }
@@ -610,7 +610,7 @@ impl<R: Read> Decoder<R> {
     }
 
     fn decode_block_successive_approximation(&mut self,
-                                             coefficients: &mut [i32; 64],
+                                             coefficients: &mut [i16; 64],
                                              huffman: &mut HuffmanDecoder,
                                              ac_table_index: usize,
                                              spectral_selection_start: u8,
@@ -686,7 +686,7 @@ impl<R: Read> Decoder<R> {
         Ok(())
     }
 
-    fn refine_non_zeroes(&mut self, coefficients: &mut [i32; 64], huffman: &mut HuffmanDecoder, start: u8, end: u8, zrl: u8, bit: i32) -> Result<u8> {
+    fn refine_non_zeroes(&mut self, coefficients: &mut [i16; 64], huffman: &mut HuffmanDecoder, start: u8, end: u8, zrl: u8, bit: i16) -> Result<u8> {
         let mut zero_run_length = zrl;
 
         for i in start .. end + 1 {
