@@ -17,7 +17,7 @@ pub struct RowData {
 
 pub enum WorkerMsg {
     Start(RowData),
-    AppendRow((usize, Vec<[i16; 64]>)),
+    AppendRow((usize, Vec<i16>)),
     GetResult((usize, Sender<Vec<u8>>)),
 }
 
@@ -51,11 +51,11 @@ pub fn spawn_worker_thread() -> Result<Sender<WorkerMsg>> {
                     let line_stride = component.block_size.width as usize * 8;
                     let output = &mut results[index][offsets[index] ..];
 
-                    assert_eq!(data.len(), block_count);
+                    assert_eq!(data.len(), block_count * 64);
 
                     for i in 0 .. block_count {
                         let coords = Point2D::new(i % component.block_size.width as usize, i / component.block_size.width as usize) * 8;
-                        dequantize_and_idct(&data[i], quantization_table, &mut samples);
+                        dequantize_and_idct(&data[i * 64 .. (i + 1) * 64], quantization_table, &mut samples);
 
                         for y in 0 .. 8 {
                             for x in 0 .. 8 {
@@ -64,7 +64,7 @@ pub fn spawn_worker_thread() -> Result<Sender<WorkerMsg>> {
                         }
                     }
 
-                    offsets[index] += data.len() * 64;
+                    offsets[index] += data.len();
                 },
                 WorkerMsg::GetResult((index, chan)) => {
                     let result = mem::replace(&mut results[index], Vec::new());

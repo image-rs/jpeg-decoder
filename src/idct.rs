@@ -3,7 +3,9 @@
 // That's why wrapping operators are needed.
 
 // This is based on stb_image's 'stbi__idct_block'.
-pub fn dequantize_and_idct(coefficients: &[i16; 64], quantization_table: &[u8; 64], output: &mut [u8; 64]) {
+pub fn dequantize_and_idct(coefficients: &[i16], quantization_table: &[u8; 64], output: &mut [u8; 64]) {
+    debug_assert_eq!(coefficients.len(), 64);
+
     let mut temp = [0i32; 64];
 
     // columns
