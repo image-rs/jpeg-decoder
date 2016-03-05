@@ -3,7 +3,7 @@
 // That's why wrapping operators are needed.
 
 // This is based on stb_image's 'stbi__idct_block'.
-pub fn dequantize_and_idct(coefficients: &[i16], quantization_table: &[u8; 64], output: &mut [u8; 64]) {
+pub fn dequantize_and_idct_block(coefficients: &[i16], quantization_table: &[u8; 64], output_linestride: usize, output: &mut [u8]) {
     debug_assert_eq!(coefficients.len(), 64);
 
     let mut temp = [0i32; 64];
@@ -144,14 +144,14 @@ pub fn dequantize_and_idct(coefficients: &[i16], quantization_table: &[u8; 64], 
         let x2 = x2.wrapping_add(65536 + (128 << 17));
         let x3 = x3.wrapping_add(65536 + (128 << 17));
 
-        output[i * 8]     = stbi_clamp(x0.wrapping_add(t3).wrapping_shr(17));
-        output[i * 8 + 7] = stbi_clamp(x0.wrapping_sub(t3).wrapping_shr(17));
-        output[i * 8 + 1] = stbi_clamp(x1.wrapping_add(t2).wrapping_shr(17));
-        output[i * 8 + 6] = stbi_clamp(x1.wrapping_sub(t2).wrapping_shr(17));
-        output[i * 8 + 2] = stbi_clamp(x2.wrapping_add(t1).wrapping_shr(17));
-        output[i * 8 + 5] = stbi_clamp(x2.wrapping_sub(t1).wrapping_shr(17));
-        output[i * 8 + 3] = stbi_clamp(x3.wrapping_add(t0).wrapping_shr(17));
-        output[i * 8 + 4] = stbi_clamp(x3.wrapping_sub(t0).wrapping_shr(17));
+        output[i * output_linestride]     = stbi_clamp(x0.wrapping_add(t3).wrapping_shr(17));
+        output[i * output_linestride + 7] = stbi_clamp(x0.wrapping_sub(t3).wrapping_shr(17));
+        output[i * output_linestride + 1] = stbi_clamp(x1.wrapping_add(t2).wrapping_shr(17));
+        output[i * output_linestride + 6] = stbi_clamp(x1.wrapping_sub(t2).wrapping_shr(17));
+        output[i * output_linestride + 2] = stbi_clamp(x2.wrapping_add(t1).wrapping_shr(17));
+        output[i * output_linestride + 5] = stbi_clamp(x2.wrapping_sub(t1).wrapping_shr(17));
+        output[i * output_linestride + 3] = stbi_clamp(x3.wrapping_add(t0).wrapping_shr(17));
+        output[i * output_linestride + 4] = stbi_clamp(x3.wrapping_sub(t0).wrapping_shr(17));
     }
 }
 
