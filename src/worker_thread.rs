@@ -1,7 +1,7 @@
 use decoder::MAX_COMPONENTS;
 use error::Result;
 use euclid::Point2D;
-use idct::dequantize_and_idct;
+use idct::dequantize_and_idct_block;
 use parser::Component;
 use rayon::par_iter::*;
 use std::mem;
@@ -17,7 +17,7 @@ pub struct RowData {
 
 pub enum WorkerMsg {
     Start(RowData),
-    AppendRow((usize, Vec<[i16; 64]>)),
+    AppendRow((usize, Vec<i16>)),
     GetResult((usize, Sender<Vec<u8>>)),
 }
 
@@ -30,7 +30,6 @@ pub fn spawn_worker_thread() -> Result<Sender<WorkerMsg>> {
         let mut results = vec![Vec::new(); MAX_COMPONENTS];
         let mut components = vec![None; MAX_COMPONENTS];
         let mut quantization_tables = vec![None; MAX_COMPONENTS];
-        let mut samples = [0u8; 64];
 
         while let Ok(message) = rx.recv() {
             match message {
@@ -49,22 +48,18 @@ pub fn spawn_worker_thread() -> Result<Sender<WorkerMsg>> {
                     let quantization_table = quantization_tables[index].as_ref().unwrap();
                     let block_count = component.block_size.width as usize * component.vertical_sampling_factor as usize;
                     let line_stride = component.block_size.width as usize * 8;
-                    let output = &mut results[index][offsets[index] ..];
 
-                    assert_eq!(data.len(), block_count);
+                    assert_eq!(data.len(), block_count * 64);
 
                     for i in 0 .. block_count {
                         let coords = Point2D::new(i % component.block_size.width as usize, i / component.block_size.width as usize) * 8;
-                        dequantize_and_idct(&data[i], quantization_table, &mut samples);
-
-                        for y in 0 .. 8 {
-                            for x in 0 .. 8 {
-                                output[(coords.y + y) * line_stride + coords.x + x] = samples[y * 8 + x];
-                            }
-                        }
+                        dequantize_and_idct_block(&data[i * 64 .. (i + 1) * 64],
+                                                  quantization_table,
+                                                  line_stride,
+                                                  &mut results[index][offsets[index] + coords.y * line_stride + coords.x ..]);
                     }
 
-                    offsets[index] += data.len() * 64;
+                    offsets[index] += data.len();
                 },
                 WorkerMsg::GetResult((index, chan)) => {
                     let result = mem::replace(&mut results[index], Vec::new());

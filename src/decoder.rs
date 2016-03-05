@@ -45,7 +45,7 @@ pub struct Decoder<R> {
     reader: R,
 
     // Used for progressive JPEGs.
-    coefficients: Vec<Vec<[i16; 64]>>,
+    coefficients: Vec<Vec<i16>>,
 
     frame: Option<FrameInfo>,
     dc_huffman_tables: Vec<Option<HuffmanTable>>,
@@ -163,23 +163,12 @@ impl<R: Read> Decoder<R> {
                         return Err(Error::Unsupported(UnsupportedFeature::SubsamplingRatio));
                     }
 
-                    if frame.coding_process == CodingProcess::DctProgressive {
-                        for component in &frame.components {
+                    for component in &frame.components {
+                        if frame.coding_process == CodingProcess::DctProgressive {
                             let block_count = component.block_size.width as usize * component.block_size.height as usize;
-
-                            // This is a workaround for
-                            // "error: the trait `core::clone::Clone` is not implemented for the type `[i16; 64]`".
-                            // let coefficients = vec![[0i16; 64]; block_count];
-                            let mut coefficients = Vec::with_capacity(block_count);
-                            for _ in 0 .. block_count {
-                                coefficients.push([0i16; 64]);
-                            }
-
-                            self.coefficients.push(coefficients);
+                            self.coefficients.push(vec![0i16; block_count * 64]);
                         }
-                    }
 
-                    for _ in 0 .. component_count {
                         self.coefficient_complete.push([false; 64]);
                     }
 
@@ -396,30 +385,16 @@ impl<R: Read> Decoder<R> {
         let mut restarts_left = self.restart_interval;
         let mut expected_rst_num = 0;
         let mut eob_run = 0;
+        let mut mcu_row_coefficients = Vec::with_capacity(components.len());
+
+        if produce_data {
+            for component in &components {
+                let blocks_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize;
+                mcu_row_coefficients.push(vec![0i16; blocks_per_mcu_row * 64]);
+            }
+        }
 
         for mcu_y in 0 .. frame.mcu_size.height {
-            let mut component_blocks: Vec<Vec<[i16; 64]>>;
-
-            if produce_data {
-                component_blocks = components.iter()
-                        .map(|component| {
-                            let blocks_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize;
-
-                            // This is a workaround for
-                            // "error: the trait `core::clone::Clone` is not implemented for the type `[i16; 64]`".
-                            // let blocks = vec![[0i16; 64]; blocks_per_mcu_row];
-                            let mut blocks = Vec::with_capacity(blocks_per_mcu_row);
-                            for _ in 0 .. blocks_per_mcu_row {
-                                blocks.push([0i16; 64]);
-                            }
-
-                            blocks
-                        }).collect();
-            }
-            else {
-                component_blocks = Vec::new();
-            }
-
             for mcu_x in 0 .. frame.mcu_size.width {
                 for (i, component) in components.iter().enumerate() {
                     for j in 0 .. blocks_per_mcu[i] {
@@ -448,16 +423,16 @@ impl<R: Read> Decoder<R> {
                             }
                         }
 
-                        let block_index = block_coords.y as usize * component.block_size.width as usize + block_coords.x as usize;
-                        let row_offset = mcu_y as usize * component.vertical_sampling_factor as usize * component.block_size.width as usize;
+                        let block_offset = (block_coords.y as usize * component.block_size.width as usize + block_coords.x as usize) * 64;
+                        let mcu_row_offset = (mcu_y as usize * component.vertical_sampling_factor as usize * component.block_size.width as usize) * 64;
 
                         {
                             let coefficients = if is_progressive {
-                                &mut self.coefficients[scan.component_indices[i]][block_index]
+                                &mut self.coefficients[scan.component_indices[i]][block_offset .. block_offset + 64]
                             } else if produce_data {
-                                &mut component_blocks[i][block_index - row_offset]
+                                &mut mcu_row_coefficients[i][block_offset - mcu_row_offset .. block_offset - mcu_row_offset + 64]
                             } else {
-                                &mut dummy_block
+                                &mut dummy_block[..]
                             };
 
                             if scan.successive_approximation_high == 0 {
@@ -486,7 +461,8 @@ impl<R: Read> Decoder<R> {
                         }
 
                         if is_progressive && produce_data {
-                            component_blocks[i][block_index - row_offset] = self.coefficients[scan.component_indices[i]][block_index];
+                            mcu_row_coefficients[i][block_offset - mcu_row_offset .. block_offset - mcu_row_offset + 64]
+                                    .clone_from_slice(&self.coefficients[scan.component_indices[i]][block_offset .. block_offset + 64]);
                         }
                     }
                 }
@@ -527,25 +503,28 @@ impl<R: Read> Decoder<R> {
             }
 
             if produce_data {
-                // Send the blocks from this MCU row to the worker thread for idct.
-                for (i, blocks) in component_blocks.into_iter().enumerate() {
-                    try!(worker_chan.send(WorkerMsg::AppendRow((i, blocks))));
+                // Send the coefficients from this MCU row to the worker thread for dequantization and idct.
+                for (i, coefficients) in mcu_row_coefficients.iter_mut().enumerate() {
+                    let blocks_per_mcu_row = components[i].block_size.width as usize * components[i].vertical_sampling_factor as usize;
+                    let row_coefficients = mem::replace(coefficients, vec![0i16; blocks_per_mcu_row * 64]);
+
+                    try!(worker_chan.send(WorkerMsg::AppendRow((i, row_coefficients))));
                 }
             }
         }
 
         if produce_data {
             // Retrieve all the data from the worker thread.
-            let mut component_data = vec![Vec::new(); frame.components.len()];
+            let mut data = vec![Vec::new(); frame.components.len()];
 
             for (i, &component_index) in scan.component_indices.iter().enumerate() {
                 let (tx, rx) = mpsc::channel();
                 try!(worker_chan.send(WorkerMsg::GetResult((i, tx))));
 
-                component_data[component_index] = try!(rx.recv());
+                data[component_index] = try!(rx.recv());
             }
 
-            Ok((huffman.take_marker(), Some(component_data)))
+            Ok((huffman.take_marker(), Some(data)))
         }
         else {
             Ok((huffman.take_marker(), None))
@@ -554,7 +533,7 @@ impl<R: Read> Decoder<R> {
 }
 
 fn decode_block<R: Read>(reader: &mut R,
-                         coefficients: &mut [i16; 64],
+                         coefficients: &mut [i16],
                          huffman: &mut HuffmanDecoder,
                          dc_table: Option<&HuffmanTable>,
                          ac_table: Option<&HuffmanTable>,
@@ -563,6 +542,8 @@ fn decode_block<R: Read>(reader: &mut R,
                          successive_approximation_low: u8,
                          eob_run: &mut u16,
                          dc_predictor: i16) -> Result<i16> {
+    debug_assert_eq!(coefficients.len(), 64);
+
     let mut dc_diff = 0;
 
     if spectral_selection_start == 0 {
@@ -632,13 +613,15 @@ fn decode_block<R: Read>(reader: &mut R,
 }
 
 fn decode_block_successive_approximation<R: Read>(reader: &mut R,
-                                                  coefficients: &mut [i16; 64],
+                                                  coefficients: &mut [i16],
                                                   huffman: &mut HuffmanDecoder,
                                                   ac_table: Option<&HuffmanTable>,
                                                   spectral_selection_start: u8,
                                                   spectral_selection_end: u8,
                                                   successive_approximation_low: u8,
                                                   eob_run: &mut u16) -> Result<()> {
+    debug_assert_eq!(coefficients.len(), 64);
+
     let bit = 1 << successive_approximation_low;
 
     if spectral_selection_start == 0 {
@@ -709,12 +692,14 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
 }
 
 fn refine_non_zeroes<R: Read>(reader: &mut R,
-                              coefficients: &mut [i16; 64],
+                              coefficients: &mut [i16],
                               huffman: &mut HuffmanDecoder,
                               start: u8,
                               end: u8,
                               zrl: u8,
                               bit: i16) -> Result<u8> {
+    debug_assert_eq!(coefficients.len(), 64);
+
     let mut zero_run_length = zrl;
 
     for i in start .. end + 1 {
