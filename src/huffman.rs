@@ -8,7 +8,7 @@ const LUT_BITS: u8 = 8;
 
 #[derive(Debug)]
 pub struct HuffmanDecoder {
-    bits: u32,
+    bits: u64,
     num_bits: u8,
     marker: Option<Marker>,
 }
@@ -105,7 +105,7 @@ impl HuffmanDecoder {
         debug_assert!(count <= 16);
         debug_assert!(self.num_bits >= count);
 
-        ((self.bits >> (32 - count)) & ((1 << count) - 1)) as u16
+        ((self.bits >> (64 - count)) & ((1 << count) - 1)) as u16
     }
 
     #[inline]
@@ -117,7 +117,7 @@ impl HuffmanDecoder {
     }
 
     fn read_bits<R: Read>(&mut self, reader: &mut R) -> Result<()> {
-        while self.num_bits <= 24 {
+        while self.num_bits <= 56 {
             // Fill with zero bits if we have reached the end.
             let byte = match self.marker {
                 Some(_) => 0,
@@ -148,7 +148,7 @@ impl HuffmanDecoder {
                 }
             }
 
-            self.bits |= (byte as u32) << (24 - self.num_bits);
+            self.bits |= (byte as u64) << (56 - self.num_bits);
             self.num_bits += 8;
         }
 
