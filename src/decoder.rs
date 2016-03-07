@@ -492,7 +492,7 @@ impl<R: Read> Decoder<R> {
                         }
 
                         huffman.reset();
-                        // Section 2.1.3.1
+                        // Section F.2.1.3.1
                         dc_predictors = [0i16; MAX_COMPONENTS];
                         // Section G.1.2.2
                         eob_run = 0;
@@ -548,10 +548,19 @@ fn decode_block<R: Read>(reader: &mut R,
 
     if spectral_selection_start == 0 {
         // Section F.2.2.1
+        // Figure F.12
         let value = try!(huffman.decode(reader, dc_table.unwrap()));
         let diff = match value {
             0 => 0,
-            _ => try!(huffman.receive_extend(reader, value)) as i16,
+            _ => {
+                // Section F.1.2.1.1
+                // Table F.1
+                if value > 11 {
+                    return Err(Error::Format("invalid DC difference magnitude category".to_owned()));
+                }
+
+                try!(huffman.receive_extend(reader, value))
+            },
         };
 
         coefficients[0] = (dc_predictor + diff) << successive_approximation_low;
@@ -589,7 +598,7 @@ fn decode_block<R: Read>(reader: &mut R,
                         *eob_run = (1 << r) - 1;
 
                         if r > 0 {
-                            *eob_run += try!(huffman.receive(reader, r)) as u16;
+                            *eob_run += try!(huffman.get_bits(reader, r));
                         }
 
                         break;
@@ -603,7 +612,7 @@ fn decode_block<R: Read>(reader: &mut R,
                     break;
                 }
 
-                coefficients[UNZIGZAG[index as usize] as usize] = (try!(huffman.receive_extend(reader, s)) << successive_approximation_low) as i16;
+                coefficients[UNZIGZAG[index as usize] as usize] = try!(huffman.receive_extend(reader, s)) << successive_approximation_low;
                 index += 1;
             }
         }
@@ -627,7 +636,7 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
     if spectral_selection_start == 0 {
         // Section G.1.2.1
 
-        if try!(huffman.receive(reader, 1)) == 1 {
+        if try!(huffman.get_bits(reader, 1)) == 1 {
             coefficients[0] |= bit;
         }
     }
@@ -663,7 +672,7 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
                             *eob_run = (1 << r) - 1;
 
                             if r > 0 {
-                                *eob_run += try!(huffman.receive(reader, r)) as u16;
+                                *eob_run += try!(huffman.get_bits(reader, r));
                             }
 
                             // Force end of block.
@@ -672,7 +681,7 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
                     }
                 },
                 1 => {
-                    if try!(huffman.receive(reader, 1)) == 1 {
+                    if try!(huffman.get_bits(reader, 1)) == 1 {
                         value = bit;
                     }
                     else {
@@ -713,7 +722,7 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
             zero_run_length -= 1;
         }
         else {
-            if try!(huffman.receive(reader, 1)) == 1 && coefficients[index] & bit == 0 {
+            if try!(huffman.get_bits(reader, 1)) == 1 && coefficients[index] & bit == 0 {
                 if coefficients[index] > 0 {
                     coefficients[index] += bit;
                 }
