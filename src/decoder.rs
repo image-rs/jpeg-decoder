@@ -692,7 +692,11 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
             }
 
             index = try!(refine_non_zeroes(reader, coefficients, huffman, index, spectral_selection_end, zero_run_length, bit));
-            coefficients[UNZIGZAG[index as usize] as usize] = value;
+
+            if value != 0 {
+                coefficients[UNZIGZAG[index as usize] as usize] = value;
+            }
+
             index += 1;
         }
     }
