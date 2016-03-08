@@ -767,21 +767,19 @@ fn compute_image(components: &[Component],
         let color_convert_func = try!(choose_color_convert_func(components.len(), is_jfif, color_transform));
         let resampler = Resampler::new(components).unwrap();
         let line_size = output_size.width as usize * components.len();
-        let mut result = Vec::with_capacity(output_size.height as usize);
+        let mut image = vec![0u8; line_size * output_size.height as usize];
 
-        (0 .. output_size.height as usize)
-                .into_par_iter()
-                .weight_max()
-                .map(|row| {
-                    let mut buffer = vec![0u8; line_size];
-                    resampler.resample_and_interleave_row(data, row, output_size.width as usize, &mut buffer);
-                    color_convert_func(&mut buffer, output_size.width as usize);
-                    buffer
-                })
-                .collect_into(&mut result);
+        image.chunks_mut(line_size)
+             .collect::<Vec<&mut [u8]>>()
+             .par_iter_mut()
+             .weight_max()
+             .enumerate()
+             .for_each(|(row, line)| {
+                 resampler.resample_and_interleave_row(data, row, output_size.width as usize, *line);
+                 color_convert_func(*line, output_size.width as usize);
+             });
 
-        let size = line_size * output_size.height as usize;
-        Ok(result.into_iter().fold(Vec::with_capacity(size), |mut acc, mut line| { acc.append(&mut line); acc }))
+        Ok(image)
     }
 }
 
