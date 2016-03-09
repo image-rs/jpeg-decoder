@@ -387,10 +387,10 @@ impl<R: Read> Decoder<R> {
         let mut eob_run = 0;
         let mut mcu_row_coefficients = Vec::with_capacity(components.len());
 
-        if produce_data {
+        if produce_data && !is_progressive {
             for component in &components {
-                let blocks_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize;
-                mcu_row_coefficients.push(vec![0i16; blocks_per_mcu_row * 64]);
+                let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
+                mcu_row_coefficients.push(vec![0i16; coefficients_per_mcu_row]);
             }
         }
 
@@ -424,45 +424,37 @@ impl<R: Read> Decoder<R> {
                         }
 
                         let block_offset = (block_coords.y as usize * component.block_size.width as usize + block_coords.x as usize) * 64;
-                        let mcu_row_offset = (mcu_y as usize * component.vertical_sampling_factor as usize * component.block_size.width as usize) * 64;
+                        let mcu_row_offset = mcu_y as usize * component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
+                        let coefficients = if is_progressive {
+                            &mut self.coefficients[scan.component_indices[i]][block_offset .. block_offset + 64]
+                        } else if produce_data {
+                            &mut mcu_row_coefficients[i][block_offset - mcu_row_offset .. block_offset - mcu_row_offset + 64]
+                        } else {
+                            &mut dummy_block[..]
+                        };
 
-                        {
-                            let coefficients = if is_progressive {
-                                &mut self.coefficients[scan.component_indices[i]][block_offset .. block_offset + 64]
-                            } else if produce_data {
-                                &mut mcu_row_coefficients[i][block_offset - mcu_row_offset .. block_offset - mcu_row_offset + 64]
-                            } else {
-                                &mut dummy_block[..]
-                            };
-
-                            if scan.successive_approximation_high == 0 {
-                                let dc_diff = try!(decode_block(&mut self.reader,
-                                                                coefficients,
-                                                                &mut huffman,
-                                                                self.dc_huffman_tables[scan.dc_table_indices[i]].as_ref(),
-                                                                self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
-                                                                scan.spectral_selection_start,
-                                                                scan.spectral_selection_end,
-                                                                scan.successive_approximation_low,
-                                                                &mut eob_run,
-                                                                dc_predictors[i]));
-                                dc_predictors[i] += dc_diff;
-                            }
-                            else {
-                                try!(decode_block_successive_approximation(&mut self.reader,
-                                                                           coefficients,
-                                                                           &mut huffman,
-                                                                           self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
-                                                                           scan.spectral_selection_start,
-                                                                           scan.spectral_selection_end,
-                                                                           scan.successive_approximation_low,
-                                                                           &mut eob_run));
-                            }
+                        if scan.successive_approximation_high == 0 {
+                            let dc_diff = try!(decode_block(&mut self.reader,
+                                                            coefficients,
+                                                            &mut huffman,
+                                                            self.dc_huffman_tables[scan.dc_table_indices[i]].as_ref(),
+                                                            self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
+                                                            scan.spectral_selection_start,
+                                                            scan.spectral_selection_end,
+                                                            scan.successive_approximation_low,
+                                                            &mut eob_run,
+                                                            dc_predictors[i]));
+                            dc_predictors[i] += dc_diff;
                         }
-
-                        if is_progressive && produce_data {
-                            mcu_row_coefficients[i][block_offset - mcu_row_offset .. block_offset - mcu_row_offset + 64]
-                                    .clone_from_slice(&self.coefficients[scan.component_indices[i]][block_offset .. block_offset + 64]);
+                        else {
+                            try!(decode_block_successive_approximation(&mut self.reader,
+                                                                       coefficients,
+                                                                       &mut huffman,
+                                                                       self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
+                                                                       scan.spectral_selection_start,
+                                                                       scan.spectral_selection_end,
+                                                                       scan.successive_approximation_low,
+                                                                       &mut eob_run));
                         }
                     }
                 }
@@ -504,9 +496,15 @@ impl<R: Read> Decoder<R> {
 
             if produce_data {
                 // Send the coefficients from this MCU row to the worker thread for dequantization and idct.
-                for (i, coefficients) in mcu_row_coefficients.iter_mut().enumerate() {
-                    let blocks_per_mcu_row = components[i].block_size.width as usize * components[i].vertical_sampling_factor as usize;
-                    let row_coefficients = mem::replace(coefficients, vec![0i16; blocks_per_mcu_row * 64]);
+                for (i, component) in components.iter().enumerate() {
+                    let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
+
+                    let row_coefficients = if is_progressive {
+                        let offset = mcu_y as usize * coefficients_per_mcu_row;
+                        self.coefficients[scan.component_indices[i]][offset .. offset + coefficients_per_mcu_row].to_vec()
+                    } else {
+                        mem::replace(&mut mcu_row_coefficients[i], vec![0i16; coefficients_per_mcu_row])
+                    };
 
                     try!(worker_chan.send(WorkerMsg::AppendRow((i, row_coefficients))));
                 }
