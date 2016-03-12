@@ -16,15 +16,16 @@ use worker_thread::{RowData, spawn_worker_thread, WorkerMsg};
 
 pub const MAX_COMPONENTS: usize = 4;
 
-static UNZIGZAG: [u8; 64] = [
-     0,  1,  8, 16,  9,  2,  3, 10,
-    17, 24, 32, 25, 18, 11,  4,  5,
-    12, 19, 26, 33, 40, 48, 41, 34,
-    27, 20, 13,  6,  7, 14, 21, 28,
-    35, 42, 49, 56, 57, 50, 43, 36,
-    29, 22, 15, 23, 30, 37, 44, 51,
-    58, 59, 52, 45, 38, 31, 39, 46,
-    53, 60, 61, 54, 47, 55, 62, 63,
+// Figure A.6
+pub static ZIGZAG: [u8; 64] = [
+     0,  1,  5,  6, 14, 15, 27, 28,
+     2,  4,  7, 13, 16, 26, 29, 42,
+     3,  8, 12, 17, 25, 30, 41, 43,
+     9, 11, 18, 24, 31, 40, 44, 53,
+    10, 19, 23, 32, 39, 45, 52, 54,
+    20, 22, 33, 38, 46, 51, 55, 60,
+    21, 34, 37, 47, 50, 56, 59, 61,
+    35, 36, 48, 49, 57, 58, 62, 63,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -222,13 +223,7 @@ impl<R: Read> Decoder<R> {
 
                     for (i, &table) in tables.into_iter().enumerate() {
                         if let Some(table) = table {
-                            let mut unzigzagged_table = [0u8; 64];
-
-                            for j in 0 .. 64 {
-                                unzigzagged_table[UNZIGZAG[j] as usize] = table[j];
-                            }
-
-                            self.quantization_tables[i] = Some(Arc::new(unzigzagged_table));
+                            self.quantization_tables[i] = Some(Arc::new(table));
                         }
                     }
                 },
@@ -581,7 +576,7 @@ fn decode_block<R: Read>(reader: &mut R,
                 break;
             }
 
-            coefficients[UNZIGZAG[index as usize] as usize] = value << successive_approximation_low;
+            coefficients[index as usize] = value << successive_approximation_low;
             index += 1;
         }
         else {
@@ -610,7 +605,7 @@ fn decode_block<R: Read>(reader: &mut R,
                     break;
                 }
 
-                coefficients[UNZIGZAG[index as usize] as usize] = try!(huffman.receive_extend(reader, s)) << successive_approximation_low;
+                coefficients[index as usize] = try!(huffman.receive_extend(reader, s)) << successive_approximation_low;
                 index += 1;
             }
         }
@@ -692,7 +687,7 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
             index = try!(refine_non_zeroes(reader, coefficients, huffman, index, spectral_selection_end, zero_run_length, bit));
 
             if value != 0 {
-                coefficients[UNZIGZAG[index as usize] as usize] = value;
+                coefficients[index as usize] = value;
             }
 
             index += 1;
@@ -713,23 +708,21 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
 
     let mut zero_run_length = zrl;
 
-    for i in start .. end + 1 {
-        let index = UNZIGZAG[i as usize] as usize;
-
-        if coefficients[index] == 0 {
+    for i in start as usize .. (end + 1) as usize {
+        if coefficients[i] == 0 {
             if zero_run_length == 0 {
-                return Ok(i);
+                return Ok(i as u8);
             }
 
             zero_run_length -= 1;
         }
         else {
-            if try!(huffman.get_bits(reader, 1)) == 1 && coefficients[index] & bit == 0 {
-                if coefficients[index] > 0 {
-                    coefficients[index] += bit;
+            if try!(huffman.get_bits(reader, 1)) == 1 && coefficients[i] & bit == 0 {
+                if coefficients[i] > 0 {
+                    coefficients[i] += bit;
                 }
                 else {
-                    coefficients[index] -= bit;
+                    coefficients[i] -= bit;
                 }
             }
         }

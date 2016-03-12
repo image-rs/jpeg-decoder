@@ -1,3 +1,5 @@
+use decoder::ZIGZAG;
+
 // Malicious JPEG files can cause operations in the idct to overflow.
 // One example is tests/crashtest/imagetestsuite/b0b8914cc5f7a6eff409f16d8cc236c5.jpg
 // That's why wrapping operators are needed.
@@ -11,10 +13,14 @@ pub fn dequantize_and_idct_block(coefficients: &[i16], quantization_table: &[u8;
     // columns
     for i in 0 .. 8 {
         // if all zeroes, shortcut -- this avoids dequantizing 0s and IDCTing
-        if coefficients[i + 8] == 0 && coefficients[i + 16] == 0 && coefficients[i + 24] == 0 &&
-                coefficients[i + 32] == 0 && coefficients[i + 40] == 0 && coefficients[i + 48] == 0 &&
-                coefficients[i + 56] == 0 {
-            let dcterm = (coefficients[i] as i32 * quantization_table[i] as i32).wrapping_shl(2);
+        if coefficients[ZIGZAG[i + 8] as usize] == 0 &&
+                coefficients[ZIGZAG[i + 16] as usize] == 0 &&
+                coefficients[ZIGZAG[i + 24] as usize] == 0 &&
+                coefficients[ZIGZAG[i + 32] as usize] == 0 &&
+                coefficients[ZIGZAG[i + 40] as usize] == 0 &&
+                coefficients[ZIGZAG[i + 48] as usize] == 0 &&
+                coefficients[ZIGZAG[i + 56] as usize] == 0 {
+            let dcterm = (coefficients[ZIGZAG[i] as usize] as i32 * quantization_table[ZIGZAG[i] as usize] as i32).wrapping_shl(2);
             temp[i]      = dcterm;
             temp[i + 8]  = dcterm;
             temp[i + 16] = dcterm;
@@ -25,14 +31,14 @@ pub fn dequantize_and_idct_block(coefficients: &[i16], quantization_table: &[u8;
             temp[i + 56] = dcterm;
         }
         else {
-            let s0 = coefficients[i] as i32      * quantization_table[i] as i32;
-            let s1 = coefficients[i + 8] as i32  * quantization_table[i + 8] as i32;
-            let s2 = coefficients[i + 16] as i32 * quantization_table[i + 16] as i32;
-            let s3 = coefficients[i + 24] as i32 * quantization_table[i + 24] as i32;
-            let s4 = coefficients[i + 32] as i32 * quantization_table[i + 32] as i32;
-            let s5 = coefficients[i + 40] as i32 * quantization_table[i + 40] as i32;
-            let s6 = coefficients[i + 48] as i32 * quantization_table[i + 48] as i32;
-            let s7 = coefficients[i + 56] as i32 * quantization_table[i + 56] as i32;
+            let s0 = coefficients[ZIGZAG[i] as usize] as i32      * quantization_table[ZIGZAG[i] as usize] as i32;
+            let s1 = coefficients[ZIGZAG[i + 8] as usize] as i32  * quantization_table[ZIGZAG[i + 8] as usize] as i32;
+            let s2 = coefficients[ZIGZAG[i + 16] as usize] as i32 * quantization_table[ZIGZAG[i + 16] as usize] as i32;
+            let s3 = coefficients[ZIGZAG[i + 24] as usize] as i32 * quantization_table[ZIGZAG[i + 24] as usize] as i32;
+            let s4 = coefficients[ZIGZAG[i + 32] as usize] as i32 * quantization_table[ZIGZAG[i + 32] as usize] as i32;
+            let s5 = coefficients[ZIGZAG[i + 40] as usize] as i32 * quantization_table[ZIGZAG[i + 40] as usize] as i32;
+            let s6 = coefficients[ZIGZAG[i + 48] as usize] as i32 * quantization_table[ZIGZAG[i + 48] as usize] as i32;
+            let s7 = coefficients[ZIGZAG[i + 56] as usize] as i32 * quantization_table[ZIGZAG[i + 56] as usize] as i32;
 
             let p2 = s2;
             let p3 = s6;
