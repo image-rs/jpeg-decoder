@@ -18,34 +18,34 @@ fn reftest() {
 fn reftest_file(path: &Path) {
     let file = File::open(path).unwrap();
     let mut decoder = jpeg::Decoder::new(file);
-    let mut data = decoder.decode().expect(&format!("failed to decode file: {:?}", path));
-    let info = decoder.info().unwrap();
-    let mut pixel_format = info.pixel_format;
+    let mut data = decoder.decode_pixels().expect(&format!("failed to decode file: {:?}", path));
+    let metadata = decoder.metadata().unwrap();
+    let mut color_space = metadata.dst_color_space;
 
-    if pixel_format == jpeg::PixelFormat::CMYK32 {
+    if color_space == jpeg::ColorSpace::CMYK {
         data = cmyk_to_rgb(&data);
-        pixel_format = jpeg::PixelFormat::RGB24;
+        color_space = jpeg::ColorSpace::RGB;
     }
 
     let ref_file = File::open(path.with_extension("png")).unwrap();
-    let (ref_info, mut ref_reader) = png::Decoder::new(ref_file).read_info().expect("png failed to read info");
+    let (ref_metadata, mut ref_reader) = png::Decoder::new(ref_file).read_info().expect("png failed to read info");
 
-    assert_eq!(ref_info.width, info.width as u32);
-    assert_eq!(ref_info.height, info.height as u32);
-    assert_eq!(ref_info.bit_depth, png::BitDepth::Eight);
+    assert_eq!(ref_metadata.width, metadata.width as u32);
+    assert_eq!(ref_metadata.height, metadata.height as u32);
+    assert_eq!(ref_metadata.bit_depth, png::BitDepth::Eight);
 
-    let mut ref_data = vec![0; ref_info.buffer_size()];
+    let mut ref_data = vec![0; ref_metadata.buffer_size()];
     ref_reader.next_frame(&mut ref_data).expect("png decode failed");
-    let mut ref_pixel_format = ref_info.color_type;
+    let mut ref_color_type = ref_metadata.color_type;
 
-    if ref_pixel_format == png::ColorType::RGBA {
+    if ref_color_type == png::ColorType::RGBA {
         ref_data = rgba_to_rgb(&ref_data);
-        ref_pixel_format = png::ColorType::RGB;
+        ref_color_type = png::ColorType::RGB;
     }
 
-    match pixel_format {
-        jpeg::PixelFormat::L8 => assert_eq!(ref_pixel_format, png::ColorType::Grayscale),
-        jpeg::PixelFormat::RGB24 => assert_eq!(ref_pixel_format, png::ColorType::RGB),
+    match color_space {
+        jpeg::ColorSpace::Grayscale => assert_eq!(ref_color_type, png::ColorType::Grayscale),
+        jpeg::ColorSpace::RGB       => assert_eq!(ref_color_type, png::ColorType::RGB),
         _ => panic!(),
     }
 
@@ -72,9 +72,9 @@ fn reftest_file(path: &Path) {
     if pixels.iter().any(|&a| a < 255) {
         let output_path = path.with_file_name(format!("{}-diff.png", path.file_stem().unwrap().to_str().unwrap()));
         let output = File::create(&output_path).unwrap();
-        let mut encoder = png::Encoder::new(output, info.width as u32, info.height as u32);
+        let mut encoder = png::Encoder::new(output, metadata.width as u32, metadata.height as u32);
         encoder.set(png::BitDepth::Eight);
-        encoder.set(ref_pixel_format);
+        encoder.set(ref_color_type);
         encoder.write_header().expect("png failed to write header").write_image_data(&pixels).expect("png failed to write data");
 
         panic!("decoding difference: {:?}, maximum difference was {}", output_path, max_diff);

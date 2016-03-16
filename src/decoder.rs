@@ -1,4 +1,5 @@
 use byteorder::ReadBytesExt;
+use color::{ColorSpace, ConvertColorSpace};
 use error::{Error, Result, UnsupportedFeature};
 use euclid::{Point2D, Rect, Size2D};
 use huffman::{HuffmanDecoder, HuffmanTable};
@@ -29,35 +30,56 @@ pub static ZIGZAG: [u8; 64] = [
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum PixelFormat {
-    L8,     // Luminance, 8 bits per channel
-    RGB24,  // RGB, 8 bits per channel
-    CMYK32, // CMYK, 8 bits per channel
+enum DataType {
+    Metadata,
+    Coefficients,
+    Pixels,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ImageInfo {
+enum Image {
+    /// Coefficients and quantization tables for each plane, stored in zigzag order.
+    Coefficients(Vec<Vec<i16>>, Vec<[u8; 64]>),
+    Pixels(Vec<u8>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Metadata {
+    /// Width of the image.
     pub width: u16,
+    /// Height of the image.
     pub height: u16,
-    pub pixel_format: PixelFormat,
+
+    /// Color space the decoded pixels will be in.
+    /// It can be either `Grayscale`, `RGB` or `CMYK`.
+    pub dst_color_space: ColorSpace,
+    /// Color space the compressed image is stored in.
+    pub src_color_space: ColorSpace,
+
+    /// Width and height of each plane in number of 8x8 blocks.
+    pub plane_size_blocks: Vec<(u16, u16)>,
+    /// Horizontal and vertical sampling factor of each plane.
+    pub plane_sampling_factor: Vec<(u8, u8)>,
+
+    /// Maximum horizontal and vertical sampling factor.
+    pub max_sampling_factor: (u8, u8),
 }
 
 pub struct Decoder<R> {
     reader: R,
-
-    // Used for progressive JPEGs.
-    coefficients: Vec<Vec<i16>>,
 
     frame: Option<FrameInfo>,
     dc_huffman_tables: Vec<Option<HuffmanTable>>,
     ac_huffman_tables: Vec<Option<HuffmanTable>>,
     quantization_tables: [Option<Arc<[u8; 64]>>; 4],
 
+    metadata: Option<Metadata>,
     restart_interval: u16,
     color_transform: Option<AdobeColorTransform>,
     is_jfif: bool,
 
-    // Used for detecting the last scan for components.
+    // Used for progressive JPEGs.
+    coefficients: Vec<Vec<i16>>,
+    // Used for detecting the last scan of components.
     coefficient_complete: Vec<[bool; 64]>,
 }
 
@@ -65,50 +87,50 @@ impl<R: Read> Decoder<R> {
     pub fn new(reader: R) -> Decoder<R> {
         Decoder {
             reader: reader,
-            coefficients: Vec::new(),
             frame: None,
             dc_huffman_tables: vec![None, None, None, None],
             ac_huffman_tables: vec![None, None, None, None],
             quantization_tables: [None, None, None, None],
+            metadata: None,
             restart_interval: 0,
             color_transform: None,
             is_jfif: false,
+            coefficients: Vec::new(),
             coefficient_complete: Vec::new(),
         }
     }
 
-    pub fn info(&self) -> Option<ImageInfo> {
-        match self.frame {
-            Some(ref frame) => {
-                let pixel_format = match frame.components.len() {
-                    1 => PixelFormat::L8,
-                    3 => PixelFormat::RGB24,
-                    4 => PixelFormat::CMYK32,
-                    _ => panic!(),
-                };
-
-                Some(ImageInfo {
-                    width: frame.image_size.width,
-                    height: frame.image_size.height,
-                    pixel_format: pixel_format,
-                })
-            },
-            None => None,
-        }
+    pub fn metadata(&self) -> Option<Metadata> {
+        self.metadata.clone()
     }
 
-    pub fn read_info(&mut self) -> Result<()> {
-        self.decode_internal(true).map(|_| ())
+    pub fn read_metadata(&mut self) -> Result<()> {
+        self.decode(DataType::Metadata).map(|_| ())
     }
 
-    pub fn decode(&mut self) -> Result<Vec<u8>> {
-        self.decode_internal(false)
+    pub fn decode_pixels(&mut self) -> Result<Vec<u8>> {
+        self.decode(DataType::Pixels).map(|data| {
+            match data {
+                Some(Image::Pixels(pixels)) => pixels,
+                _ => panic!(),
+            }
+        })
     }
 
-    fn decode_internal(&mut self, stop_after_metadata: bool) -> Result<Vec<u8>> {
-        if stop_after_metadata && self.frame.is_some() {
+    /// Returns coefficients and quantization tables for each plane, stored in zigzag order.
+    pub fn decode_coefficients(&mut self) -> Result<(Vec<Vec<i16>>, Vec<[u8; 64]>)> {
+        self.decode(DataType::Coefficients).map(|data| {
+            match data {
+                Some(Image::Coefficients(coefficients, quantization_tables)) => (coefficients, quantization_tables),
+                _ => panic!(),
+            }
+        })
+    }
+
+    fn decode(&mut self, data_type: DataType) -> Result<Option<Image>> {
+        if data_type == DataType::Metadata && self.frame.is_some() {
             // The metadata has already been read.
-            return Ok(Vec::new());
+            return Ok(None);
         }
         else if self.frame.is_none() && (try!(self.reader.read_u8()) != 0xFF || try!(self.reader.read_u8()) != Marker::SOI as u8) {
             return Err(Error::Format("first two bytes is not a SOI marker".to_owned()));
@@ -164,6 +186,13 @@ impl<R: Read> Decoder<R> {
                         return Err(Error::Unsupported(UnsupportedFeature::SubsamplingRatio));
                     }
 
+                    let width = frame.image_size.width;
+                    let height = frame.image_size.height;
+                    let h_max = frame.components.iter().map(|c| c.horizontal_sampling_factor).max().unwrap();
+                    let v_max = frame.components.iter().map(|c| c.vertical_sampling_factor).max().unwrap();
+                    let mut plane_size_blocks = Vec::with_capacity(frame.components.len());
+                    let mut plane_sampling_factor = Vec::with_capacity(frame.components.len());
+
                     for component in &frame.components {
                         if frame.coding_process == CodingProcess::DctProgressive {
                             let block_count = component.block_size.width as usize * component.block_size.height as usize;
@@ -171,12 +200,26 @@ impl<R: Read> Decoder<R> {
                         }
 
                         self.coefficient_complete.push([false; 64]);
+
+                        plane_size_blocks.push((component.block_size.width,
+                                                component.block_size.height));
+                        plane_sampling_factor.push((component.horizontal_sampling_factor,
+                                                     component.vertical_sampling_factor));
                     }
 
                     self.frame = Some(frame);
+                    self.metadata = Some(Metadata {
+                        width: width,
+                        height: height,
+                        dst_color_space: try!(self.dst_color_space()),
+                        src_color_space: try!(self.src_color_space()),
+                        plane_size_blocks: plane_size_blocks,
+                        plane_sampling_factor: plane_sampling_factor,
+                        max_sampling_factor: (h_max, v_max),
+                    });
 
-                    if stop_after_metadata {
-                        return Ok(Vec::new());
+                    if data_type == DataType::Metadata {
+                        return Ok(None);
                     }
 
                     planes = vec![Vec::new(); component_count];
@@ -187,7 +230,7 @@ impl<R: Read> Decoder<R> {
                     if self.frame.is_none() {
                         return Err(Error::Format("scan encountered before frame".to_owned()));
                     }
-                    if worker_chan.is_none() {
+                    if worker_chan.is_none() && data_type == DataType::Pixels {
                         worker_chan = Some(try!(spawn_worker_thread()));
                     }
 
@@ -203,12 +246,19 @@ impl<R: Read> Decoder<R> {
                     let is_final_scan = scan.component_indices.iter()
                                                               .map(|&i| self.coefficient_complete[i].iter().all(|&v| v))
                                                               .all(|v| v);
+                    let produce_data = if is_final_scan {
+                        Some(data_type)
+                    } else {
+                        None
+                    };
 
-                    let (marker, data) = try!(self.decode_scan(&frame, &scan, worker_chan.as_ref().unwrap(), is_final_scan));
+                    let (marker, samples) = try!(self.decode_scan(&frame, &scan, worker_chan.as_ref(), produce_data));
 
-                    if let Some(data) = data {
-                        for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
-                            planes[i] = plane;
+                    if let Some(samples) = samples {
+                        for (i, plane_samples) in samples.into_iter()
+                                                         .enumerate()
+                                                         .filter(|&(_, ref plane_samples)| !plane_samples.is_empty()) {
+                            planes[i] = plane_samples;
                         }
                     }
 
@@ -301,12 +351,37 @@ impl<R: Read> Decoder<R> {
             previous_marker = marker;
         }
 
-        if planes.iter().all(|plane| !plane.is_empty()) {
-            let frame = self.frame.as_ref().unwrap();
-            compute_image(&frame.components, &planes, frame.image_size, self.is_jfif, self.color_transform)
-        }
-        else {
-            Err(Error::Format("no data found".to_owned()))
+        match self.frame {
+            Some(ref frame) => {
+                match data_type {
+                    DataType::Coefficients => {
+                        let coefficients = mem::replace(&mut self.coefficients, Vec::new());
+                        let mut quantization_tables = Vec::with_capacity(frame.components.len());
+
+                        for component in &frame.components {
+                            let quantization_table = &self.quantization_tables[component.quantization_table_index];
+                            quantization_tables.push(*quantization_table.clone().unwrap());
+                        }
+
+                        Ok(Some(Image::Coefficients(coefficients, quantization_tables)))
+                    },
+                    DataType::Pixels => {
+                        if planes.iter().all(|plane| !plane.is_empty()) {
+                            let image = try!(compute_image(try!(self.src_color_space()),
+                                                           try!(self.dst_color_space()),
+                                                           frame.image_size,
+                                                           &frame.components,
+                                                           &planes));
+                            Ok(Some(Image::Pixels(image)))
+                        }
+                        else {
+                            Err(Error::Format("not all components has data".to_owned()))
+                        }
+                    },
+                    DataType::Metadata => panic!(),
+                }
+            },
+            None => Err(Error::Format("no frame found".to_owned())),
         }
     }
 
@@ -332,8 +407,8 @@ impl<R: Read> Decoder<R> {
     fn decode_scan(&mut self,
                    frame: &FrameInfo,
                    scan: &ScanInfo,
-                   worker_chan: &Sender<WorkerMsg>,
-                   produce_data: bool)
+                   worker_chan: Option<&Sender<WorkerMsg>>,
+                   produce_data: Option<DataType>)
                    -> Result<(Option<Marker>, Option<Vec<Vec<u8>>>)> {
         assert!(scan.component_indices.len() <= MAX_COMPONENTS);
 
@@ -356,7 +431,10 @@ impl<R: Read> Decoder<R> {
             return Err(Error::Format("scan makes use of unset ac huffman table".to_owned()));
         }
 
-        if produce_data {
+        let is_progressive = frame.coding_process == CodingProcess::DctProgressive;
+        let mut mcu_row_coefficients = Vec::with_capacity(components.len());
+
+        if produce_data == Some(DataType::Pixels) {
             // Prepare the worker thread for the work to come.
             for (i, component) in components.iter().enumerate() {
                 let row_data = RowData {
@@ -365,14 +443,27 @@ impl<R: Read> Decoder<R> {
                     quantization_table: self.quantization_tables[component.quantization_table_index].clone().unwrap(),
                 };
 
-                try!(worker_chan.send(WorkerMsg::Start(row_data)));
+                try!(worker_chan.unwrap().send(WorkerMsg::Start(row_data)));
+            }
+
+            if !is_progressive {
+                for component in &components {
+                    let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
+                    mcu_row_coefficients.push(vec![0i16; coefficients_per_mcu_row]);
+                }
+            }
+        }
+
+        if !is_progressive && produce_data == Some(DataType::Coefficients) && self.coefficients.is_empty() {
+            for component in &frame.components {
+                let block_count = component.block_size.width as usize * component.block_size.height as usize;
+                self.coefficients.push(vec![0i16; block_count * 64]);
             }
         }
 
         let blocks_per_mcu: Vec<u16> = components.iter()
                                                  .map(|c| c.horizontal_sampling_factor as u16 * c.vertical_sampling_factor as u16)
                                                  .collect();
-        let is_progressive = frame.coding_process == CodingProcess::DctProgressive;
         let is_interleaved = components.len() > 1;
         let mut dummy_block = [0i16; 64];
         let mut huffman = HuffmanDecoder::new();
@@ -380,14 +471,6 @@ impl<R: Read> Decoder<R> {
         let mut restarts_left = self.restart_interval;
         let mut expected_rst_num = 0;
         let mut eob_run = 0;
-        let mut mcu_row_coefficients = Vec::with_capacity(components.len());
-
-        if produce_data && !is_progressive {
-            for component in &components {
-                let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
-                mcu_row_coefficients.push(vec![0i16; coefficients_per_mcu_row]);
-            }
-        }
 
         for mcu_y in 0 .. frame.mcu_size.height {
             for mcu_x in 0 .. frame.mcu_size.width {
@@ -420,9 +503,9 @@ impl<R: Read> Decoder<R> {
 
                         let block_offset = (block_coords.y as usize * component.block_size.width as usize + block_coords.x as usize) * 64;
                         let mcu_row_offset = mcu_y as usize * component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
-                        let coefficients = if is_progressive {
+                        let coefficients = if is_progressive || produce_data == Some(DataType::Coefficients) {
                             &mut self.coefficients[scan.component_indices[i]][block_offset .. block_offset + 64]
-                        } else if produce_data {
+                        } else if produce_data == Some(DataType::Pixels) {
                             &mut mcu_row_coefficients[i][block_offset - mcu_row_offset .. block_offset - mcu_row_offset + 64]
                         } else {
                             &mut dummy_block[..]
@@ -489,7 +572,7 @@ impl<R: Read> Decoder<R> {
                 }
             }
 
-            if produce_data {
+            if produce_data == Some(DataType::Pixels) {
                 // Send the coefficients from this MCU row to the worker thread for dequantization and idct.
                 for (i, component) in components.iter().enumerate() {
                     let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
@@ -501,18 +584,18 @@ impl<R: Read> Decoder<R> {
                         mem::replace(&mut mcu_row_coefficients[i], vec![0i16; coefficients_per_mcu_row])
                     };
 
-                    try!(worker_chan.send(WorkerMsg::AppendRow((i, row_coefficients))));
+                    try!(worker_chan.unwrap().send(WorkerMsg::AppendRow((i, row_coefficients))));
                 }
             }
         }
 
-        if produce_data {
+        if produce_data == Some(DataType::Pixels) {
             // Retrieve all the data from the worker thread.
             let mut data = vec![Vec::new(); frame.components.len()];
 
             for (i, &component_index) in scan.component_indices.iter().enumerate() {
                 let (tx, rx) = mpsc::channel();
-                try!(worker_chan.send(WorkerMsg::GetResult((i, tx))));
+                try!(worker_chan.unwrap().send(WorkerMsg::GetResult((i, tx))));
 
                 data[component_index] = try!(rx.recv());
             }
@@ -521,6 +604,38 @@ impl<R: Read> Decoder<R> {
         }
         else {
             Ok((huffman.take_marker(), None))
+        }
+    }
+
+    fn src_color_space(&self) -> Result<ColorSpace> {
+        let frame = self.frame.as_ref().unwrap();
+
+        match frame.components.len() {
+            1 => Ok(ColorSpace::Grayscale),
+            3 => {
+                // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
+                match self.color_transform {
+                    Some(AdobeColorTransform::Unknown) => Ok(ColorSpace::RGB),
+                    _ => Ok(ColorSpace::YCbCr),
+                }
+            },
+            4 => {
+                // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
+                match self.color_transform {
+                    Some(AdobeColorTransform::Unknown) => Ok(ColorSpace::CMYK),
+                    Some(_) => Ok(ColorSpace::YCCK),
+                    None => Err(Error::Format("4 components without Adobe APP14 metadata to tell color space".to_owned())),
+                }
+            },
+            _ => panic!(),
+        }
+    }
+
+    fn dst_color_space(&self) -> Result<ColorSpace> {
+        match try!(self.src_color_space()) {
+            ColorSpace::Grayscale => Ok(ColorSpace::Grayscale),
+            ColorSpace::RGB | ColorSpace::YCbCr => Ok(ColorSpace::RGB),
+            ColorSpace::CMYK | ColorSpace::YCCK => Ok(ColorSpace::CMYK),
         }
     }
 }
@@ -731,35 +846,34 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
     Ok(end)
 }
 
-fn compute_image(components: &[Component],
-                 data: &[Vec<u8>],
+fn compute_image(src_color_space: ColorSpace,
+                 dst_color_space: ColorSpace,
                  output_size: Size2D<u16>,
-                 is_jfif: bool,
-                 color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
-    if data.iter().any(|data| data.is_empty()) {
-        return Err(Error::Format("not all components has data".to_owned()));
-    }
+                 components: &[Component],
+                 data: &[Vec<u8>]) -> Result<Vec<u8>> {
+    assert_eq!(data.len(), src_color_space.num_components());
+    assert!(data.iter().all(|data| !data.is_empty()));
 
     if components.len() == 1 {
         let component = &components[0];
 
         if component.size.width % 8 == 0 && component.size.height % 8 == 0 {
-            return Ok(data[0].clone())
+            Ok(data[0].clone())
         }
+        else {
+            let mut buffer = vec![0u8; component.size.width as usize * component.size.height as usize];
+            let line_stride = component.block_size.width as usize * 8;
 
-        let mut buffer = vec![0u8; component.size.width as usize * component.size.height as usize];
-        let line_stride = component.block_size.width as usize * 8;
-
-        for y in 0 .. component.size.height as usize {
-            for x in 0 .. component.size.width as usize {
-                buffer[y * component.size.width as usize + x] = data[0][y * line_stride + x];
+            for y in 0 .. component.size.height as usize {
+                for x in 0 .. component.size.width as usize {
+                    buffer[y * component.size.width as usize + x] = data[0][y * line_stride + x];
+                }
             }
-        }
 
-        Ok(buffer)
+            Ok(buffer)
+        }
     }
     else {
-        let color_convert_func = try!(choose_color_convert_func(components.len(), is_jfif, color_transform));
         let resampler = Resampler::new(components).unwrap();
         let line_size = output_size.width as usize * components.len();
         let mut image = vec![0u8; line_size * output_size.height as usize];
@@ -771,91 +885,9 @@ fn compute_image(components: &[Component],
              .enumerate()
              .for_each(|(row, line)| {
                  resampler.resample_and_interleave_row(data, row, output_size.width as usize, *line);
-                 color_convert_func(*line, output_size.width as usize);
+                 src_color_space.convert(&dst_color_space, *line, output_size.width as usize);
              });
 
         Ok(image)
     }
-}
-
-fn choose_color_convert_func(component_count: usize,
-                             _is_jfif: bool,
-                             color_transform: Option<AdobeColorTransform>)
-                             -> Result<fn(&mut [u8], usize)> {
-    match component_count {
-        3 => {
-            // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-            // Unknown means the data is RGB, so we don't need to perform any color conversion on it.
-            if color_transform == Some(AdobeColorTransform::Unknown) {
-                Ok(color_convert_line_null)
-            }
-            else {
-                Ok(color_convert_line_ycbcr)
-            }
-        },
-        4 => {
-            // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-            match color_transform {
-                Some(AdobeColorTransform::Unknown) => Ok(color_convert_line_cmyk),
-                Some(_) => Ok(color_convert_line_ycck),
-                None => Err(Error::Format("4 components without Adobe APP14 metadata to tell color space".to_owned())),
-            }
-        },
-        _ => panic!(),
-    }
-}
-
-fn color_convert_line_null(_data: &mut [u8], _width: usize) {
-}
-
-fn color_convert_line_ycbcr(data: &mut [u8], width: usize) {
-    for i in 0 .. width {
-        let (r, g, b) = ycbcr_to_rgb(data[i * 3], data[i * 3 + 1], data[i * 3 + 2]);
-
-        data[i * 3]     = r;
-        data[i * 3 + 1] = g;
-        data[i * 3 + 2] = b;
-    }
-}
-
-fn color_convert_line_ycck(data: &mut [u8], width: usize) {
-    for i in 0 .. width {
-        let (r, g, b) = ycbcr_to_rgb(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
-        let k = data[i * 4 + 3];
-
-        data[i * 4]     = r;
-        data[i * 4 + 1] = g;
-        data[i * 4 + 2] = b;
-        data[i * 4 + 3] = 255 - k;
-    }
-}
-
-fn color_convert_line_cmyk(data: &mut [u8], width: usize) {
-    for i in 0 .. width {
-        data[i * 4]     = 255 - data[i * 4];
-        data[i * 4 + 1] = 255 - data[i * 4 + 1];
-        data[i * 4 + 2] = 255 - data[i * 4 + 2];
-        data[i * 4 + 3] = 255 - data[i * 4 + 3];
-    }
-}
-
-// ITU-R BT.601
-fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8) -> (u8, u8, u8) {
-    let y = y as f32;
-    let cb = cb as f32 - 128.0;
-    let cr = cr as f32 - 128.0;
-
-    let r = y                + 1.40200 * cr;
-    let g = y - 0.34414 * cb - 0.71414 * cr;
-    let b = y + 1.77200 * cb;
-
-    (clamp((r + 0.5) as i32, 0, 255) as u8,
-     clamp((g + 0.5) as i32, 0, 255) as u8,
-     clamp((b + 0.5) as i32, 0, 255) as u8)
-}
-
-fn clamp<T: PartialOrd>(value: T, min: T, max: T) -> T {
-    if value < min { return min; }
-    if value > max { return max; }
-    value
 }

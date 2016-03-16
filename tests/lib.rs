@@ -10,19 +10,19 @@ mod crashtest;
 mod reftest;
 
 #[test]
-fn read_info() {
+fn read_metadata() {
     let path = Path::new("tests").join("reftest").join("images").join("mozilla").join("jpg-progressive.jpg");
 
     let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
-    let ref_data = decoder.decode().unwrap();
-    let ref_info = decoder.info().unwrap();
+    let ref_data = decoder.decode_pixels().unwrap();
+    let ref_metadata = decoder.metadata().unwrap();
 
     decoder = jpeg::Decoder::new(File::open(&path).unwrap());
-    decoder.read_info().unwrap();
-    let info = decoder.info().unwrap();
-    let data = decoder.decode().unwrap();
+    decoder.read_metadata().unwrap();
+    let metadata = decoder.metadata().unwrap();
+    let data = decoder.decode_pixels().unwrap();
 
-    assert_eq!(info, decoder.info().unwrap());
-    assert_eq!(info, ref_info);
+    assert_eq!(metadata, decoder.metadata().unwrap());
+    assert_eq!(metadata, ref_metadata);
     assert_eq!(data, ref_data);
 }

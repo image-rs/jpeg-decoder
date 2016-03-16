@@ -54,28 +54,29 @@ fn main() {
     }
 
     let mut decoder = jpeg::Decoder::new(BufReader::new(file.unwrap()));
-    let mut data = decoder.decode().expect("decode failed");
+    let mut data = decoder.decode_pixels().expect("decode failed");
 
     if let Some(output) = output {
-        let info = decoder.info().unwrap();
+        let metadata = decoder.metadata().unwrap();
         let output_file = File::create(output).unwrap();
-        let mut encoder = png::Encoder::new(output_file, info.width as u32, info.height as u32);
+        let mut encoder = png::Encoder::new(output_file, metadata.width as u32, metadata.height as u32);
         encoder.set(png::BitDepth::Eight);
 
-        match info.pixel_format {
-            jpeg::PixelFormat::L8     => encoder.set(png::ColorType::Grayscale),
-            jpeg::PixelFormat::RGB24  => encoder.set(png::ColorType::RGB),
-            jpeg::PixelFormat::CMYK32 => {
+        match metadata.dst_color_space {
+            jpeg::ColorSpace::Grayscale => encoder.set(png::ColorType::Grayscale),
+            jpeg::ColorSpace::RGB       => encoder.set(png::ColorType::RGB),
+            jpeg::ColorSpace::CMYK      => {
                 data = cmyk_to_rgb(&mut data);
                 encoder.set(png::ColorType::RGB)
             },
+            _ => panic!(),
         };
 
         encoder.write_header().expect("writing png header failed").write_image_data(&data).expect("png encoding failed");
     }
 }
 
-fn cmyk_to_rgb(input: &mut [u8]) -> Vec<u8> {
+fn cmyk_to_rgb(input: &[u8]) -> Vec<u8> {
     let size = input.len() - input.len() / 4;
     let mut output = Vec::with_capacity(size);
 

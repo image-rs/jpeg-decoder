@@ -12,6 +12,6 @@ fn crashtest() {
     for path in &files {
         let file = File::open(path).unwrap();
         let mut decoder = jpeg::Decoder::new(BufReader::new(file));
-        let _ = decoder.decode();
+        let _ = decoder.decode_pixels();
     }
 }
