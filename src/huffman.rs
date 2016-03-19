@@ -5,6 +5,7 @@ use std::io::Read;
 use std::iter::repeat;
 
 const LUT_BITS: u8 = 8;
+const LUT_ELEMS: usize = 1 << 8;
 
 #[derive(Debug)]
 pub struct HuffmanDecoder {
@@ -179,8 +180,8 @@ pub struct HuffmanTable {
     delta: [i32; 16],
     maxcode: [i32; 16],
 
-    lut: [(u8, u8); 1 << LUT_BITS],
-    ac_lut: Option<[(i16, u8); 1 << LUT_BITS]>,
+    lut: [(u8, u8); LUT_ELEMS],
+    ac_lut: Option<[(i16, u8); LUT_ELEMS]>,
 }
 
 impl HuffmanTable {
@@ -203,7 +204,7 @@ impl HuffmanTable {
         }
 
         // Build a lookup table for faster decoding.
-        let mut lut = [(0u8, 0u8); 1 << LUT_BITS];
+        let mut lut = [(0u8, 0u8); LUT_ELEMS];
 
         for (i, &size) in huffsize.iter().enumerate().filter(|&(_, &size)| size <= LUT_BITS) {
             let bits_remaining = LUT_BITS - size;
@@ -219,7 +220,7 @@ impl HuffmanTable {
         let ac_lut = match class {
             HuffmanTableClass::DC => None,
             HuffmanTableClass::AC => {
-                let mut table = [(0i16, 0u8); 1 << LUT_BITS];
+                let mut table = [(0i16, 0u8); LUT_ELEMS];
 
                 for (i, &(value, size)) in lut.iter().enumerate() {
                     let run_length = value >> 4;
