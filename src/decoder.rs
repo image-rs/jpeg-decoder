@@ -10,6 +10,7 @@ use resampler::Resampler;
 use std::cmp;
 use std::io::Read;
 use std::mem;
+use std::ops::Range;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
 use worker_thread::{RowData, spawn_worker_thread, WorkerMsg};
@@ -191,8 +192,8 @@ impl<R: Read> Decoder<R> {
                     let frame = self.frame.clone().unwrap();
                     let scan = try!(parse_sos(&mut self.reader, &frame));
 
-                    for &i in scan.component_indices.iter() {
-                        for j in scan.spectral_selection_start .. scan.spectral_selection_end + 1 {
+                    for &i in &scan.component_indices {
+                        for j in scan.spectral_selection.clone() {
                             self.coefficient_complete[i][j as usize] = scan.successive_approximation_low == 0;
                         }
                     }
@@ -347,11 +348,11 @@ impl<R: Read> Decoder<R> {
         }
 
         // Verify that all required huffman tables has been set.
-        if scan.spectral_selection_start == 0 &&
+        if scan.spectral_selection.start == 0 &&
                 scan.dc_table_indices.iter().any(|&i| self.dc_huffman_tables[i].is_none()) {
             return Err(Error::Format("scan makes use of unset dc huffman table".to_owned()));
         }
-        if scan.spectral_selection_end > 0 &&
+        if scan.spectral_selection.end > 1 &&
                 scan.ac_table_indices.iter().any(|&i| self.ac_huffman_tables[i].is_none()) {
             return Err(Error::Format("scan makes use of unset ac huffman table".to_owned()));
         }
@@ -377,7 +378,7 @@ impl<R: Read> Decoder<R> {
         let mut dummy_block = [0i16; 64];
         let mut huffman = HuffmanDecoder::new();
         let mut dc_predictors = [0i16; MAX_COMPONENTS];
-        let mut restarts_left = self.restart_interval;
+        let mut mcus_left_until_restart = self.restart_interval;
         let mut expected_rst_num = 0;
         let mut eob_run = 0;
         let mut mcu_row_coefficients = Vec::with_capacity(components.len());
@@ -434,8 +435,7 @@ impl<R: Read> Decoder<R> {
                                                             &mut huffman,
                                                             self.dc_huffman_tables[scan.dc_table_indices[i]].as_ref(),
                                                             self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
-                                                            scan.spectral_selection_start,
-                                                            scan.spectral_selection_end,
+                                                            scan.spectral_selection.clone(),
                                                             scan.successive_approximation_low,
                                                             &mut eob_run,
                                                             dc_predictors[i]));
@@ -446,8 +446,7 @@ impl<R: Read> Decoder<R> {
                                                                        coefficients,
                                                                        &mut huffman,
                                                                        self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
-                                                                       scan.spectral_selection_start,
-                                                                       scan.spectral_selection_end,
+                                                                       scan.spectral_selection.clone(),
                                                                        scan.successive_approximation_low,
                                                                        &mut eob_run));
                         }
@@ -456,9 +455,9 @@ impl<R: Read> Decoder<R> {
 
                 if self.restart_interval > 0 {
                     let is_last_mcu = mcu_x == frame.mcu_size.width - 1 && mcu_y == frame.mcu_size.height - 1;
-                    restarts_left -= 1;
+                    mcus_left_until_restart -= 1;
 
-                    if restarts_left == 0 && !is_last_mcu {
+                    if mcus_left_until_restart == 0 && !is_last_mcu {
                         match huffman.take_marker() {
                             Some(marker) => {
                                 match marker {
@@ -481,7 +480,7 @@ impl<R: Read> Decoder<R> {
                         // Section G.1.2.2
                         eob_run = 0;
 
-                        restarts_left = self.restart_interval;
+                        mcus_left_until_restart = self.restart_interval;
                     }
                 }
             }
@@ -527,8 +526,7 @@ fn decode_block<R: Read>(reader: &mut R,
                          huffman: &mut HuffmanDecoder,
                          dc_table: Option<&HuffmanTable>,
                          ac_table: Option<&HuffmanTable>,
-                         spectral_selection_start: u8,
-                         spectral_selection_end: u8,
+                         spectral_selection: Range<u8>,
                          successive_approximation_low: u8,
                          eob_run: &mut u16,
                          dc_predictor: i16) -> Result<i16> {
@@ -536,7 +534,7 @@ fn decode_block<R: Read>(reader: &mut R,
 
     let mut dc_diff = 0;
 
-    if spectral_selection_start == 0 {
+    if spectral_selection.start == 0 {
         // Section F.2.2.1
         // Figure F.12
         let value = try!(huffman.decode(reader, dc_table.unwrap()));
@@ -557,19 +555,19 @@ fn decode_block<R: Read>(reader: &mut R,
         dc_diff = diff;
     }
 
-    let mut index = cmp::max(spectral_selection_start, 1);
+    let mut index = cmp::max(spectral_selection.start, 1);
 
-    if index <= spectral_selection_end && *eob_run > 0 {
+    if index < spectral_selection.end && *eob_run > 0 {
         *eob_run -= 1;
         return Ok(dc_diff);
     }
 
     // Section F.1.2.2.1
-    while index <= spectral_selection_end {
+    while index < spectral_selection.end {
         if let Some((value, run)) = try!(huffman.decode_fast_ac(reader, ac_table.unwrap())) {
             index += run;
 
-            if index > spectral_selection_end {
+            if index >= spectral_selection.end {
                 break;
             }
 
@@ -598,7 +596,7 @@ fn decode_block<R: Read>(reader: &mut R,
             else {
                 index += r;
 
-                if index > spectral_selection_end {
+                if index >= spectral_selection.end {
                     break;
                 }
 
@@ -615,15 +613,14 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
                                                   coefficients: &mut [i16],
                                                   huffman: &mut HuffmanDecoder,
                                                   ac_table: Option<&HuffmanTable>,
-                                                  spectral_selection_start: u8,
-                                                  spectral_selection_end: u8,
+                                                  spectral_selection: Range<u8>,
                                                   successive_approximation_low: u8,
                                                   eob_run: &mut u16) -> Result<()> {
     debug_assert_eq!(coefficients.len(), 64);
 
     let bit = 1 << successive_approximation_low;
 
-    if spectral_selection_start == 0 {
+    if spectral_selection.start == 0 {
         // Section G.1.2.1
 
         if try!(huffman.get_bits(reader, 1)) == 1 {
@@ -635,13 +632,13 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
 
         if *eob_run > 0 {
             *eob_run -= 1;
-            try!(refine_non_zeroes(reader, coefficients, huffman, spectral_selection_start, spectral_selection_end, 64, bit));
+            try!(refine_non_zeroes(reader, coefficients, huffman, spectral_selection, 64, bit));
             return Ok(());
         }
 
-        let mut index = spectral_selection_start;
+        let mut index = spectral_selection.start;
 
-        while index <= spectral_selection_end {
+        while index < spectral_selection.end {
             let byte = try!(huffman.decode(reader, ac_table.unwrap()));
             let r = byte >> 4;
             let s = byte & 0x0f;
@@ -681,7 +678,11 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
                 _ => return Err(Error::Format("unexpected huffman code".to_owned())),
             }
 
-            index = try!(refine_non_zeroes(reader, coefficients, huffman, index, spectral_selection_end, zero_run_length, bit));
+            let range = Range {
+                start: index,
+                end: spectral_selection.end,
+            };
+            index = try!(refine_non_zeroes(reader, coefficients, huffman, range, zero_run_length, bit));
 
             if value != 0 {
                 coefficients[UNZIGZAG[index as usize] as usize] = value;
@@ -697,15 +698,15 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
 fn refine_non_zeroes<R: Read>(reader: &mut R,
                               coefficients: &mut [i16],
                               huffman: &mut HuffmanDecoder,
-                              start: u8,
-                              end: u8,
+                              range: Range<u8>,
                               zrl: u8,
                               bit: i16) -> Result<u8> {
     debug_assert_eq!(coefficients.len(), 64);
 
+    let last = range.end - 1;
     let mut zero_run_length = zrl;
 
-    for i in start .. end + 1 {
+    for i in range {
         let index = UNZIGZAG[i as usize] as usize;
 
         if coefficients[index] == 0 {
@@ -715,19 +716,17 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
 
             zero_run_length -= 1;
         }
-        else {
-            if try!(huffman.get_bits(reader, 1)) == 1 && coefficients[index] & bit == 0 {
-                if coefficients[index] > 0 {
-                    coefficients[index] += bit;
-                }
-                else {
-                    coefficients[index] -= bit;
-                }
+        else if try!(huffman.get_bits(reader, 1)) == 1 && coefficients[index] & bit == 0 {
+            if coefficients[index] > 0 {
+                coefficients[index] += bit;
+            }
+            else {
+                coefficients[index] -= bit;
             }
         }
     }
 
-    Ok(end)
+    Ok(last)
 }
 
 fn compute_image(components: &[Component],

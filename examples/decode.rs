@@ -75,7 +75,7 @@ fn main() {
     }
 }
 
-fn cmyk_to_rgb(input: &mut [u8]) -> Vec<u8> {
+fn cmyk_to_rgb(input: &[u8]) -> Vec<u8> {
     let size = input.len() - input.len() / 4;
     let mut output = Vec::with_capacity(size);
 
