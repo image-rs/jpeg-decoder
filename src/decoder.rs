@@ -45,9 +45,6 @@ pub struct ImageInfo {
 pub struct Decoder<R> {
     reader: R,
 
-    // Used for progressive JPEGs.
-    coefficients: Vec<Vec<i16>>,
-
     frame: Option<FrameInfo>,
     dc_huffman_tables: Vec<Option<HuffmanTable>>,
     ac_huffman_tables: Vec<Option<HuffmanTable>>,
@@ -57,15 +54,16 @@ pub struct Decoder<R> {
     color_transform: Option<AdobeColorTransform>,
     is_jfif: bool,
 
-    // Used for detecting the last scan for components.
-    coefficient_complete: Vec<[bool; 64]>,
+    // Used for progressive JPEGs.
+    coefficients: Vec<Vec<i16>>,
+    // Bitmask of which coefficients has been completely decoded.
+    coefficients_finished: [u64; MAX_COMPONENTS],
 }
 
 impl<R: Read> Decoder<R> {
     pub fn new(reader: R) -> Decoder<R> {
         Decoder {
             reader: reader,
-            coefficients: Vec::new(),
             frame: None,
             dc_huffman_tables: vec![None, None, None, None],
             ac_huffman_tables: vec![None, None, None, None],
@@ -73,7 +71,8 @@ impl<R: Read> Decoder<R> {
             restart_interval: 0,
             color_transform: None,
             is_jfif: false,
-            coefficient_complete: Vec::new(),
+            coefficients: Vec::new(),
+            coefficients_finished: [0; MAX_COMPONENTS],
         }
     }
 
@@ -162,13 +161,11 @@ impl<R: Read> Decoder<R> {
                         return Err(Error::Unsupported(UnsupportedFeature::SubsamplingRatio));
                     }
 
-                    for component in &frame.components {
-                        if frame.coding_process == CodingProcess::DctProgressive {
-                            let block_count = component.block_size.width as usize * component.block_size.height as usize;
-                            self.coefficients.push(vec![0i16; block_count * 64]);
-                        }
-
-                        self.coefficient_complete.push([false; 64]);
+                    if frame.coding_process == CodingProcess::DctProgressive {
+                        self.coefficients = frame.components.iter().map(|c| {
+                            let block_count = c.block_size.width as usize * c.block_size.height as usize;
+                            vec![0; block_count * 64]
+                        }).collect();
                     }
 
                     self.frame = Some(frame);
@@ -192,16 +189,15 @@ impl<R: Read> Decoder<R> {
                     let frame = self.frame.clone().unwrap();
                     let scan = try!(parse_sos(&mut self.reader, &frame));
 
-                    for &i in &scan.component_indices {
-                        for j in scan.spectral_selection.clone() {
-                            self.coefficient_complete[i][j as usize] = scan.successive_approximation_low == 0;
+                    if scan.successive_approximation_low == 0 {
+                        for &i in scan.component_indices.iter() {
+                            for j in scan.spectral_selection.clone() {
+                                self.coefficients_finished[i] |= 1 << j;
+                            }
                         }
                     }
 
-                    let is_final_scan = scan.component_indices.iter()
-                                                              .map(|&i| self.coefficient_complete[i].iter().all(|&v| v))
-                                                              .all(|v| v);
-
+                    let is_final_scan = scan.component_indices.iter().all(|&i| self.coefficients_finished[i] == !0);
                     let (marker, data) = try!(self.decode_scan(&frame, &scan, worker_chan.as_ref().unwrap(), is_final_scan));
 
                     if let Some(data) = data {
