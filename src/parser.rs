@@ -101,21 +101,21 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
         return Err(Error::Format("invalid length in SOF".to_owned()));
     }
 
-    let is_baseline = marker == SOF0;
+    let is_baseline = marker == SOF(0);
     let is_differential = match marker {
-        SOF0 | SOF1 | SOF2 | SOF3 | SOF9 | SOF10 | SOF11 => false,
-        SOF5 | SOF6 | SOF7 | SOF13 | SOF14 | SOF15       => true,
+        SOF(0 ... 3) | SOF(9 ... 11)  => false,
+        SOF(5 ... 7) | SOF(13 ... 15) => true,
         _ => panic!(),
     };
     let coding_process = match marker {
-        SOF0 | SOF1 | SOF5 | SOF9 | SOF13 => CodingProcess::DctSequential,
-        SOF2 | SOF6 | SOF10 | SOF14       => CodingProcess::DctProgressive,
-        SOF3 | SOF7 | SOF11 | SOF15       => CodingProcess::Lossless,
+        SOF(0) | SOF(1) | SOF(5) | SOF(9) | SOF(13) => CodingProcess::DctSequential,
+        SOF(2) | SOF(6) | SOF(10) | SOF(14)         => CodingProcess::DctProgressive,
+        SOF(3) | SOF(7) | SOF(11) | SOF(15)         => CodingProcess::Lossless,
         _ => panic!(),
     };
     let entropy_coding = match marker {
-        SOF0 | SOF1 | SOF2 | SOF3 | SOF5 | SOF6 | SOF7  => EntropyCoding::Huffman,
-        SOF9 | SOF10 | SOF11 | SOF13 | SOF14 | SOF15    => EntropyCoding::Arithmetic,
+        SOF(0 ... 3) | SOF(5 ... 7)     => EntropyCoding::Huffman,
+        SOF(9 ... 11) | SOF(13 ... 15)  => EntropyCoding::Arithmetic,
         _ => panic!(),
     };
 
@@ -451,31 +451,35 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
     let mut data = None;
 
     match marker {
-        APP0 if length >= 5 => {
-            let mut buffer = [0u8; 5];
-            try!(reader.read_exact(&mut buffer));
+        APP(0) => {
+            if length >= 5 {
+                let mut buffer = [0u8; 5];
+                try!(reader.read_exact(&mut buffer));
 
-            // http://www.w3.org/Graphics/JPEG/jfif3.pdf
-            if &buffer[0 .. 5] == &[b'J', b'F', b'I', b'F', 0x00] {
-                data = Some(AppData::Jfif);
+                // http://www.w3.org/Graphics/JPEG/jfif3.pdf
+                if &buffer[0 .. 5] == &[b'J', b'F', b'I', b'F', b'\0'] {
+                    data = Some(AppData::Jfif);
+                }
+
+                try!(skip_bytes(reader, length - buffer.len()));
             }
-
-            try!(skip_bytes(reader, length - buffer.len()));
         },
-        APP14 if length == 12 => {
-            let mut buffer = [0u8; 12];
-            try!(reader.read_exact(&mut buffer));
+        APP(14) => {
+            if length == 12 {
+                let mut buffer = [0u8; 12];
+                try!(reader.read_exact(&mut buffer));
 
-            // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-            if &buffer[0 .. 6] == &[b'A', b'd', b'o', b'b', b'e', 0x00] {
-                let color_transform = match buffer[11] {
-                    0 => AdobeColorTransform::Unknown,
-                    1 => AdobeColorTransform::YCbCr,
-                    2 => AdobeColorTransform::YCCK,
-                    _ => return Err(Error::Format("invalid color transform in adobe app segment".to_owned())),
-                };
+                // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
+                if &buffer[0 .. 6] == &[b'A', b'd', b'o', b'b', b'e', b'\0'] {
+                    let color_transform = match buffer[11] {
+                        0 => AdobeColorTransform::Unknown,
+                        1 => AdobeColorTransform::YCbCr,
+                        2 => AdobeColorTransform::YCCK,
+                        _ => return Err(Error::Format("invalid color transform in adobe app segment".to_owned())),
+                    };
 
-                data = Some(AppData::Adobe(color_transform));
+                    data = Some(AppData::Adobe(color_transform));
+                }
             }
         },
         _ => {
