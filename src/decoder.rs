@@ -109,7 +109,7 @@ impl<R: Read> Decoder<R> {
             // The metadata has already been read.
             return Ok(Vec::new());
         }
-        else if self.frame.is_none() && (try!(self.reader.read_u8()) != 0xFF || try!(self.reader.read_u8()) != Marker::SOI as u8) {
+        else if self.frame.is_none() && (try!(self.reader.read_u8()) != 0xFF || Marker::from_u8(try!(self.reader.read_u8())) != Some(Marker::SOI)) {
             return Err(Error::Format("first two bytes is not a SOI marker".to_owned()));
         }
 
@@ -127,9 +127,7 @@ impl<R: Read> Decoder<R> {
 
             match marker {
                 // Frame header
-                Marker::SOF0 | Marker::SOF1 | Marker::SOF2 | Marker::SOF3 | Marker::SOF5 |
-                Marker::SOF6 | Marker::SOF7 | Marker::SOF9 | Marker::SOF10 | Marker::SOF11 |
-                Marker::SOF13 | Marker::SOF14 | Marker::SOF15 => {
+                Marker::SOF(..) => {
                     // Section 4.10
                     // "An image contains only one frame in the cases of sequential and
                     //  progressive coding processes; an image contains multiple frames for the
@@ -258,10 +256,7 @@ impl<R: Read> Decoder<R> {
                     let _comment = try!(parse_com(&mut self.reader));
                 },
                 // Application data
-                Marker::APP0 | Marker::APP1 | Marker::APP2 | Marker::APP3 | Marker::APP4 |
-                Marker::APP5 | Marker::APP6 | Marker::APP7 | Marker::APP8 | Marker::APP9 |
-                Marker::APP10 | Marker::APP11 | Marker::APP12 | Marker::APP13 | Marker::APP14 |
-                Marker::APP15 => {
+                Marker::APP(..) => {
                     if let Some(data) = try!(parse_app(&mut self.reader, marker)) {
                         match data {
                             AppData::Adobe(color_transform) => self.color_transform = Some(color_transform),
@@ -464,23 +459,20 @@ impl<R: Read> Decoder<R> {
                     restarts_left -= 1;
 
                     if restarts_left == 0 && !is_last_mcu {
-                        let expected_marker = Marker::from_u8(Marker::RST0 as u8 + expected_rst_num).unwrap();
-
                         match huffman.take_marker() {
                             Some(marker) => {
                                 match marker {
-                                    Marker::RST0 | Marker::RST1 | Marker::RST2 | Marker::RST3 |
-                                    Marker::RST4 | Marker::RST5 | Marker::RST6 | Marker::RST7 => {
-                                        if marker != expected_marker {
-                                            return Err(Error::Format(format!("found {:?} marker where {:?} was expected", marker, expected_marker)));
+                                    Marker::RST(n) => {
+                                        if n != expected_rst_num {
+                                            return Err(Error::Format(format!("found RST {:?} where {:?} was expected", n, expected_rst_num)));
                                         }
 
                                         expected_rst_num = (expected_rst_num + 1) % 8;
                                     },
-                                    _ => return Err(Error::Format(format!("found marker {:?} inside scan where {:?} was expected", marker, expected_marker))),
+                                    _ => return Err(Error::Format(format!("found marker {:?} inside scan where RST was expected", marker))),
                                 }
                             },
-                            None => return Err(Error::Format(format!("{:?} marker not found where expected", expected_marker))),
+                            None => return Err(Error::Format("no marker found where RST was expected".to_owned())),
                         }
 
                         huffman.reset();
