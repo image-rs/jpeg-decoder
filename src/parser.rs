@@ -5,6 +5,7 @@ use huffman::{HuffmanTable, HuffmanTableClass};
 use marker::Marker;
 use marker::Marker::*;
 use std::io::Read;
+use std::ops::Range;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EntropyCoding {
@@ -38,8 +39,7 @@ pub struct ScanInfo {
     pub dc_table_indices: Vec<usize>,
     pub ac_table_indices: Vec<usize>,
 
-    pub spectral_selection_start: u8,
-    pub spectral_selection_end: u8,
+    pub spectral_selection: Range<u8>,
     pub successive_approximation_high: u8,
     pub successive_approximation_low: u8,
 }
@@ -272,12 +272,12 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
         ac_table_indices.push(ac_table_index as usize);
     }
 
-    let sampling_factor_sum = component_indices.iter().map(|&i| {
+    let blocks_per_mcu = component_indices.iter().map(|&i| {
         frame.components[i].horizontal_sampling_factor as u32 * frame.components[i].vertical_sampling_factor as u32
     }).fold(0, ::std::ops::Add::add);
 
-    if component_count > 1 && sampling_factor_sum > 10 {
-        return Err(Error::Format("scan with more than one component and a sampling factor sum greater than 10".to_owned()));
+    if component_count > 1 && blocks_per_mcu > 10 {
+        return Err(Error::Format("scan with more than one component and more than 10 blocks per MCU".to_owned()));
     }
 
     let spectral_selection_start = try!(reader.read_u8());
@@ -320,8 +320,10 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
         component_indices: component_indices,
         dc_table_indices: dc_table_indices,
         ac_table_indices: ac_table_indices,
-        spectral_selection_start: spectral_selection_start,
-        spectral_selection_end: spectral_selection_end,
+        spectral_selection: Range {
+            start: spectral_selection_start,
+            end: spectral_selection_end + 1,
+        },
         successive_approximation_high: successive_approximation_high,
         successive_approximation_low: successive_approximation_low,
     })
