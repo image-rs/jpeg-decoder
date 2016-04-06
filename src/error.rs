@@ -1,8 +1,7 @@
-use byteorder::Error as ByteorderError;
 use std::any::Any;
 use std::error::Error as StdError;
 use std::fmt;
-use std::io::{Error as IoError, ErrorKind as IoErrorKind};
+use std::io::Error as IoError;
 use std::sync::mpsc::{RecvError, SendError};
 
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -53,15 +52,6 @@ impl StdError for Error {
             Error::Io(ref err) => Some(err),
             Error::Internal(ref err) => Some(&**err),
             _ => None,
-        }
-    }
-}
-
-impl From<ByteorderError> for Error {
-    fn from(err: ByteorderError) -> Error {
-        match err {
-            ByteorderError::UnexpectedEOF => Error::Io(IoError::new(IoErrorKind::UnexpectedEof, err)),
-            ByteorderError::Io(err)       => Error::Io(err),
         }
     }
 }
