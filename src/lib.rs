@@ -1,6 +1,6 @@
 extern crate byteorder;
 extern crate euclid;
-extern crate num;
+extern crate num_rational;
 extern crate rayon;
 
 pub use decoder::{Decoder, ImageInfo, PixelFormat};

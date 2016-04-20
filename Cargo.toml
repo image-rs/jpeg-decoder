@@ -15,10 +15,9 @@ byteorder = "0.5"
 euclid = "0.6"
 rayon = "0.3"
 
-[dependencies.num]
-version = "0.1.25"
+[dependencies.num-rational]
+version = "0.1.32"
 default-features = false
-features = ["rational"]
 
 [dev-dependencies]
 walkdir = "0.1"

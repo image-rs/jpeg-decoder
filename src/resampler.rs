@@ -1,5 +1,5 @@
 use euclid::Size2D;
-use num::rational::Ratio;
+use num_rational::Ratio;
 use parser::Component;
 
 type ResampleFunc = fn(&[u8], Size2D<usize>, usize, usize, usize, &mut [u8]);
