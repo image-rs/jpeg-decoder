@@ -14,10 +14,6 @@ exclude = ["tests/*"]
 byteorder = "0.5"
 rayon = "0.3"
 
-[dependencies.num-rational]
-version = "0.1.32"
-default-features = false
-
 [dev-dependencies]
 walkdir = "0.1"
 png = "0.4.1"

@@ -1,4 +1,4 @@
-use num_rational::Ratio;
+use error::{Error, Result, UnsupportedFeature};
 use parser::Component;
 
 type ResampleFunc = fn(&[u8], usize, usize, usize, usize, usize, &mut [u8]);
@@ -10,24 +10,20 @@ pub struct Resampler {
 }
 
 impl Resampler {
-    pub fn new(components: &[Component]) -> Option<Resampler> {
+    pub fn new(components: &[Component]) -> Result<Resampler> {
         let h_max = components.iter().map(|c| c.horizontal_sampling_factor).max().unwrap();
         let v_max = components.iter().map(|c| c.vertical_sampling_factor).max().unwrap();
-        let resample_funcs: Vec<Option<ResampleFunc>> =
-                components.iter()
-                          .map(|component| choose_resampling_func(component, h_max, v_max))
-                          .collect();
+        let mut resample_funcs = vec![];
 
-        if resample_funcs.iter().any(|func| func.is_none()) {
-            None
+        for component in components {
+            resample_funcs.push(try!(choose_resampling_func(component, h_max, v_max)));
         }
-        else {
-            Some(Resampler {
-                resample_funcs: resample_funcs.iter().map(|func| func.unwrap()).collect(),
-                sizes: components.iter().map(|comp| (comp.size.width as usize, comp.size.height as usize)).collect(),
-                row_strides: components.iter().map(|comp| comp.block_size.width as usize * 8).collect(),
-            })
-        }
+
+        Ok(Resampler {
+            resample_funcs: resample_funcs,
+            sizes: components.iter().map(|comp| (comp.size.width as usize, comp.size.height as usize)).collect(),
+            row_strides: components.iter().map(|comp| comp.block_size.width as usize * 8).collect(),
+        })
     }
 
     pub fn resample_and_interleave_row(&self, component_data: &[Vec<u8>], row: usize, output_width: usize, output: &mut [u8]) {
@@ -50,20 +46,26 @@ impl Resampler {
     }
 }
 
-fn choose_resampling_func(component: &Component, h_max: u8, v_max: u8) -> Option<ResampleFunc> {
-    let horizontal_scale_factor = Ratio::new(h_max, component.horizontal_sampling_factor);
-    let vertical_scale_factor = Ratio::new(v_max, component.vertical_sampling_factor);
+fn choose_resampling_func(component: &Component, h_max: u8, v_max: u8) -> Result<ResampleFunc> {
+    let h1 = component.horizontal_sampling_factor == h_max;
+    let v1 = component.vertical_sampling_factor == v_max;
+    let h2 = component.horizontal_sampling_factor * 2 == h_max;
+    let v2 = component.vertical_sampling_factor * 2 == v_max;
 
-    if !horizontal_scale_factor.is_integer() || !vertical_scale_factor.is_integer() {
-        return None;
+    if h1 && v1 {
+        Ok(resample_row_1)
     }
-
-    match (horizontal_scale_factor.to_integer(), vertical_scale_factor.to_integer()) {
-        (1, 1) => Some(resample_row_1),
-        (2, 1) => Some(resample_row_h_2_bilinear),
-        (1, 2) => Some(resample_row_v_2_bilinear),
-        (2, 2) => Some(resample_row_hv_2_bilinear),
-        _ => None,
+    else if h2 && v1 {
+        Ok(resample_row_h_2_bilinear)
+    }
+    else if h1 && v2 {
+        Ok(resample_row_v_2_bilinear)
+    }
+    else if h2 && v2 {
+        Ok(resample_row_hv_2_bilinear)
+    }
+    else {
+        Err(Error::Unsupported(UnsupportedFeature::SubsamplingRatio))
     }
 }
 

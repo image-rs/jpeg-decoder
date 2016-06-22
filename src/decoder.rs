@@ -156,9 +156,9 @@ impl<R: Read> Decoder<R> {
                     if component_count != 1 && component_count != 3 && component_count != 4 {
                         return Err(Error::Unsupported(UnsupportedFeature::ComponentCount(component_count as u8)));
                     }
-                    if Resampler::new(&frame.components).is_none() {
-                        return Err(Error::Unsupported(UnsupportedFeature::SubsamplingRatio));
-                    }
+
+                    // Make sure we support the subsampling ratios used.
+                    let _ = try!(Resampler::new(&frame.components));
 
                     if frame.coding_process == CodingProcess::DctProgressive {
                         self.coefficients = frame.components.iter().map(|c| {
@@ -750,7 +750,7 @@ fn compute_image(components: &[Component],
     }
     else {
         let color_convert_func = try!(choose_color_convert_func(components.len(), is_jfif, color_transform));
-        let resampler = Resampler::new(components).unwrap();
+        let resampler = try!(Resampler::new(components));
         let line_size = output_size.width as usize * components.len();
         let mut image = vec![0u8; line_size * output_size.height as usize];
 
