@@ -1,9 +1,7 @@
 use decoder::MAX_COMPONENTS;
 use error::Result;
-use euclid::Point2D;
 use idct::dequantize_and_idct_block;
 use parser::Component;
-use rayon::par_iter::*;
 use std::mem;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
@@ -52,11 +50,12 @@ pub fn spawn_worker_thread() -> Result<Sender<WorkerMsg>> {
                     assert_eq!(data.len(), block_count * 64);
 
                     for i in 0 .. block_count {
-                        let coords = Point2D::new(i % component.block_size.width as usize, i / component.block_size.width as usize) * 8;
+                        let x = (i % component.block_size.width as usize) * 8;
+                        let y = (i / component.block_size.width as usize) * 8;
                         dequantize_and_idct_block(&data[i * 64 .. (i + 1) * 64],
                                                   quantization_table,
                                                   line_stride,
-                                                  &mut results[index][offsets[index] + coords.y * line_stride + coords.x ..]);
+                                                  &mut results[index][offsets[index] + y * line_stride + x ..]);
                     }
 
                     offsets[index] += data.len();

@@ -12,7 +12,6 @@ exclude = ["tests/*"]
 
 [dependencies]
 byteorder = "0.5"
-euclid = "0.6"
 rayon = "0.3"
 
 [dependencies.num-rational]

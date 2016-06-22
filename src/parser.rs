@@ -1,19 +1,24 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use error::{Error, Result, UnsupportedFeature};
-use euclid::Size2D;
 use huffman::{HuffmanTable, HuffmanTableClass};
 use marker::Marker;
 use marker::Marker::*;
 use std::io::Read;
 use std::ops::Range;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Dimensions {
+    pub width: u16,
+    pub height: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EntropyCoding {
     Huffman,
     Arithmetic,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CodingProcess {
     DctSequential,
     DctProgressive,
@@ -28,8 +33,8 @@ pub struct FrameInfo {
     pub entropy_coding: EntropyCoding,
     pub precision: u8,
 
-    pub image_size: Size2D<u16>,
-    pub mcu_size: Size2D<u16>,
+    pub image_size: Dimensions,
+    pub mcu_size: Dimensions,
     pub components: Vec<Component>,
 }
 
@@ -44,7 +49,7 @@ pub struct ScanInfo {
     pub successive_approximation_low: u8,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct Component {
     pub identifier: u8,
 
@@ -53,8 +58,8 @@ pub struct Component {
 
     pub quantization_table_index: usize,
 
-    pub size: Size2D<u16>,
-    pub block_size: Size2D<u16>,
+    pub size: Dimensions,
+    pub block_size: Dimensions,
 }
 
 #[derive(Debug)]
@@ -64,7 +69,7 @@ pub enum AppData {
 }
 
 // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AdobeColorTransform {
     // RGB or CMYK
     Unknown,
@@ -191,15 +196,17 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
             horizontal_sampling_factor: horizontal_sampling_factor,
             vertical_sampling_factor: vertical_sampling_factor,
             quantization_table_index: quantization_table_index as usize,
-            size: Size2D::new(0, 0),
-            block_size: Size2D::new(0, 0),
+            size: Dimensions {width: 0, height: 0},
+            block_size: Dimensions {width: 0, height: 0},
         });
     }
 
     let h_max = components.iter().map(|c| c.horizontal_sampling_factor).max().unwrap();
     let v_max = components.iter().map(|c| c.vertical_sampling_factor).max().unwrap();
-
-    let mcu_size = Size2D::new((width as f32 / (h_max as f32 * 8.0)).ceil() as u16, (height as f32 / (v_max as f32 * 8.0)).ceil() as u16);
+    let mcu_size = Dimensions {
+        width: (width as f32 / (h_max as f32 * 8.0)).ceil() as u16,
+        height: (height as f32 / (v_max as f32 * 8.0)).ceil() as u16,
+    };
 
     for component in &mut components {
         component.size.width = (width as f32 * (component.horizontal_sampling_factor as f32 / h_max as f32)).ceil() as u16;
@@ -215,7 +222,7 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
         coding_process: coding_process,
         entropy_coding: entropy_coding,
         precision: precision,
-        image_size: Size2D::new(width, height),
+        image_size: Dimensions {width: width, height: height},
         mcu_size: mcu_size,
         components: components,
     })
