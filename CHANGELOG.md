@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.1.5 (2016-06-22)
+- Removed `euclid` and `num-rational` dependencies
+- Updated `rayon` to 0.4
+
 ## v0.1.4 (2016-04-20)
 - Replaced `num` with `num-rational`
 
