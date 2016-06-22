@@ -1,9 +1,8 @@
 use byteorder::ReadBytesExt;
 use error::{Error, Result, UnsupportedFeature};
-use euclid::{Point2D, Rect, Size2D};
 use huffman::{HuffmanDecoder, HuffmanTable};
 use marker::Marker;
-use parser::{AdobeColorTransform, AppData, CodingProcess, Component, EntropyCoding, FrameInfo,
+use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
              parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, ScanInfo};
 use rayon::par_iter::*;
 use resampler::Resampler;
@@ -157,9 +156,9 @@ impl<R: Read> Decoder<R> {
                     if component_count != 1 && component_count != 3 && component_count != 4 {
                         return Err(Error::Unsupported(UnsupportedFeature::ComponentCount(component_count as u8)));
                     }
-                    if Resampler::new(&frame.components).is_none() {
-                        return Err(Error::Unsupported(UnsupportedFeature::SubsamplingRatio));
-                    }
+
+                    // Make sure we support the subsampling ratios used.
+                    let _ = try!(Resampler::new(&frame.components));
 
                     if frame.coding_process == CodingProcess::DctProgressive {
                         self.coefficients = frame.components.iter().map(|c| {
@@ -390,32 +389,29 @@ impl<R: Read> Decoder<R> {
             for mcu_x in 0 .. frame.mcu_size.width {
                 for (i, component) in components.iter().enumerate() {
                     for j in 0 .. blocks_per_mcu[i] {
-                        let block_coords;
-
-                        if is_interleaved {
+                        let (block_x, block_y) = if is_interleaved {
                             // Section A.2.3
-
-                            block_coords = Point2D::new(
-                                    mcu_x * component.horizontal_sampling_factor as u16 + j % component.horizontal_sampling_factor as u16,
-                                    mcu_y * component.vertical_sampling_factor as u16 + j / component.horizontal_sampling_factor as u16);
+                            (mcu_x * component.horizontal_sampling_factor as u16 + j % component.horizontal_sampling_factor as u16,
+                             mcu_y * component.vertical_sampling_factor as u16 + j / component.horizontal_sampling_factor as u16)
                         }
                         else {
                             // Section A.2.2
 
                             let blocks_per_row = component.block_size.width as usize;
-                            let block_num = (mcu_y as usize * frame.mcu_size.width as usize + mcu_x as usize) * blocks_per_mcu[i] as usize + j as usize;
+                            let block_num = (mcu_y as usize * frame.mcu_size.width as usize +
+                                mcu_x as usize) * blocks_per_mcu[i] as usize + j as usize;
 
-                            block_coords = Point2D::new((block_num % blocks_per_row) as u16, (block_num / blocks_per_row) as u16);
+                            let x = (block_num % blocks_per_row) as u16;
+                            let y = (block_num / blocks_per_row) as u16;
 
-                            let pixel_coords = block_coords * 8;
-                            let component_rect = Rect::new(Point2D::zero(), component.size);
-
-                            if !component_rect.contains(&pixel_coords) {
+                            if x * 8 >= component.size.width || y * 8 >= component.size.height {
                                 continue;
                             }
-                        }
 
-                        let block_offset = (block_coords.y as usize * component.block_size.width as usize + block_coords.x as usize) * 64;
+                            (x, y)
+                        };
+
+                        let block_offset = (block_y as usize * component.block_size.width as usize + block_x as usize) * 64;
                         let mcu_row_offset = mcu_y as usize * component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
                         let coefficients = if is_progressive {
                             &mut self.coefficients[scan.component_indices[i]][block_offset .. block_offset + 64]
@@ -727,7 +723,7 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
 
 fn compute_image(components: &[Component],
                  data: &[Vec<u8>],
-                 output_size: Size2D<u16>,
+                 output_size: Dimensions,
                  is_jfif: bool,
                  color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
     if data.iter().any(|data| data.is_empty()) {
@@ -754,7 +750,7 @@ fn compute_image(components: &[Component],
     }
     else {
         let color_convert_func = try!(choose_color_convert_func(components.len(), is_jfif, color_transform));
-        let resampler = Resampler::new(components).unwrap();
+        let resampler = try!(Resampler::new(components));
         let line_size = output_size.width as usize * components.len();
         let mut image = vec![0u8; line_size * output_size.height as usize];
 
