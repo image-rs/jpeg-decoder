@@ -12,8 +12,8 @@ exclude = ["tests/*"]
 
 [dependencies]
 byteorder = "0.5"
-rayon = "0.3"
+rayon = "0.4"
 
 [dev-dependencies]
 walkdir = "0.1"
-png = "0.4.1"
+png = "0.5"
