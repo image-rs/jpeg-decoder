@@ -457,26 +457,27 @@ pub fn parse_com<R: Read>(reader: &mut R) -> Result<Vec<u8>> {
 // Section B.2.4.6
 pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppData>> {
     let length = try!(read_length(reader, marker));
-    let mut data = None;
+    let mut bytes_read = 0;
+    let mut result = None;
 
     match marker {
         APP(0) => {
             if length >= 5 {
                 let mut buffer = [0u8; 5];
                 try!(reader.read_exact(&mut buffer));
+                bytes_read = buffer.len();
 
                 // http://www.w3.org/Graphics/JPEG/jfif3.pdf
                 if &buffer[0 .. 5] == &[b'J', b'F', b'I', b'F', b'\0'] {
-                    data = Some(AppData::Jfif);
+                    result = Some(AppData::Jfif);
                 }
-
-                try!(skip_bytes(reader, length - buffer.len()));
             }
         },
         APP(14) => {
             if length == 12 {
                 let mut buffer = [0u8; 12];
                 try!(reader.read_exact(&mut buffer));
+                bytes_read = buffer.len();
 
                 // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
                 if &buffer[0 .. 6] == &[b'A', b'd', b'o', b'b', b'e', b'\0'] {
@@ -487,14 +488,13 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
                         _ => return Err(Error::Format("invalid color transform in adobe app segment".to_owned())),
                     };
 
-                    data = Some(AppData::Adobe(color_transform));
+                    result = Some(AppData::Adobe(color_transform));
                 }
             }
         },
-        _ => {
-            try!(skip_bytes(reader, length));
-        },
+        _ => {},
     }
 
-    Ok(data)
+    try!(skip_bytes(reader, length - bytes_read));
+    Ok(result)
 }
