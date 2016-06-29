@@ -297,13 +297,12 @@ impl<R: Read> Decoder<R> {
             previous_marker = marker;
         }
 
-        if planes.iter().all(|plane| !plane.is_empty()) {
-            let frame = self.frame.as_ref().unwrap();
-            compute_image(&frame.components, &planes, frame.image_size, self.is_jfif, self.color_transform)
+        if planes.is_empty() || planes.iter().any(|plane| plane.is_empty()) {
+            return Err(Error::Format("no data found".to_owned()));
         }
-        else {
-            Err(Error::Format("no data found".to_owned()))
-        }
+
+        let frame = self.frame.as_ref().unwrap();
+        compute_image(&frame.components, &planes, frame.image_size, self.is_jfif, self.color_transform)
     }
 
     fn read_marker(&mut self) -> Result<Marker> {
