@@ -10,7 +10,7 @@ use std::thread;
 pub struct RowData {
     pub index: usize,
     pub component: Component,
-    pub quantization_table: Arc<[u8; 64]>,
+    pub quantization_table: Arc<[u16; 64]>,
 }
 
 pub enum WorkerMsg {

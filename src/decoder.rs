@@ -47,7 +47,7 @@ pub struct Decoder<R> {
     frame: Option<FrameInfo>,
     dc_huffman_tables: Vec<Option<HuffmanTable>>,
     ac_huffman_tables: Vec<Option<HuffmanTable>>,
-    quantization_tables: [Option<Arc<[u8; 64]>>; 4],
+    quantization_tables: [Option<Arc<[u16; 64]>>; 4],
 
     restart_interval: u16,
     color_transform: Option<AdobeColorTransform>,
@@ -216,7 +216,7 @@ impl<R: Read> Decoder<R> {
 
                     for (i, &table) in tables.into_iter().enumerate() {
                         if let Some(table) = table {
-                            let mut unzigzagged_table = [0u8; 64];
+                            let mut unzigzagged_table = [0u16; 64];
 
                             for j in 0 .. 64 {
                                 unzigzagged_table[UNZIGZAG[j] as usize] = table[j];
