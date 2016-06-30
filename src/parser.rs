@@ -1,5 +1,5 @@
 use byteorder::{BigEndian, ReadBytesExt};
-use error::{Error, Result, UnsupportedFeature};
+use error::{Error, Result};
 use huffman::{HuffmanTable, HuffmanTableClass};
 use marker::Marker;
 use marker::Marker::*;
@@ -337,7 +337,7 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
 }
 
 // Section B.2.4.1
-pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u8; 64]>; 4]> {
+pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
     let mut length = try!(read_length(reader, DQT));
     let mut tables = [None; 4];
 
@@ -347,24 +347,33 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u8; 64]>; 4]> {
         let precision = (byte >> 4) as usize;
         let index = (byte & 0x0f) as usize;
 
-        match precision {
-            0 => {},
-            // 16 bit quantization tables are only allowed together with 12 bit sample precision:
-            // "Pq shall be zero for 8 bit sample precision P (see B.2.2)."
-            1 => return Err(Error::Unsupported(UnsupportedFeature::SamplePrecision(12))),
-            _ => return Err(Error::Format(format!("invalid precision {} in DQT", precision))),
+        // The combination of 8-bit sample precision and 16-bit quantization tables is explicitly
+        // disallowed by the JPEG spec:
+        //     "An 8-bit DCT-based process shall not use a 16-bit precision quantization table."
+        //     "Pq: Quantization table element precision – Specifies the precision of the Qk
+        //      values. Value 0 indicates 8-bit Qk values; value 1 indicates 16-bit Qk values. Pq
+        //      shall be zero for 8 bit sample precision P (see B.2.2)."
+        // libjpeg allows this behavior though, and there are images in the wild using it. So to
+        // match libjpeg's behavior we are deviating from the JPEG spec here.
+        if precision > 1 {
+            return Err(Error::Format(format!("invalid precision {} in DQT", precision)));
         }
-
         if index > 3 {
             return Err(Error::Format(format!("invalid destination identifier {} in DQT", index)));
         }
-
         if length < 65 + 64 * precision {
             return Err(Error::Format("invalid length in DQT".to_owned()));
         }
 
-        let mut table = [0u8; 64];
-        try!(reader.read_exact(&mut table));
+        let mut table = [0u16; 64];
+
+        for i in 0 .. 64 {
+            table[i] = match precision {
+                0 => try!(reader.read_u8()) as u16,
+                1 => try!(reader.read_u16::<BigEndian>()),
+                _ => unreachable!(),
+            };
+        }
 
         if table.iter().any(|&val| val == 0) {
             return Err(Error::Format("quantization table contains element with a zero value".to_owned()));
