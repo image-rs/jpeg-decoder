@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.1.6 (2016-07-12)
+- Added support for 16-bit quantization tables (even though the JPEG spec explicitly
+  states "An 8-bit DCT-based process shall not use a 16-bit precision quantization table",
+  but since libjpeg allows it there is little choice...)
+- Added support for decoding files with extraneous data (this violates the JPEG spec, but libjpeg allows it)
+- Fixed panic when decoding files without SOF
+- Fixed bug which caused files with certain APP marker segments to fail decoding
+
 ## v0.1.5 (2016-06-22)
 - Removed `euclid` and `num-rational` dependencies
 - Updated `rayon` to 0.4
