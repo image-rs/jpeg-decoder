@@ -306,9 +306,11 @@ impl<R: Read> Decoder<R> {
     }
 
     fn read_marker(&mut self) -> Result<Marker> {
-        if try!(self.reader.read_u8()) != 0xFF {
-            return Err(Error::Format("did not find marker where expected".to_owned()));
-        }
+        // This should be an error as the JPEG spec doesn't allow extraneous data between marker segments.
+        // libjpeg allows this though and there are images in the wild utilising it, so we are
+        // forced to support this behavior.
+        // Sony Ericsson P990i is an example of a device which produce this sort of JPEGs.
+        while try!(self.reader.read_u8()) != 0xFF {}
 
         let mut byte = try!(self.reader.read_u8());
 
