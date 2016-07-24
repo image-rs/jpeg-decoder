@@ -96,8 +96,8 @@ impl HuffmanDecoder {
         self.num_bits = 0;
     }
 
-    pub fn take_marker(&mut self) -> Option<Marker> {
-        self.marker.take()
+    pub fn take_marker<R: Read>(&mut self, reader: &mut R) -> Result<Option<Marker>> {
+        self.read_bits(reader).map(|_| self.marker.take())
     }
 
     #[inline]

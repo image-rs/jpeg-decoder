@@ -451,7 +451,7 @@ impl<R: Read> Decoder<R> {
                     mcus_left_until_restart -= 1;
 
                     if mcus_left_until_restart == 0 && !is_last_mcu {
-                        match huffman.take_marker() {
+                        match try!(huffman.take_marker(&mut self.reader)) {
                             Some(Marker::RST(n)) => {
                                 if n != expected_rst_num {
                                     return Err(Error::Format(format!("found RST{} where RST{} was expected", n, expected_rst_num)));
@@ -490,6 +490,8 @@ impl<R: Read> Decoder<R> {
             }
         }
 
+        let marker = try!(huffman.take_marker(&mut self.reader));
+
         if produce_data {
             // Retrieve all the data from the worker thread.
             let mut data = vec![Vec::new(); frame.components.len()];
@@ -501,10 +503,10 @@ impl<R: Read> Decoder<R> {
                 data[component_index] = try!(rx.recv());
             }
 
-            Ok((huffman.take_marker(), Some(data)))
+            Ok((marker, Some(data)))
         }
         else {
-            Ok((huffman.take_marker(), None))
+            Ok((marker, None))
         }
     }
 }
