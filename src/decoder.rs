@@ -452,28 +452,23 @@ impl<R: Read> Decoder<R> {
 
                     if mcus_left_until_restart == 0 && !is_last_mcu {
                         match huffman.take_marker() {
-                            Some(marker) => {
-                                match marker {
-                                    Marker::RST(n) => {
-                                        if n != expected_rst_num {
-                                            return Err(Error::Format(format!("found RST {:?} where {:?} was expected", n, expected_rst_num)));
-                                        }
-
-                                        expected_rst_num = (expected_rst_num + 1) % 8;
-                                    },
-                                    _ => return Err(Error::Format(format!("found marker {:?} inside scan where RST was expected", marker))),
+                            Some(Marker::RST(n)) => {
+                                if n != expected_rst_num {
+                                    return Err(Error::Format(format!("found RST{} where RST{} was expected", n, expected_rst_num)));
                                 }
+
+                                huffman.reset();
+                                // Section F.2.1.3.1
+                                dc_predictors = [0i16; MAX_COMPONENTS];
+                                // Section G.1.2.2
+                                eob_run = 0;
+
+                                expected_rst_num = (expected_rst_num + 1) % 8;
+                                mcus_left_until_restart = self.restart_interval;
                             },
-                            None => return Err(Error::Format("no marker found where RST was expected".to_owned())),
+                            Some(marker) => return Err(Error::Format(format!("found marker {:?} inside scan where RST{} was expected", marker, expected_rst_num))),
+                            None => return Err(Error::Format(format!("no marker found where RST{} was expected", expected_rst_num))),
                         }
-
-                        huffman.reset();
-                        // Section F.2.1.3.1
-                        dc_predictors = [0i16; MAX_COMPONENTS];
-                        // Section G.1.2.2
-                        eob_run = 0;
-
-                        mcus_left_until_restart = self.restart_interval;
                     }
                 }
             }
