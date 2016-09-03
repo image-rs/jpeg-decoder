@@ -1,37 +1,37 @@
 use error::{Error, Result, UnsupportedFeature};
 use parser::Component;
 
-type ResampleFunc = fn(&[u8], usize, usize, usize, usize, usize, &mut [u8]);
+type UpsampleFunc = fn(&[u8], usize, usize, usize, usize, usize, &mut [u8]);
 
-pub struct Resampler {
-    resample_funcs: Vec<ResampleFunc>,
+pub struct Upsampler {
+    upsample_funcs: Vec<UpsampleFunc>,
     sizes: Vec<(usize, usize)>,
     row_strides: Vec<usize>,
 }
 
-impl Resampler {
-    pub fn new(components: &[Component]) -> Result<Resampler> {
+impl Upsampler {
+    pub fn new(components: &[Component]) -> Result<Upsampler> {
         let h_max = components.iter().map(|c| c.horizontal_sampling_factor).max().unwrap();
         let v_max = components.iter().map(|c| c.vertical_sampling_factor).max().unwrap();
-        let mut resample_funcs = vec![];
+        let mut upsample_funcs = vec![];
 
         for component in components {
-            resample_funcs.push(try!(choose_resampling_func(component, h_max, v_max)));
+            upsample_funcs.push(try!(choose_upsampling_func(component, h_max, v_max)));
         }
 
-        Ok(Resampler {
-            resample_funcs: resample_funcs,
+        Ok(Upsampler {
+            upsample_funcs: upsample_funcs,
             sizes: components.iter().map(|comp| (comp.size.width as usize, comp.size.height as usize)).collect(),
             row_strides: components.iter().map(|comp| comp.block_size.width as usize * 8).collect(),
         })
     }
 
-    pub fn resample_and_interleave_row(&self, component_data: &[Vec<u8>], row: usize, output_width: usize, output: &mut [u8]) {
+    pub fn upsample_and_interleave_row(&self, component_data: &[Vec<u8>], row: usize, output_width: usize, output: &mut [u8]) {
         let component_count = component_data.len();
         let mut line_buffer = vec![0u8; output_width + 1];
 
         for i in 0 .. component_count {
-            self.resample_funcs[i](&component_data[i],
+            self.upsample_funcs[i](&component_data[i],
                                    self.sizes[i].0,
                                    self.sizes[i].1,
                                    self.row_strides[i],
@@ -46,30 +46,30 @@ impl Resampler {
     }
 }
 
-fn choose_resampling_func(component: &Component, h_max: u8, v_max: u8) -> Result<ResampleFunc> {
+fn choose_upsampling_func(component: &Component, h_max: u8, v_max: u8) -> Result<UpsampleFunc> {
     let h1 = component.horizontal_sampling_factor == h_max;
     let v1 = component.vertical_sampling_factor == v_max;
     let h2 = component.horizontal_sampling_factor * 2 == h_max;
     let v2 = component.vertical_sampling_factor * 2 == v_max;
 
     if h1 && v1 {
-        Ok(resample_row_1)
+        Ok(upsample_row_1)
     }
     else if h2 && v1 {
-        Ok(resample_row_h_2_bilinear)
+        Ok(upsample_row_h_2_bilinear)
     }
     else if h1 && v2 {
-        Ok(resample_row_v_2_bilinear)
+        Ok(upsample_row_v_2_bilinear)
     }
     else if h2 && v2 {
-        Ok(resample_row_hv_2_bilinear)
+        Ok(upsample_row_hv_2_bilinear)
     }
     else {
         Err(Error::Unsupported(UnsupportedFeature::SubsamplingRatio))
     }
 }
 
-fn resample_row_1(input: &[u8],
+fn upsample_row_1(input: &[u8],
                   _input_width: usize,
                   _input_height: usize,
                   row_stride: usize,
@@ -83,7 +83,7 @@ fn resample_row_1(input: &[u8],
     }
 }
 
-fn resample_row_h_2_bilinear(input: &[u8],
+fn upsample_row_h_2_bilinear(input: &[u8],
                              input_width: usize,
                              _input_height: usize,
                              row_stride: usize,
@@ -111,7 +111,7 @@ fn resample_row_h_2_bilinear(input: &[u8],
     output[(input_width - 1) * 2 + 1] = input[input_width - 1];
 }
 
-fn resample_row_v_2_bilinear(input: &[u8],
+fn upsample_row_v_2_bilinear(input: &[u8],
                              _input_width: usize,
                              input_height: usize,
                              row_stride: usize,
@@ -131,7 +131,7 @@ fn resample_row_v_2_bilinear(input: &[u8],
     }
 }
 
-fn resample_row_hv_2_bilinear(input: &[u8],
+fn upsample_row_hv_2_bilinear(input: &[u8],
                               input_width: usize,
                               input_height: usize,
                               row_stride: usize,
