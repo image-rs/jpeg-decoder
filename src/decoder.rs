@@ -5,7 +5,7 @@ use marker::Marker;
 use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
              parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, ScanInfo};
 use rayon::par_iter::*;
-use resampler::Resampler;
+use upsampler::Upsampler;
 use std::cmp;
 use std::io::Read;
 use std::mem;
@@ -158,7 +158,7 @@ impl<R: Read> Decoder<R> {
                     }
 
                     // Make sure we support the subsampling ratios used.
-                    let _ = try!(Resampler::new(&frame.components));
+                    let _ = try!(Upsampler::new(&frame.components, frame.image_size.width, frame.image_size.height));
 
                     if frame.coding_process == CodingProcess::DctProgressive {
                         self.coefficients = frame.components.iter().map(|c| {
@@ -748,7 +748,7 @@ fn compute_image(components: &[Component],
     }
     else {
         let color_convert_func = try!(choose_color_convert_func(components.len(), is_jfif, color_transform));
-        let resampler = try!(Resampler::new(components));
+        let upsampler = try!(Upsampler::new(components, output_size.width, output_size.height));
         let line_size = output_size.width as usize * components.len();
         let mut image = vec![0u8; line_size * output_size.height as usize];
 
@@ -758,7 +758,7 @@ fn compute_image(components: &[Component],
              .weight_max()
              .enumerate()
              .for_each(|(row, line)| {
-                 resampler.resample_and_interleave_row(data, row, output_size.width as usize, *line);
+                 upsampler.upsample_and_interleave_row(data, row, output_size.width as usize, *line);
                  color_convert_func(*line, output_size.width as usize);
              });
 

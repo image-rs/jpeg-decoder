@@ -10,5 +10,5 @@ mod huffman;
 mod idct;
 mod marker;
 mod parser;
-mod resampler;
+mod upsampler;
 mod worker_thread;

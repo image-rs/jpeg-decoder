@@ -16,6 +16,7 @@ pub enum UnsupportedFeature {
     // DNL/zero height
     DNL,
     SubsamplingRatio,
+    NonIntegerSubsamplingRatio,
 }
 
 #[derive(Debug)]
