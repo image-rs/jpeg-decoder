@@ -85,7 +85,12 @@ fn choose_upsampler(sampling_factors: (u8, u8),
         Ok(Box::new(UpsamplerH2V2))
     }
     else {
-        Err(Error::Unsupported(UnsupportedFeature::SubsamplingRatio))
+        if max_sampling_factors.0 % sampling_factors.0 != 0 || max_sampling_factors.1 % sampling_factors.1 != 0 {
+            Err(Error::Unsupported(UnsupportedFeature::NonIntegerSubsamplingRatio))
+        }
+        else {
+            Err(Error::Unsupported(UnsupportedFeature::SubsamplingRatio))
+        }
     }
 }
 
