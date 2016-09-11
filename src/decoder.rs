@@ -160,13 +160,6 @@ impl<R: Read> Decoder<R> {
                     // Make sure we support the subsampling ratios used.
                     let _ = try!(Upsampler::new(&frame.components, frame.image_size.width, frame.image_size.height));
 
-                    if frame.coding_process == CodingProcess::DctProgressive {
-                        self.coefficients = frame.components.iter().map(|c| {
-                            let block_count = c.block_size.width as usize * c.block_size.height as usize;
-                            vec![0; block_count * 64]
-                        }).collect();
-                    }
-
                     self.frame = Some(frame);
 
                     if stop_after_metadata {
@@ -187,6 +180,13 @@ impl<R: Read> Decoder<R> {
 
                     let frame = self.frame.clone().unwrap();
                     let scan = try!(parse_sos(&mut self.reader, &frame));
+
+                    if frame.coding_process == CodingProcess::DctProgressive && self.coefficients.is_empty() {
+                        self.coefficients = frame.components.iter().map(|c| {
+                            let block_count = c.block_size.width as usize * c.block_size.height as usize;
+                            vec![0; block_count * 64]
+                        }).collect();
+                    }
 
                     if scan.successive_approximation_low == 0 {
                         for &i in scan.component_indices.iter() {
