@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.1.7 (2016-10-04)
+- Added `UnsupportedFeature::NonIntegerSubsamplingRatio` error
+- Fixed a bug which could cause certain images to fail decoding
+- Fixed decoding of JPEGs which has a final RST marker in their entropy-coded data
+- Avoid allocating coefficients when calling `read_info()` on progressive JPEGs
+
 ## v0.1.6 (2016-07-12)
 - Added support for 16-bit quantization tables (even though the JPEG spec explicitly
   states "An 8-bit DCT-based process shall not use a 16-bit precision quantization table",
