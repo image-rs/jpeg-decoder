@@ -273,6 +273,14 @@ impl<R: Read> Decoder<R> {
                         }
                     }
                 },
+                // Restart
+                Marker::RST(..) => {
+                    // Some encoders emit a final RST marker after entropy-coded data, which
+                    // decode_scan does not take care of. So if we encounter one, we ignore it.
+                    if previous_marker != Marker::SOS {
+                        return Err(Error::Format("RST found outside of entropy-coded data".to_owned()));
+                    }
+                },
 
                 // Define number of lines
                 Marker::DNL => {
