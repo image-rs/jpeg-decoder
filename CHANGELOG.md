@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.1.8 (2016-11-05)
+* Updated rayon to version 0.5.
+
 ## v0.1.7 (2016-10-04)
 - Added `UnsupportedFeature::NonIntegerSubsamplingRatio` error
 - Fixed a bug which could cause certain images to fail decoding
