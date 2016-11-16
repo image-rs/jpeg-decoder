@@ -1,4 +1,5 @@
 extern crate byteorder;
+#[cfg(feature="rayon")]
 extern crate rayon;
 
 pub use decoder::{Decoder, ImageInfo, PixelFormat};

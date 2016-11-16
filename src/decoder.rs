@@ -4,7 +4,6 @@ use huffman::{HuffmanDecoder, HuffmanTable};
 use marker::Marker;
 use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
              parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, ScanInfo};
-use rayon::par_iter::*;
 use upsampler::Upsampler;
 use std::cmp;
 use std::io::Read;
@@ -755,23 +754,56 @@ fn compute_image(components: &[Component],
         Ok(buffer)
     }
     else {
-        let color_convert_func = try!(choose_color_convert_func(components.len(), is_jfif, color_transform));
-        let upsampler = try!(Upsampler::new(components, output_size.width, output_size.height));
-        let line_size = output_size.width as usize * components.len();
-        let mut image = vec![0u8; line_size * output_size.height as usize];
-
-        image.chunks_mut(line_size)
-             .collect::<Vec<&mut [u8]>>()
-             .par_iter_mut()
-             .weight_max()
-             .enumerate()
-             .for_each(|(row, line)| {
-                 upsampler.upsample_and_interleave_row(data, row, output_size.width as usize, *line);
-                 color_convert_func(*line, output_size.width as usize);
-             });
-
-        Ok(image)
+        compute_image_parallel(components, data, output_size, is_jfif, color_transform)
     }
+}
+
+#[cfg(feature="rayon")]
+fn compute_image_parallel(components: &[Component],
+                 data: &[Vec<u8>],
+                 output_size: Dimensions,
+                 is_jfif: bool,
+                 color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
+    use rayon::par_iter::*;
+
+    let color_convert_func = try!(choose_color_convert_func(components.len(), is_jfif, color_transform));
+    let upsampler = try!(Upsampler::new(components, output_size.width, output_size.height));
+    let line_size = output_size.width as usize * components.len();
+    let mut image = vec![0u8; line_size * output_size.height as usize];
+
+    image.chunks_mut(line_size)
+         .collect::<Vec<&mut [u8]>>()
+         .par_iter_mut()
+         .weight_max()
+         .enumerate()
+         .for_each(|(row, line)| {
+             upsampler.upsample_and_interleave_row(data, row, output_size.width as usize, *line);
+             color_convert_func(*line, output_size.width as usize);
+         });
+
+    Ok(image)
+ }
+
+#[cfg(not(feature="rayon"))]
+fn compute_image_parallel(components: &[Component],
+                 data: &[Vec<u8>],
+                 output_size: Dimensions,
+                 is_jfif: bool,
+                 color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
+    let color_convert_func = try!(choose_color_convert_func(components.len(), is_jfif, color_transform));
+    let upsampler = try!(Upsampler::new(components, output_size.width, output_size.height));
+    let line_size = output_size.width as usize * components.len();
+    let mut image = vec![0u8; line_size * output_size.height as usize];
+
+    for (row, line) in image.chunks_mut(line_size)
+         .collect::<Vec<&mut [u8]>>()
+         .iter_mut()
+         .enumerate() {
+             upsampler.upsample_and_interleave_row(data, row, output_size.width as usize, *line);
+             color_convert_func(*line, output_size.width as usize);
+         }
+
+    Ok(image)
 }
 
 fn choose_color_convert_func(component_count: usize,
