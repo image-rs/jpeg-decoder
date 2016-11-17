@@ -1,7 +1,17 @@
 language: rust
 rust:
+  - 1.12.0
   - stable
+  - beta
   - nightly
 os:
   - linux
   - osx
+matrix:
+  allow_failures:
+    - rust: nightly
+env:
+  - FEATURES=""
+script:
+  - cargo build --verbose --no-default-features --features "$FEATURES" &&
+    cargo test --verbose --no-default-features --features "$FEATURES"
