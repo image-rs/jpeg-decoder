@@ -11,7 +11,7 @@ matrix:
   allow_failures:
     - rust: nightly
 env:
-  - FEATURES=""
+  - FEATURES="rayon"
 script:
   - cargo build --verbose --no-default-features --features "$FEATURES" &&
     cargo test --verbose --no-default-features --features "$FEATURES"
