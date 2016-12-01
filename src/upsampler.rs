@@ -3,6 +3,7 @@ use parser::Component;
 
 pub struct Upsampler {
     components: Vec<UpsamplerComponent>,
+    line_buffer_size: usize
 }
 
 struct UpsamplerComponent {
@@ -32,14 +33,17 @@ impl Upsampler {
             });
         }
 
+        let buffer_size = components.iter().map(|c| c.size.width).max().unwrap() as usize * h_max as usize;
+
         Ok(Upsampler {
             components: upsampler_components,
+            line_buffer_size: buffer_size
         })
     }
 
     pub fn upsample_and_interleave_row(&self, component_data: &[Vec<u8>], row: usize, output_width: usize, output: &mut [u8]) {
         let component_count = component_data.len();
-        let mut line_buffer = vec![0u8; output_width + 1];
+        let mut line_buffer = vec![0u8; self.line_buffer_size];
 
         debug_assert_eq!(component_count, self.components.len());
 
@@ -62,6 +66,11 @@ struct UpsamplerH1V1;
 struct UpsamplerH2V1;
 struct UpsamplerH1V2;
 struct UpsamplerH2V2;
+
+struct UpsamplerGeneric {
+    horizontal_scaling_factor: u8,
+    vertical_scaling_factor: u8
+}
 
 fn choose_upsampler(sampling_factors: (u8, u8),
                     max_sampling_factors: (u8, u8),
@@ -89,7 +98,10 @@ fn choose_upsampler(sampling_factors: (u8, u8),
             Err(Error::Unsupported(UnsupportedFeature::NonIntegerSubsamplingRatio))
         }
         else {
-            Err(Error::Unsupported(UnsupportedFeature::SubsamplingRatio))
+            Ok(Box::new(UpsamplerGeneric {
+                horizontal_scaling_factor: max_sampling_factors.0 / sampling_factors.0,
+                vertical_scaling_factor: max_sampling_factors.1 / sampling_factors.1
+            }))
         }
     }
 }
@@ -212,5 +224,27 @@ impl Upsample for UpsamplerH2V2 {
         }
 
         output[input_width * 2 - 1] = ((t1 + 2) >> 2) as u8;
+    }
+}
+
+impl Upsample for UpsamplerGeneric {
+    // Uses nearest neighbor sampling
+    fn upsample_row(&self,
+                    input: &[u8],
+                    input_width: usize,
+                    _input_height: usize,
+                    row_stride: usize,
+                    row: usize,
+                    _output_width: usize,
+                    output: &mut [u8]) {
+        let mut index = 0;
+        let start = (row / self.vertical_scaling_factor as usize) * row_stride;
+        let input = &input[start..(start + input_width)];
+        for val in input {
+            for _ in 0..self.horizontal_scaling_factor {
+                output[index] = *val;
+                index += 1;
+            }
+        }
     }
 }
