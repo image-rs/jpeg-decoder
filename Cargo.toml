@@ -1,6 +1,6 @@
 [package]
 name = "jpeg-decoder"
-version = "0.1.9"
+version = "0.1.10"
 authors = ["Ulf Nilsson <kaksmet@gmail.com>"]
 description = "JPEG decoder"
 repository = "https://github.com/kaksmet/jpeg-decoder"
@@ -14,7 +14,7 @@ exclude = ["tests/*"]
 byteorder = "0.5"
 
 [dependencies.rayon]
-version = "0.5"
+version = "0.6"
 optional = true
 
 [features]
