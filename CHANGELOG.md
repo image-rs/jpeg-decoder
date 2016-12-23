@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.1.10 (2016-12-23)
+- Updated `rayon` to 0.6
+
 ## v0.1.9 (2016-12-12)
 - Added a generic integer upsampler, which brings support for some unusual subsampling schemes, e.g. 4:1:1 (thanks @iamrohit7!)
 - Made rayon optional through the `rayon` cargo feature (thanks @jackpot51!)
