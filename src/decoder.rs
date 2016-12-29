@@ -430,16 +430,15 @@ impl<R: Read> Decoder<R> {
                         };
 
                         if scan.successive_approximation_high == 0 {
-                            let dc_diff = try!(decode_block(&mut self.reader,
-                                                            coefficients,
-                                                            &mut huffman,
-                                                            self.dc_huffman_tables[scan.dc_table_indices[i]].as_ref(),
-                                                            self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
-                                                            scan.spectral_selection.clone(),
-                                                            scan.successive_approximation_low,
-                                                            &mut eob_run,
-                                                            dc_predictors[i]));
-                            dc_predictors[i] += dc_diff;
+                            try!(decode_block(&mut self.reader,
+                                              coefficients,
+                                              &mut huffman,
+                                              self.dc_huffman_tables[scan.dc_table_indices[i]].as_ref(),
+                                              self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
+                                              scan.spectral_selection.clone(),
+                                              scan.successive_approximation_low,
+                                              &mut eob_run,
+                                              &mut dc_predictors[i]));
                         }
                         else {
                             try!(decode_block_successive_approximation(&mut self.reader,
@@ -526,10 +525,8 @@ fn decode_block<R: Read>(reader: &mut R,
                          spectral_selection: Range<u8>,
                          successive_approximation_low: u8,
                          eob_run: &mut u16,
-                         dc_predictor: i16) -> Result<i16> {
+                         dc_predictor: &mut i16) -> Result<()> {
     debug_assert_eq!(coefficients.len(), 64);
-
-    let mut dc_diff = 0;
 
     if spectral_selection.start == 0 {
         // Section F.2.2.1
@@ -548,15 +545,17 @@ fn decode_block<R: Read>(reader: &mut R,
             },
         };
 
-        coefficients[0] = (dc_predictor + diff) << successive_approximation_low;
-        dc_diff = diff;
+        // Malicious JPEG files can cause this add to overflow, therefore we use wrapping_add.
+        // One example of such a file is tests/crashtest/images/dc-predictor-overflow.jpg
+        *dc_predictor = dc_predictor.wrapping_add(diff);
+        coefficients[0] = *dc_predictor << successive_approximation_low;
     }
 
     let mut index = cmp::max(spectral_selection.start, 1);
 
     if index < spectral_selection.end && *eob_run > 0 {
         *eob_run -= 1;
-        return Ok(dc_diff);
+        return Ok(());
     }
 
     // Section F.1.2.2.1
@@ -603,7 +602,7 @@ fn decode_block<R: Read>(reader: &mut R,
         }
     }
 
-    Ok(dc_diff)
+    Ok(())
 }
 
 fn decode_block_successive_approximation<R: Read>(reader: &mut R,
