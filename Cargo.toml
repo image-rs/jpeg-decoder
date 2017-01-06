@@ -11,7 +11,7 @@ license = "MIT / Apache-2.0"
 exclude = ["tests/*"]
 
 [dependencies]
-byteorder = "0.5"
+byteorder = "1.0"
 
 [dependencies.rayon]
 version = "0.6"
@@ -21,5 +21,5 @@ optional = true
 default = ["rayon"]
 
 [dev-dependencies]
-walkdir = "0.1"
+walkdir = "1.0"
 png = "0.5"
