@@ -21,5 +21,6 @@ optional = true
 default = ["rayon"]
 
 [dev-dependencies]
+docopt = "0.7"
 walkdir = "1.0"
 png = "0.5"
