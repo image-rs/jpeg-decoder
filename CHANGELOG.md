@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.1.11 (2017-01-09)
+- Fixed an integer overflow.
+- Updated `byteorder` to 1.0.
+
 ## v0.1.10 (2016-12-23)
 - Updated `rayon` to 0.6
 
