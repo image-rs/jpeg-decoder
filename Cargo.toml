@@ -3,6 +3,7 @@ name = "jpeg-decoder"
 version = "0.1.10"
 authors = ["Ulf Nilsson <kaksmet@gmail.com>"]
 description = "JPEG decoder"
+documentation = "https://docs.rs/jpeg-decoder"
 repository = "https://github.com/kaksmet/jpeg-decoder"
 readme = "README.md"
 keywords = ["jpeg", "jpg", "decoder", "image"]

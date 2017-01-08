@@ -26,20 +26,29 @@ static UNZIGZAG: [u8; 64] = [
     53, 60, 61, 54, 47, 55, 62, 63,
 ];
 
+/// An enumeration over combinations of color spaces and bit depths a pixel can have.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PixelFormat {
-    L8,     // Luminance, 8 bits per channel
-    RGB24,  // RGB, 8 bits per channel
-    CMYK32, // CMYK, 8 bits per channel
+    /// Luminance (grayscale), 8 bits
+    L8,
+    /// RGB, 8 bits per channel
+    RGB24,
+    /// CMYK, 8 bits per channel
+    CMYK32,
 }
 
+/// Represents metadata of an image.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ImageInfo {
+    /// The width of the image, in pixels.
     pub width: u16,
+    /// The height of the image, in pixels.
     pub height: u16,
+    /// The pixel format of the image.
     pub pixel_format: PixelFormat,
 }
 
+/// JPEG decoder
 pub struct Decoder<R> {
     reader: R,
 
@@ -59,6 +68,7 @@ pub struct Decoder<R> {
 }
 
 impl<R: Read> Decoder<R> {
+    /// Creates a new `Decoder` using the reader `reader`.
     pub fn new(reader: R) -> Decoder<R> {
         Decoder {
             reader: reader,
@@ -74,6 +84,10 @@ impl<R: Read> Decoder<R> {
         }
     }
 
+    /// Returns metadata about the image.
+    ///
+    /// The returned value will be `None` until a call to either `read_info` or `decode` has
+    /// returned `Ok`.
     pub fn info(&self) -> Option<ImageInfo> {
         match self.frame {
             Some(ref frame) => {
@@ -94,10 +108,14 @@ impl<R: Read> Decoder<R> {
         }
     }
 
+    /// Tries to read metadata from the image without decoding it.
+    ///
+    /// If successful, the metadata can be obtained using the `info` method.
     pub fn read_info(&mut self) -> Result<()> {
         self.decode_internal(true).map(|_| ())
     }
 
+    /// Decodes the image and returns the decoded pixels if successful.
     pub fn decode(&mut self) -> Result<Vec<u8>> {
         self.decode_internal(false)
     }
