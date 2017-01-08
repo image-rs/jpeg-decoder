@@ -1,64 +1,49 @@
+extern crate docopt;
 extern crate jpeg_decoder as jpeg;
 extern crate png;
 
+use docopt::Docopt;
 use png::HasParameters;
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
+use std::process;
 
-fn print_usage(name: &str) {
-    println!("Usage: {} [--output <pngfile>] <file>", name);
-}
+const USAGE: &'static str = "
+Usage: decode <input> [--output=<file>]
+       decode -h | --help
+
+Options:
+    -h --help                   Show this screen.
+    -o <file>, --output=<file>  Output PNG file.
+";
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let mut arg_index = 1;
-    let mut output = None;
-    let mut input = None;
-
-    while arg_index < args.len() {
-        match &args[arg_index][..] {
-            "-o" | "--output" => {
-                output = Some(args[arg_index + 1].clone());
-                arg_index += 2;
-            },
-            _ => {
-                if args[arg_index].starts_with("-") {
-                    println!("Unknown option: {}", args[arg_index]);
-                    print_usage(&args[0]);
-                    return;
-                }
-                if input.is_some() {
-                    println!("Only one input is allowed");
-                    print_usage(&args[0]);
-                    return;
-                }
-
-                input = Some(args[arg_index].clone());
-                arg_index += 1;
-            },
+    let args = &Docopt::new(USAGE)
+        .and_then(|d| d.argv(env::args()).parse())
+        .unwrap_or_else(|e| e.exit());
+    let input = args.get_str("<input>");
+    let output = args.get_str("-o");
+    let file = match File::open(input) {
+        Ok(file) => file,
+        Err(error) => {
+            println!("The specified input could not be opened: {}", error);
+            process::exit(1);
+        },
+    };
+    let mut decoder = jpeg::Decoder::new(BufReader::new(file));
+    let mut data = match decoder.decode() {
+        Ok(data) => data,
+        Err(error) => {
+            println!("The image could not be decoded: {}", error);
+            println!("If other software can decode this image successfully then it's likely that this is a bug.");
+            process::exit(1);
         }
-    }
+    };
 
-    if input.is_none() {
-        println!("No input specified");
-        print_usage(&args[0]);
-        return;
-    }
-
-    let file = File::open(input.unwrap());
-
-    if file.is_err() {
-        println!("The specified input does not exist");
-        return;
-    }
-
-    let mut decoder = jpeg::Decoder::new(BufReader::new(file.unwrap()));
-    let mut data = decoder.decode().expect("decode failed");
-
-    if let Some(output) = output {
-        let info = decoder.info().unwrap();
+    if !output.is_empty() {
         let output_file = File::create(output).unwrap();
+        let info = decoder.info().unwrap();
         let mut encoder = png::Encoder::new(output_file, info.width as u32, info.height as u32);
         encoder.set(png::BitDepth::Eight);
 
