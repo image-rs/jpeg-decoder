@@ -261,7 +261,7 @@ fn derive_huffman_codes(bits: &[u8; 16]) -> Result<(Vec<u16>, Vec<u8>)> {
     // Figure C.2
     let mut huffcode = vec![0u16; huffsize.len()];
     let mut code_size = huffsize[0];
-    let mut code = 0u16;
+    let mut code = 0u32;
 
     for (i, &size) in huffsize.iter().enumerate() {
         while code_size < size {
@@ -269,11 +269,11 @@ fn derive_huffman_codes(bits: &[u8; 16]) -> Result<(Vec<u16>, Vec<u8>)> {
             code_size += 1;
         }
 
-        if code as u32 >= (1u32 << size) {
+        if code >= (1u32 << size) {
             return Err(Error::Format("bad huffman code length".to_owned()));
         }
 
-        huffcode[i] = code;
+        huffcode[i] = code as u16;
         code += 1;
     }
 
