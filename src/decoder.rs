@@ -781,7 +781,7 @@ fn compute_image_parallel(components: &[Component],
                  output_size: Dimensions,
                  is_jfif: bool,
                  color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
-    use rayon::par_iter::*;
+    use rayon::iter::*;
 
     let color_convert_func = try!(choose_color_convert_func(components.len(), is_jfif, color_transform));
     let upsampler = try!(Upsampler::new(components, output_size.width, output_size.height));
@@ -791,7 +791,7 @@ fn compute_image_parallel(components: &[Component],
     image.chunks_mut(line_size)
          .collect::<Vec<&mut [u8]>>()
          .par_iter_mut()
-         .weight_max()
+         .with_max_len(1)
          .enumerate()
          .for_each(|(row, line)| {
              upsampler.upsample_and_interleave_row(data, row, output_size.width as usize, *line);
