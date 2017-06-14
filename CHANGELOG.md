@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.1.13 (2017-06-14)
+- Updated `rayon` to 0.8.
+
 ## v0.1.12 (2017-04-07)
 - Fixed an integer overflow in `derive_huffman_codes`.
 - Updated `rayon` to 0.7.
