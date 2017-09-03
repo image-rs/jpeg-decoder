@@ -1,6 +1,6 @@
 use byteorder::ReadBytesExt;
 use error::{Error, Result, UnsupportedFeature};
-use huffman::{HuffmanDecoder, HuffmanTable};
+use huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
 use marker::Marker;
 use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
              parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, ScanInfo};
@@ -60,6 +60,7 @@ pub struct Decoder<R> {
     restart_interval: u16,
     color_transform: Option<AdobeColorTransform>,
     is_jfif: bool,
+    is_mjpeg: bool,
 
     // Used for progressive JPEGs.
     coefficients: Vec<Vec<i16>>,
@@ -79,6 +80,7 @@ impl<R: Read> Decoder<R> {
             restart_interval: 0,
             color_transform: None,
             is_jfif: false,
+            is_mjpeg: false,
             coefficients: Vec::new(),
             coefficients_finished: [0; MAX_COMPONENTS],
         }
@@ -287,6 +289,7 @@ impl<R: Read> Decoder<R> {
 
                                 self.is_jfif = true;
                             },
+                            AppData::Avi1 => self.is_mjpeg = true,
                         }
                     }
                 },
@@ -366,6 +369,10 @@ impl<R: Read> Decoder<R> {
         // Verify that all required quantization tables has been set.
         if components.iter().any(|component| self.quantization_tables[component.quantization_table_index].is_none()) {
             return Err(Error::Format("use of unset quantization table".to_owned()));
+        }
+
+        if self.is_mjpeg {
+            fill_default_mjpeg_tables(scan, &mut self.dc_huffman_tables, &mut self.ac_huffman_tables);
         }
 
         // Verify that all required huffman tables has been set.

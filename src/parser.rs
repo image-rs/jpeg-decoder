@@ -66,6 +66,7 @@ pub struct Component {
 pub enum AppData {
     Adobe(AdobeColorTransform),
     Jfif,
+    Avi1,
 }
 
 // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
@@ -479,6 +480,9 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
                 // http://www.w3.org/Graphics/JPEG/jfif3.pdf
                 if &buffer[0 .. 5] == &[b'J', b'F', b'I', b'F', b'\0'] {
                     result = Some(AppData::Jfif);
+                // https://sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#AVI1
+                } else if &buffer[0 .. 5] == &[b'A', b'V', b'I', b'1', b'\0'] {
+                    result = Some(AppData::Avi1);
                 }
             }
         },
