@@ -127,7 +127,7 @@ impl<R: Read> Decoder<R> {
             // The metadata has already been read.
             return Ok(Vec::new());
         }
-        else if self.frame.is_none() && (try!(self.reader.read_u8()) != 0xFF || Marker::from_u8(try!(self.reader.read_u8())) != Some(Marker::SOI)) {
+        else if self.frame.is_none() && (self.reader.read_u8()? != 0xFF || Marker::from_u8(try!(self.reader.read_u8())) != Some(Marker::SOI)) {
             return Err(Error::Format("first two bytes is not a SOI marker".to_owned()));
         }
 
@@ -140,7 +140,7 @@ impl<R: Read> Decoder<R> {
         loop {
             let marker = match pending_marker.take() {
                 Some(m) => m,
-                None => try!(self.read_marker()),
+                None => self.read_marker()?,
             };
 
             match marker {
@@ -154,7 +154,7 @@ impl<R: Read> Decoder<R> {
                         return Err(Error::Unsupported(UnsupportedFeature::Hierarchical));
                     }
 
-                    let frame = try!(parse_sof(&mut self.reader, marker));
+                    let frame = parse_sof(&mut self.reader, marker)?;
                     let component_count = frame.components.len();
 
                     if frame.is_differential {
@@ -177,7 +177,7 @@ impl<R: Read> Decoder<R> {
                     }
 
                     // Make sure we support the subsampling ratios used.
-                    let _ = try!(Upsampler::new(&frame.components, frame.image_size.width, frame.image_size.height));
+                    let _ = Upsampler::new(&frame.components, frame.image_size.width, frame.image_size.height)?;
 
                     self.frame = Some(frame);
 
@@ -194,11 +194,11 @@ impl<R: Read> Decoder<R> {
                         return Err(Error::Format("scan encountered before frame".to_owned()));
                     }
                     if worker_chan.is_none() {
-                        worker_chan = Some(try!(spawn_worker_thread()));
+                        worker_chan = Some(spawn_worker_thread()?);
                     }
 
                     let frame = self.frame.clone().unwrap();
-                    let scan = try!(parse_sos(&mut self.reader, &frame));
+                    let scan = parse_sos(&mut self.reader, &frame)?;
 
                     if frame.coding_process == CodingProcess::DctProgressive && self.coefficients.is_empty() {
                         self.coefficients = frame.components.iter().map(|c| {
@@ -216,7 +216,7 @@ impl<R: Read> Decoder<R> {
                     }
 
                     let is_final_scan = scan.component_indices.iter().all(|&i| self.coefficients_finished[i] == !0);
-                    let (marker, data) = try!(self.decode_scan(&frame, &scan, worker_chan.as_ref().unwrap(), is_final_scan));
+                    let (marker, data) = self.decode_scan(&frame, &scan, worker_chan.as_ref().unwrap(), is_final_scan)?;
 
                     if let Some(data) = data {
                         for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
@@ -231,7 +231,7 @@ impl<R: Read> Decoder<R> {
                 // Table-specification and miscellaneous markers
                 // Quantization table-specification
                 Marker::DQT => {
-                    let tables = try!(parse_dqt(&mut self.reader));
+                    let tables = parse_dqt(&mut self.reader)?;
 
                     for (i, &table) in tables.into_iter().enumerate() {
                         if let Some(table) = table {
@@ -248,7 +248,7 @@ impl<R: Read> Decoder<R> {
                 // Huffman table-specification
                 Marker::DHT => {
                     let is_baseline = self.frame.as_ref().map(|frame| frame.is_baseline);
-                    let (dc_tables, ac_tables) = try!(parse_dht(&mut self.reader, is_baseline));
+                    let (dc_tables, ac_tables) = parse_dht(&mut self.reader, is_baseline)?;
 
                     let current_dc_tables = mem::replace(&mut self.dc_huffman_tables, vec![]);
                     self.dc_huffman_tables = dc_tables.into_iter()
@@ -265,14 +265,14 @@ impl<R: Read> Decoder<R> {
                 // Arithmetic conditioning table-specification
                 Marker::DAC => return Err(Error::Unsupported(UnsupportedFeature::ArithmeticEntropyCoding)),
                 // Restart interval definition
-                Marker::DRI => self.restart_interval = try!(parse_dri(&mut self.reader)),
+                Marker::DRI => self.restart_interval = parse_dri(&mut self.reader)?,
                 // Comment
                 Marker::COM => {
-                    let _comment = try!(parse_com(&mut self.reader));
+                    let _comment = parse_com(&mut self.reader)?;
                 },
                 // Application data
                 Marker::APP(..) => {
-                    if let Some(data) = try!(parse_app(&mut self.reader, marker)) {
+                    if let Some(data) = parse_app(&mut self.reader, marker)? {
                         match data {
                             AppData::Adobe(color_transform) => self.color_transform = Some(color_transform),
                             AppData::Jfif => {
@@ -338,14 +338,14 @@ impl<R: Read> Decoder<R> {
         // libjpeg allows this though and there are images in the wild utilising it, so we are
         // forced to support this behavior.
         // Sony Ericsson P990i is an example of a device which produce this sort of JPEGs.
-        while try!(self.reader.read_u8()) != 0xFF {}
+        while self.reader.read_u8()? != 0xFF {}
 
-        let mut byte = try!(self.reader.read_u8());
+        let mut byte = self.reader.read_u8()?;
 
         // Section B.1.1.2
         // "Any marker may optionally be preceded by any number of fill bytes, which are bytes assigned code X’FF’."
         while byte == 0xFF {
-            byte = try!(self.reader.read_u8());
+            byte = self.reader.read_u8()?;
         }
 
         match byte {
@@ -394,7 +394,7 @@ impl<R: Read> Decoder<R> {
                     quantization_table: self.quantization_tables[component.quantization_table_index].clone().unwrap(),
                 };
 
-                try!(worker_chan.send(WorkerMsg::Start(row_data)));
+                worker_chan.send(WorkerMsg::Start(row_data))?;
             }
         }
 
@@ -455,24 +455,24 @@ impl<R: Read> Decoder<R> {
                         };
 
                         if scan.successive_approximation_high == 0 {
-                            try!(decode_block(&mut self.reader,
-                                              coefficients,
-                                              &mut huffman,
-                                              self.dc_huffman_tables[scan.dc_table_indices[i]].as_ref(),
-                                              self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
-                                              scan.spectral_selection.clone(),
-                                              scan.successive_approximation_low,
-                                              &mut eob_run,
-                                              &mut dc_predictors[i]));
+                            decode_block(&mut self.reader,
+                                         coefficients,
+                                         &mut huffman,
+                                         self.dc_huffman_tables[scan.dc_table_indices[i]].as_ref(),
+                                         self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
+                                         scan.spectral_selection.clone(),
+                                         scan.successive_approximation_low,
+                                         &mut eob_run,
+                                         &mut dc_predictors[i])?;
                         }
                         else {
-                            try!(decode_block_successive_approximation(&mut self.reader,
-                                                                       coefficients,
-                                                                       &mut huffman,
-                                                                       self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
-                                                                       scan.spectral_selection.clone(),
-                                                                       scan.successive_approximation_low,
-                                                                       &mut eob_run));
+                            decode_block_successive_approximation(&mut self.reader,
+                                                                  coefficients,
+                                                                  &mut huffman,
+                                                                  self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
+                                                                  scan.spectral_selection.clone(),
+                                                                  scan.successive_approximation_low,
+                                                                  &mut eob_run)?;
                         }
                     }
                 }
@@ -482,7 +482,7 @@ impl<R: Read> Decoder<R> {
                     mcus_left_until_restart -= 1;
 
                     if mcus_left_until_restart == 0 && !is_last_mcu {
-                        match try!(huffman.take_marker(&mut self.reader)) {
+                        match huffman.take_marker(&mut self.reader)? {
                             Some(Marker::RST(n)) => {
                                 if n != expected_rst_num {
                                     return Err(Error::Format(format!("found RST{} where RST{} was expected", n, expected_rst_num)));
@@ -516,12 +516,12 @@ impl<R: Read> Decoder<R> {
                         mem::replace(&mut mcu_row_coefficients[i], vec![0i16; coefficients_per_mcu_row])
                     };
 
-                    try!(worker_chan.send(WorkerMsg::AppendRow((i, row_coefficients))));
+                    worker_chan.send(WorkerMsg::AppendRow((i, row_coefficients)))?;
                 }
             }
         }
 
-        let marker = try!(huffman.take_marker(&mut self.reader));
+        let marker = huffman.take_marker(&mut self.reader)?;
 
         if produce_data {
             // Retrieve all the data from the worker thread.
@@ -529,9 +529,9 @@ impl<R: Read> Decoder<R> {
 
             for (i, &component_index) in scan.component_indices.iter().enumerate() {
                 let (tx, rx) = mpsc::channel();
-                try!(worker_chan.send(WorkerMsg::GetResult((i, tx))));
+                worker_chan.send(WorkerMsg::GetResult((i, tx)))?;
 
-                data[component_index] = try!(rx.recv());
+                data[component_index] = rx.recv()?;
             }
 
             Ok((marker, Some(data)))
@@ -556,7 +556,7 @@ fn decode_block<R: Read>(reader: &mut R,
     if spectral_selection.start == 0 {
         // Section F.2.2.1
         // Figure F.12
-        let value = try!(huffman.decode(reader, dc_table.unwrap()));
+        let value = huffman.decode(reader, dc_table.unwrap())?;
         let diff = match value {
             0 => 0,
             _ => {
@@ -566,7 +566,7 @@ fn decode_block<R: Read>(reader: &mut R,
                     return Err(Error::Format("invalid DC difference magnitude category".to_owned()));
                 }
 
-                try!(huffman.receive_extend(reader, value))
+                huffman.receive_extend(reader, value)?
             },
         };
 
@@ -585,7 +585,7 @@ fn decode_block<R: Read>(reader: &mut R,
 
     // Section F.1.2.2.1
     while index < spectral_selection.end {
-        if let Some((value, run)) = try!(huffman.decode_fast_ac(reader, ac_table.unwrap())) {
+        if let Some((value, run)) = huffman.decode_fast_ac(reader, ac_table.unwrap())? {
             index += run;
 
             if index >= spectral_selection.end {
@@ -596,7 +596,7 @@ fn decode_block<R: Read>(reader: &mut R,
             index += 1;
         }
         else {
-            let byte = try!(huffman.decode(reader, ac_table.unwrap()));
+            let byte = huffman.decode(reader, ac_table.unwrap())?;
             let r = byte >> 4;
             let s = byte & 0x0f;
 
@@ -607,7 +607,7 @@ fn decode_block<R: Read>(reader: &mut R,
                         *eob_run = (1 << r) - 1;
 
                         if r > 0 {
-                            *eob_run += try!(huffman.get_bits(reader, r));
+                            *eob_run += huffman.get_bits(reader, r)?;
                         }
 
                         break;
@@ -621,7 +621,7 @@ fn decode_block<R: Read>(reader: &mut R,
                     break;
                 }
 
-                coefficients[UNZIGZAG[index as usize] as usize] = try!(huffman.receive_extend(reader, s)) << successive_approximation_low;
+                coefficients[UNZIGZAG[index as usize] as usize] = huffman.receive_extend(reader, s)? << successive_approximation_low;
                 index += 1;
             }
         }
@@ -644,7 +644,7 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
     if spectral_selection.start == 0 {
         // Section G.1.2.1
 
-        if try!(huffman.get_bits(reader, 1)) == 1 {
+        if huffman.get_bits(reader, 1)? == 1 {
             coefficients[0] |= bit;
         }
     }
@@ -653,14 +653,14 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
 
         if *eob_run > 0 {
             *eob_run -= 1;
-            try!(refine_non_zeroes(reader, coefficients, huffman, spectral_selection, 64, bit));
+            refine_non_zeroes(reader, coefficients, huffman, spectral_selection, 64, bit)?;
             return Ok(());
         }
 
         let mut index = spectral_selection.start;
 
         while index < spectral_selection.end {
-            let byte = try!(huffman.decode(reader, ac_table.unwrap()));
+            let byte = huffman.decode(reader, ac_table.unwrap())?;
             let r = byte >> 4;
             let s = byte & 0x0f;
 
@@ -680,7 +680,7 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
                             *eob_run = (1 << r) - 1;
 
                             if r > 0 {
-                                *eob_run += try!(huffman.get_bits(reader, r));
+                                *eob_run += huffman.get_bits(reader, r)?;
                             }
 
                             // Force end of block.
@@ -689,7 +689,7 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
                     }
                 },
                 1 => {
-                    if try!(huffman.get_bits(reader, 1)) == 1 {
+                    if huffman.get_bits(reader, 1)? == 1 {
                         value = bit;
                     }
                     else {
@@ -703,7 +703,7 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
                 start: index,
                 end: spectral_selection.end,
             };
-            index = try!(refine_non_zeroes(reader, coefficients, huffman, range, zero_run_length, bit));
+            index = refine_non_zeroes(reader, coefficients, huffman, range, zero_run_length, bit)?;
 
             if value != 0 {
                 coefficients[UNZIGZAG[index as usize] as usize] = value;
@@ -737,7 +737,7 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
 
             zero_run_length -= 1;
         }
-        else if try!(huffman.get_bits(reader, 1)) == 1 && coefficients[index] & bit == 0 {
+        else if huffman.get_bits(reader, 1)? == 1 && coefficients[index] & bit == 0 {
             if coefficients[index] > 0 {
                 coefficients[index] += bit;
             }
@@ -790,8 +790,8 @@ fn compute_image_parallel(components: &[Component],
                  color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
     use rayon::prelude::*;
 
-    let color_convert_func = try!(choose_color_convert_func(components.len(), is_jfif, color_transform));
-    let upsampler = try!(Upsampler::new(components, output_size.width, output_size.height));
+    let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
+    let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
     let mut image = vec![0u8; line_size * output_size.height as usize];
 
@@ -812,8 +812,8 @@ fn compute_image_parallel(components: &[Component],
                  output_size: Dimensions,
                  is_jfif: bool,
                  color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
-    let color_convert_func = try!(choose_color_convert_func(components.len(), is_jfif, color_transform));
-    let upsampler = try!(Upsampler::new(components, output_size.width, output_size.height));
+    let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
+    let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
     let mut image = vec![0u8; line_size * output_size.height as usize];
 
