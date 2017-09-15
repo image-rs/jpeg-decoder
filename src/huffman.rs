@@ -27,7 +27,7 @@ impl HuffmanDecoder {
     // Figure F.16
     pub fn decode<R: Read>(&mut self, reader: &mut R, table: &HuffmanTable) -> Result<u8> {
         if self.num_bits < 16 {
-            try!(self.read_bits(reader));
+            self.read_bits(reader)?;
         }
 
         let (value, size) = table.lut[self.peek_bits(LUT_BITS) as usize];
@@ -57,7 +57,7 @@ impl HuffmanDecoder {
     pub fn decode_fast_ac<R: Read>(&mut self, reader: &mut R, table: &HuffmanTable) -> Result<Option<(i16, u8)>> {
         if let Some(ref ac_lut) = table.ac_lut {
             if self.num_bits < LUT_BITS {
-                try!(self.read_bits(reader));
+                self.read_bits(reader)?;
             }
 
             let (value, run_size) = ac_lut[self.peek_bits(LUT_BITS) as usize];
@@ -77,7 +77,7 @@ impl HuffmanDecoder {
     #[inline]
     pub fn get_bits<R: Read>(&mut self, reader: &mut R, count: u8) -> Result<u16> {
         if self.num_bits < count {
-            try!(self.read_bits(reader));
+            self.read_bits(reader)?;
         }
 
         let bits = self.peek_bits(count);
@@ -88,7 +88,7 @@ impl HuffmanDecoder {
 
     #[inline]
     pub fn receive_extend<R: Read>(&mut self, reader: &mut R, count: u8) -> Result<i16> {
-        let value = try!(self.get_bits(reader, count));
+        let value = self.get_bits(reader, count)?;
         Ok(extend(value, count))
     }
 
@@ -122,11 +122,11 @@ impl HuffmanDecoder {
             // Fill with zero bits if we have reached the end.
             let byte = match self.marker {
                 Some(_) => 0,
-                None => try!(reader.read_u8()),
+                None => reader.read_u8()?,
             };
 
             if byte == 0xFF {
-                let mut next_byte = try!(reader.read_u8());
+                let mut next_byte = reader.read_u8()?;
 
                 // Check for byte stuffing.
                 if next_byte != 0x00 {
@@ -137,7 +137,7 @@ impl HuffmanDecoder {
                     // Section B.1.1.2
                     // "Any marker may optionally be preceded by any number of fill bytes, which are bytes assigned code X’FF’."
                     while next_byte == 0xFF {
-                        next_byte = try!(reader.read_u8());
+                        next_byte = reader.read_u8()?;
                     }
 
                     match next_byte {
@@ -186,7 +186,7 @@ pub struct HuffmanTable {
 
 impl HuffmanTable {
     pub fn new(bits: &[u8; 16], values: &[u8], class: HuffmanTableClass) -> Result<HuffmanTable> {
-        let (huffcode, huffsize) = try!(derive_huffman_codes(bits));
+        let (huffcode, huffsize) = derive_huffman_codes(bits)?;
 
         // Section F.2.2.3
         // Figure F.15

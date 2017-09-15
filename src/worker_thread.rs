@@ -23,7 +23,7 @@ pub fn spawn_worker_thread() -> Result<Sender<WorkerMsg>> {
     let thread_builder = thread::Builder::new().name("worker thread".to_owned());
     let (tx, rx) = mpsc::channel();
 
-    try!(thread_builder.spawn(move || {
+    thread_builder.spawn(move || {
         let mut offsets = [0; MAX_COMPONENTS];
         let mut results = vec![Vec::new(); MAX_COMPONENTS];
         let mut components = vec![None; MAX_COMPONENTS];
@@ -49,13 +49,13 @@ pub fn spawn_worker_thread() -> Result<Sender<WorkerMsg>> {
 
                     assert_eq!(data.len(), block_count * 64);
 
-                    for i in 0 .. block_count {
+                    for i in 0..block_count {
                         let x = (i % component.block_size.width as usize) * 8;
                         let y = (i / component.block_size.width as usize) * 8;
-                        dequantize_and_idct_block(&data[i * 64 .. (i + 1) * 64],
+                        dequantize_and_idct_block(&data[i * 64..(i + 1) * 64],
                                                   quantization_table,
                                                   line_stride,
-                                                  &mut results[index][offsets[index] + y * line_stride + x ..]);
+                                                  &mut results[index][offsets[index] + y * line_stride + x..]);
                     }
 
                     offsets[index] += data.len();
@@ -66,7 +66,7 @@ pub fn spawn_worker_thread() -> Result<Sender<WorkerMsg>> {
                 },
             }
         }
-    }));
+    })?;
 
     Ok(tx)
 }

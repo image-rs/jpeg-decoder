@@ -20,11 +20,11 @@ impl Upsampler {
         let mut upsampler_components = Vec::with_capacity(components.len());
 
         for component in components {
-            let upsampler = try!(choose_upsampler((component.horizontal_sampling_factor,
-                                                   component.vertical_sampling_factor),
-                                                  (h_max, v_max),
-                                                  output_width,
-                                                  output_height));
+            let upsampler = choose_upsampler((component.horizontal_sampling_factor,
+                                              component.vertical_sampling_factor),
+                                             (h_max, v_max),
+                                             output_width,
+                                             output_height)?;
             upsampler_components.push(UpsamplerComponent {
                 upsampler: upsampler,
                 width: component.size.width as usize,

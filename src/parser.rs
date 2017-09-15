@@ -83,7 +83,7 @@ fn read_length<R: Read>(reader: &mut R, marker: Marker) -> Result<usize> {
     assert!(marker.has_length());
 
     // length is including itself.
-    let length = try!(reader.read_u16::<BigEndian>()) as usize;
+    let length = reader.read_u16::<BigEndian>()? as usize;
 
     if length <= 2 {
         return Err(Error::Format(format!("encountered {:?} with invalid length {}", marker, length)));
@@ -94,14 +94,14 @@ fn read_length<R: Read>(reader: &mut R, marker: Marker) -> Result<usize> {
 
 fn skip_bytes<R: Read>(reader: &mut R, length: usize) -> Result<()> {
     let mut buffer = vec![0u8; length];
-    try!(reader.read_exact(&mut buffer));
+    reader.read_exact(&mut buffer)?;
 
     Ok(())
 }
 
 // Section B.2.2
 pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
-    let length = try!(read_length(reader, marker));
+    let length = read_length(reader, marker)?;
 
     if length <= 6 {
         return Err(Error::Format("invalid length in SOF".to_owned()));
@@ -125,7 +125,7 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
         _ => panic!(),
     };
 
-    let precision = try!(reader.read_u8());
+    let precision = reader.read_u8()?;
 
     match precision {
         8 => {},
@@ -141,8 +141,8 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
         },
     }
 
-    let height = try!(reader.read_u16::<BigEndian>());
-    let width = try!(reader.read_u16::<BigEndian>());
+    let height = reader.read_u16::<BigEndian>()?;
+    let width = reader.read_u16::<BigEndian>()?;
 
     // height:
     // "Value 0 indicates that the number of lines shall be defined by the DNL marker and
@@ -152,7 +152,7 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
         return Err(Error::Format("zero width in frame header".to_owned()));
     }
 
-    let component_count = try!(reader.read_u8());
+    let component_count = reader.read_u8()?;
 
     if component_count == 0 {
         return Err(Error::Format("zero component count in frame header".to_owned()));
@@ -168,14 +168,14 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
     let mut components: Vec<Component> = Vec::with_capacity(component_count as usize);
 
     for _ in 0 .. component_count {
-        let identifier = try!(reader.read_u8());
+        let identifier = reader.read_u8()?;
 
         // Each component's identifier must be unique.
         if components.iter().any(|c| c.identifier == identifier) {
             return Err(Error::Format(format!("duplicate frame component identifier {}", identifier)));
         }
 
-        let byte = try!(reader.read_u8());
+        let byte = reader.read_u8()?;
         let horizontal_sampling_factor = byte >> 4;
         let vertical_sampling_factor = byte & 0x0f;
 
@@ -186,7 +186,7 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
             return Err(Error::Format(format!("invalid vertical sampling factor {}", vertical_sampling_factor)));
         }
 
-        let quantization_table_index = try!(reader.read_u8());
+        let quantization_table_index = reader.read_u8()?;
 
         if quantization_table_index > 3 || (coding_process == CodingProcess::Lossless && quantization_table_index != 0) {
             return Err(Error::Format(format!("invalid quantization table index {}", quantization_table_index)));
@@ -231,8 +231,8 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
 
 // Section B.2.3
 pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo> {
-    let length = try!(read_length(reader, SOS));
-    let component_count = try!(reader.read_u8());
+    let length = read_length(reader, SOS)?;
+    let component_count = reader.read_u8()?;
 
     if component_count == 0 || component_count > 4 {
         return Err(Error::Format(format!("invalid component count {} in scan header", component_count)));
@@ -247,7 +247,7 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
     let mut ac_table_indices = Vec::with_capacity(component_count as usize);
 
     for _ in 0 .. component_count {
-        let identifier = try!(reader.read_u8());
+        let identifier = reader.read_u8()?;
 
         let component_index = match frame.components.iter().position(|c| c.identifier == identifier) {
             Some(value) => value,
@@ -264,7 +264,7 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
             return Err(Error::Format("the scan component order does not follow the order in the frame header".to_owned()));
         }
 
-        let byte = try!(reader.read_u8());
+        let byte = reader.read_u8()?;
         let dc_table_index = byte >> 4;
         let ac_table_index = byte & 0x0f;
 
@@ -291,7 +291,7 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
     let spectral_selection_start = try!(reader.read_u8());
     let spectral_selection_end = try!(reader.read_u8());
 
-    let byte = try!(reader.read_u8());
+    let byte = reader.read_u8()?;
     let successive_approximation_high = byte >> 4;
     let successive_approximation_low = byte & 0x0f;
 
@@ -339,12 +339,12 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
 
 // Section B.2.4.1
 pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
-    let mut length = try!(read_length(reader, DQT));
+    let mut length = read_length(reader, DQT)?;
     let mut tables = [None; 4];
 
     // Each DQT segment may contain multiple quantization tables.
     while length > 0 {
-        let byte = try!(reader.read_u8());
+        let byte = reader.read_u8()?;
         let precision = (byte >> 4) as usize;
         let index = (byte & 0x0f) as usize;
 
@@ -370,8 +370,8 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
 
         for i in 0 .. 64 {
             table[i] = match precision {
-                0 => try!(reader.read_u8()) as u16,
-                1 => try!(reader.read_u16::<BigEndian>()),
+                0 => reader.read_u8()? as u16,
+                1 => reader.read_u16::<BigEndian>()?,
                 _ => unreachable!(),
             };
         }
@@ -389,13 +389,13 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
 
 // Section B.2.4.2
 pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<(Vec<Option<HuffmanTable>>, Vec<Option<HuffmanTable>>)> {
-    let mut length = try!(read_length(reader, DHT));
+    let mut length = read_length(reader, DHT)?;
     let mut dc_tables = vec![None, None, None, None];
     let mut ac_tables = vec![None, None, None, None];
 
     // Each DHT segment may contain multiple huffman tables.
     while length > 17 {
-        let byte = try!(reader.read_u8());
+        let byte = reader.read_u8()?;
         let class = byte >> 4;
         let index = (byte & 0x0f) as usize;
 
@@ -410,7 +410,7 @@ pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<(
         }
 
         let mut counts = [0u8; 16];
-        try!(reader.read_exact(&mut counts));
+        reader.read_exact(&mut counts)?;
 
         let size = counts.iter().map(|&val| val as usize).fold(0, ::std::ops::Add::add);
 
@@ -425,11 +425,11 @@ pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<(
         }
 
         let mut values = vec![0u8; size];
-        try!(reader.read_exact(&mut values));
+        reader.read_exact(&mut values)?;
 
         match class {
-            0 => dc_tables[index] = Some(try!(HuffmanTable::new(&counts, &values, HuffmanTableClass::DC))),
-            1 => ac_tables[index] = Some(try!(HuffmanTable::new(&counts, &values, HuffmanTableClass::AC))),
+            0 => dc_tables[index] = Some(HuffmanTable::new(&counts, &values, HuffmanTableClass::DC)?),
+            1 => ac_tables[index] = Some(HuffmanTable::new(&counts, &values, HuffmanTableClass::AC)?),
             _ => unreachable!(),
         }
 
@@ -445,28 +445,28 @@ pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<(
 
 // Section B.2.4.4
 pub fn parse_dri<R: Read>(reader: &mut R) -> Result<u16> {
-    let length = try!(read_length(reader, DRI));
+    let length = read_length(reader, DRI)?;
 
     if length != 2 {
         return Err(Error::Format("DRI with invalid length".to_owned()));
     }
 
-    Ok(try!(reader.read_u16::<BigEndian>()))
+    Ok(reader.read_u16::<BigEndian>()?)
 }
 
 // Section B.2.4.5
 pub fn parse_com<R: Read>(reader: &mut R) -> Result<Vec<u8>> {
-    let length = try!(read_length(reader, COM));
+    let length = read_length(reader, COM)?;
     let mut buffer = vec![0u8; length];
 
-    try!(reader.read_exact(&mut buffer));
+    reader.read_exact(&mut buffer)?;
 
     Ok(buffer)
 }
 
 // Section B.2.4.6
 pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppData>> {
-    let length = try!(read_length(reader, marker));
+    let length = read_length(reader, marker)?;
     let mut bytes_read = 0;
     let mut result = None;
 
@@ -474,7 +474,7 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
         APP(0) => {
             if length >= 5 {
                 let mut buffer = [0u8; 5];
-                try!(reader.read_exact(&mut buffer));
+                reader.read_exact(&mut buffer)?;
                 bytes_read = buffer.len();
 
                 // http://www.w3.org/Graphics/JPEG/jfif3.pdf
@@ -489,7 +489,7 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
         APP(14) => {
             if length == 12 {
                 let mut buffer = [0u8; 12];
-                try!(reader.read_exact(&mut buffer));
+                reader.read_exact(&mut buffer)?;
                 bytes_read = buffer.len();
 
                 // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
@@ -508,6 +508,6 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
         _ => {},
     }
 
-    try!(skip_bytes(reader, length - bytes_read));
+    skip_bytes(reader, length - bytes_read)?;
     Ok(result)
 }
