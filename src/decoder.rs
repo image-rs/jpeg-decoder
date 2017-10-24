@@ -460,7 +460,7 @@ impl<R: Read> Decoder<R> {
                                          &mut huffman,
                                          self.dc_huffman_tables[scan.dc_table_indices[i]].as_ref(),
                                          self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
-                                         scan.spectral_selection.clone(),
+                                         &scan.spectral_selection,
                                          scan.successive_approximation_low,
                                          &mut eob_run,
                                          &mut dc_predictors[i])?;
@@ -547,7 +547,7 @@ fn decode_block<R: Read>(reader: &mut R,
                          huffman: &mut HuffmanDecoder,
                          dc_table: Option<&HuffmanTable>,
                          ac_table: Option<&HuffmanTable>,
-                         spectral_selection: Range<u8>,
+                         spectral_selection: &Range<u8>,
                          successive_approximation_low: u8,
                          eob_run: &mut u16,
                          dc_predictor: &mut i16) -> Result<()> {
