@@ -487,7 +487,7 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
             }
         },
         APP(14) => {
-            if length == 12 {
+            if length >= 12 {
                 let mut buffer = [0u8; 12];
                 reader.read_exact(&mut buffer)?;
                 bytes_read = buffer.len();
