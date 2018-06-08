@@ -42,4 +42,4 @@ mod idct;
 mod marker;
 mod parser;
 mod upsampler;
-mod worker_thread;
+mod worker;
