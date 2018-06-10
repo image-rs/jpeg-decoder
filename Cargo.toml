@@ -1,6 +1,6 @@
 [package]
 name = "jpeg-decoder"
-version = "0.1.14"
+version = "0.1.15"
 authors = ["Ulf Nilsson <kaksmet@gmail.com>"]
 description = "JPEG decoder"
 documentation = "https://docs.rs/jpeg-decoder"
