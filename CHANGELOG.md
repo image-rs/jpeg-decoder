@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.1.15 (2018-06-10)
+- Added support for WebAssembly and asm.js (thanks @CryZe!)
+- Bugfix for images with APP14 segments longer than 12 bytes.
+
 ## v0.1.14 (2018-02-15)
 - Updated `rayon` to 1.0.
 
