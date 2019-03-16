@@ -1,63 +1,44 @@
-extern crate docopt;
 extern crate jpeg_decoder as jpeg;
 extern crate png;
 
-use docopt::Docopt;
 use png::HasParameters;
 use std::env;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{self, BufReader, Write};
 use std::process;
 
-const USAGE: &'static str = "
-Usage: decode <input> [--output=<file>]
-       decode -h | --help
-
-Options:
-    -h --help                   Show this screen.
-    -o <file>, --output=<file>  Output PNG file.
-";
+fn usage() -> ! {
+    write!(io::stderr(), "usage: decode image.jpg image.png").unwrap();
+    process::exit(1)
+}
 
 fn main() {
-    let args = &Docopt::new(USAGE)
-        .and_then(|d| d.argv(env::args()).parse())
-        .unwrap_or_else(|e| e.exit());
-    let input = args.get_str("<input>");
-    let output = args.get_str("-o");
-    let file = match File::open(input) {
-        Ok(file) => file,
-        Err(error) => {
-            println!("The specified input could not be opened: {}", error);
-            process::exit(1);
+    let mut args = env::args().skip(1);
+    let input_path = args.next().unwrap_or_else(|| usage());
+    let output_path = args.next().unwrap_or_else(|| usage());
+
+    let input_file = File::open(input_path).expect("The specified input file could not be opened");
+    let mut decoder = jpeg::Decoder::new(BufReader::new(input_file));
+    let mut data = decoder.decode().expect("Decoding failed. If other software can successfully decode the specified JPEG image, then it's likely that there is a bug in jpeg-decoder");
+    let info = decoder.info().unwrap();
+
+    let output_file = File::create(output_path).unwrap();
+    let mut encoder = png::Encoder::new(output_file, info.width as u32, info.height as u32);
+    encoder.set(png::BitDepth::Eight);
+
+    match info.pixel_format {
+        jpeg::PixelFormat::L8     => encoder.set(png::ColorType::Grayscale),
+        jpeg::PixelFormat::RGB24  => encoder.set(png::ColorType::RGB),
+        jpeg::PixelFormat::CMYK32 => {
+            data = cmyk_to_rgb(&mut data);
+            encoder.set(png::ColorType::RGB)
         },
     };
-    let mut decoder = jpeg::Decoder::new(BufReader::new(file));
-    let mut data = match decoder.decode() {
-        Ok(data) => data,
-        Err(error) => {
-            println!("The image could not be decoded: {}", error);
-            println!("If other software can decode this image successfully then it's likely that this is a bug.");
-            process::exit(1);
-        }
-    };
 
-    if !output.is_empty() {
-        let output_file = File::create(output).unwrap();
-        let info = decoder.info().unwrap();
-        let mut encoder = png::Encoder::new(output_file, info.width as u32, info.height as u32);
-        encoder.set(png::BitDepth::Eight);
-
-        match info.pixel_format {
-            jpeg::PixelFormat::L8     => encoder.set(png::ColorType::Grayscale),
-            jpeg::PixelFormat::RGB24  => encoder.set(png::ColorType::RGB),
-            jpeg::PixelFormat::CMYK32 => {
-                data = cmyk_to_rgb(&mut data);
-                encoder.set(png::ColorType::RGB)
-            },
-        };
-
-        encoder.write_header().expect("writing png header failed").write_image_data(&data).expect("png encoding failed");
-    }
+    encoder.write_header()
+           .expect("writing png header failed")
+           .write_image_data(&data)
+           .expect("png encoding failed");
 }
 
 fn cmyk_to_rgb(input: &[u8]) -> Vec<u8> {
