@@ -85,7 +85,7 @@ fn read_length<R: Read>(reader: &mut R, marker: Marker) -> Result<usize> {
     // length is including itself.
     let length = reader.read_u16::<BigEndian>()? as usize;
 
-    if length <= 2 {
+    if length < 2 {
         return Err(Error::Format(format!("encountered {:?} with invalid length {}", marker, length)));
     }
 
@@ -232,6 +232,10 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
 // Section B.2.3
 pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo> {
     let length = read_length(reader, SOS)?;
+    if 0 == length {
+        return Err(Error::Format("zero length in SOS".to_owned()));
+    }
+
     let component_count = reader.read_u8()?;
 
     if component_count == 0 || component_count > 4 {
@@ -239,7 +243,7 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
     }
 
     if length != 4 + 2 * component_count as usize {
-        return Err(Error::Format("invalid length in SOF".to_owned()));
+        return Err(Error::Format("invalid length in SOS".to_owned()));
     }
 
     let mut component_indices = Vec::with_capacity(component_count as usize);
