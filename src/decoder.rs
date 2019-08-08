@@ -333,23 +333,22 @@ impl<R: Read> Decoder<R> {
     }
 
     fn read_marker(&mut self) -> Result<Marker> {
-        // This should be an error as the JPEG spec doesn't allow extraneous data between marker segments.
-        // libjpeg allows this though and there are images in the wild utilising it, so we are
-        // forced to support this behavior.
-        // Sony Ericsson P990i is an example of a device which produce this sort of JPEGs.
-        while self.reader.read_u8()? != 0xFF {}
+        loop {
+            // This should be an error as the JPEG spec doesn't allow extraneous data between marker segments.
+            // libjpeg allows this though and there are images in the wild utilising it, so we are
+            // forced to support this behavior.
+            // Sony Ericsson P990i is an example of a device which produce this sort of JPEGs.
+            while self.reader.read_u8()? != 0xFF {}
 
-        let mut byte = self.reader.read_u8()?;
-
-        // Section B.1.1.2
-        // "Any marker may optionally be preceded by any number of fill bytes, which are bytes assigned code X’FF’."
-        while byte == 0xFF {
-            byte = self.reader.read_u8()?;
-        }
-
-        match byte {
-            0x00 => Err(Error::Format("FF 00 found where marker was expected".to_owned())),
-            _    => Ok(Marker::from_u8(byte).unwrap()),
+            // Section B.1.1.2
+            // All markers are assigned two-byte codes: an X’FF’ byte followed by a
+            // byte which is not equal to 0 or X’FF’ (see Table B.1). Any marker may
+            // optionally be preceded by any number of fill bytes, which are bytes
+            // assigned code X’FF’.
+            let byte = self.reader.read_u8()?;
+            if byte != 0x00 && byte != 0xFF {
+                return Ok(Marker::from_u8(byte).unwrap());
+            }
         }
     }
 
