@@ -519,7 +519,10 @@ impl<R: Read> Decoder<R> {
             }
         }
 
-        let marker = huffman.take_marker(&mut self.reader)?;
+        let mut marker = huffman.take_marker(&mut self.reader)?;
+        while let Some(Marker::RST(_)) = marker {
+            marker = self.read_marker().ok();
+        }
 
         if produce_data {
             // Retrieve all the data from the worker thread.
