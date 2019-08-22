@@ -30,3 +30,6 @@ fn main() {
     let metadata = decoder.info().unwrap();
 }
 ```
+
+## Requirements
+This crate compiles only with rust >= 1.28.
