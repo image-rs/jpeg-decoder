@@ -3,7 +3,7 @@ use error::{Error, Result};
 use huffman::{HuffmanTable, HuffmanTableClass};
 use marker::Marker;
 use marker::Marker::*;
-use std::{io, io::Read};
+use std::io::{Read, copy, sink, ErrorKind};
 use std::ops::Range;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -95,9 +95,9 @@ fn read_length<R: Read>(reader: &mut R, marker: Marker) -> Result<usize> {
 fn skip_bytes<R: Read>(reader: &mut R, length: usize) -> Result<()> {
     let length = length as u64;
     let to_skip = &mut reader.by_ref().take(length);
-    let copied = io::copy(to_skip, &mut io::sink())?;
+    let copied = copy(to_skip, &mut sink())?;
     if copied < length {
-        Err(Error::Io(io::ErrorKind::UnexpectedEof.into()))
+        Err(Error::Io(ErrorKind::UnexpectedEof.into()))
     } else {
         Ok(())
     }
