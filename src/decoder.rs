@@ -126,7 +126,7 @@ impl<R: Read> Decoder<R> {
             // The metadata has already been read.
             return Ok(Vec::new());
         }
-        else if self.frame.is_none() && (self.reader.read_u8()? != 0xFF || Marker::from_u8(try!(self.reader.read_u8())) != Some(Marker::SOI)) {
+        else if self.frame.is_none() && (self.reader.read_u8()? != 0xFF || Marker::from_u8(self.reader.read_u8()?) != Some(Marker::SOI)) {
             return Err(Error::Format("first two bytes is not a SOI marker".to_owned()));
         }
 

@@ -113,8 +113,8 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
 
     let is_baseline = marker == SOF(0);
     let is_differential = match marker {
-        SOF(0 ... 3) | SOF(9 ... 11)  => false,
-        SOF(5 ... 7) | SOF(13 ... 15) => true,
+        SOF(0 ..= 3) | SOF(9 ..= 11)  => false,
+        SOF(5 ..= 7) | SOF(13 ..= 15) => true,
         _ => panic!(),
     };
     let coding_process = match marker {
@@ -124,8 +124,8 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
         _ => panic!(),
     };
     let entropy_coding = match marker {
-        SOF(0 ... 3) | SOF(5 ... 7)     => EntropyCoding::Huffman,
-        SOF(9 ... 11) | SOF(13 ... 15)  => EntropyCoding::Arithmetic,
+        SOF(0 ..= 3) | SOF(5 ..= 7)     => EntropyCoding::Huffman,
+        SOF(9 ..= 11) | SOF(13 ..= 15)  => EntropyCoding::Arithmetic,
         _ => panic!(),
     };
 
@@ -296,8 +296,8 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
         return Err(Error::Format("scan with more than one component and more than 10 blocks per MCU".to_owned()));
     }
 
-    let spectral_selection_start = try!(reader.read_u8());
-    let spectral_selection_end = try!(reader.read_u8());
+    let spectral_selection_start = reader.read_u8()?;
+    let spectral_selection_end = reader.read_u8()?;
 
     let byte = reader.read_u8()?;
     let successive_approximation_high = byte >> 4;

@@ -7,7 +7,7 @@ pub struct Upsampler {
 }
 
 struct UpsamplerComponent {
-    upsampler: Box<Upsample + Sync>,
+    upsampler: Box<dyn Upsample + Sync>,
     width: usize,
     height: usize,
     row_stride: usize,
@@ -75,7 +75,7 @@ struct UpsamplerGeneric {
 fn choose_upsampler(sampling_factors: (u8, u8),
                     max_sampling_factors: (u8, u8),
                     output_width: u16,
-                    output_height: u16) -> Result<Box<Upsample + Sync>> {
+                    output_height: u16) -> Result<Box<dyn Upsample + Sync>> {
     let h1 = sampling_factors.0 == max_sampling_factors.0 || output_width == 1;
     let v1 = sampling_factors.1 == max_sampling_factors.1 || output_height == 1;
     let h2 = sampling_factors.0 * 2 == max_sampling_factors.0;
