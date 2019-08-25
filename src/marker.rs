@@ -67,7 +67,7 @@ impl Marker {
         match n {
             0x00 => None, // Byte stuffing
             0x01 => Some(TEM),
-            0x02 ... 0xBF => Some(RES),
+            0x02 ..= 0xBF => Some(RES),
             0xC0 => Some(SOF(0)),
             0xC1 => Some(SOF(1)),
             0xC2 => Some(SOF(2)),
