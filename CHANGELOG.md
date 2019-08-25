@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.1.16 (2019-08-25)
+- Minimum supported rust version changed to 1.28
+- Allow zero length DHT segments
+
 ## v0.1.15 (2018-06-10)
 - Added support for WebAssembly and asm.js (thanks @CryZe!)
 - Bugfix for images with APP14 segments longer than 12 bytes.
