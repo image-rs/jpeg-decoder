@@ -8,7 +8,7 @@ use std::io::{self, BufReader, Write};
 use std::process;
 
 fn usage() -> ! {
-    write!(io::stderr(), "usage: decode image.jpg image.png").unwrap();
+    eprint!("usage: decode image.jpg image.png");
     process::exit(1)
 }
 
@@ -23,14 +23,14 @@ fn main() {
     let info = decoder.info().unwrap();
 
     let output_file = File::create(output_path).unwrap();
-    let mut encoder = png::Encoder::new(output_file, info.width as u32, info.height as u32);
+    let mut encoder = png::Encoder::new(output_file, u32::from(info.width), u32::from(info.height));
     encoder.set(png::BitDepth::Eight);
 
     match info.pixel_format {
         jpeg::PixelFormat::L8     => encoder.set(png::ColorType::Grayscale),
         jpeg::PixelFormat::RGB24  => encoder.set(png::ColorType::RGB),
         jpeg::PixelFormat::CMYK32 => {
-            data = cmyk_to_rgb(&mut data);
+            data = cmyk_to_rgb(&data);
             encoder.set(png::ColorType::RGB)
         },
     };
@@ -46,10 +46,10 @@ fn cmyk_to_rgb(input: &[u8]) -> Vec<u8> {
     let mut output = Vec::with_capacity(size);
 
     for pixel in input.chunks(4) {
-        let c = pixel[0] as f32 / 255.0;
-        let m = pixel[1] as f32 / 255.0;
-        let y = pixel[2] as f32 / 255.0;
-        let k = pixel[3] as f32 / 255.0;
+        let c = f32::from(pixel[0]) / 255.0;
+        let m = f32::from(pixel[1]) / 255.0;
+        let y = f32::from(pixel[2]) / 255.0;
+        let k = f32::from(pixel[3]) / 255.0;
 
         // CMYK -> CMY
         let c = c * (1.0 - k) + k;

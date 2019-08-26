@@ -21,7 +21,7 @@ pub fn test_files(test_dir: &Path) -> Vec<PathBuf> {
         for line in BufReader::new(file).lines() {
             let line = line.unwrap();
 
-            if line.is_empty() || line.starts_with("#") {
+            if line.is_empty() || line.starts_with('#') {
                 continue;
             }
 

@@ -18,7 +18,7 @@ fn reftest() {
 fn reftest_file(path: &Path) {
     let file = File::open(path).unwrap();
     let mut decoder = jpeg::Decoder::new(file);
-    let mut data = decoder.decode().expect(&format!("failed to decode file: {:?}", path));
+    let mut data = decoder.decode().unwrap_or_else(|_| panic!("failed to decode file: {:?}", path));
     let info = decoder.info().unwrap();
     let mut pixel_format = info.pixel_format;
 
@@ -30,8 +30,8 @@ fn reftest_file(path: &Path) {
     let ref_file = File::open(path.with_extension("png")).unwrap();
     let (ref_info, mut ref_reader) = png::Decoder::new(ref_file).read_info().expect("png failed to read info");
 
-    assert_eq!(ref_info.width, info.width as u32);
-    assert_eq!(ref_info.height, info.height as u32);
+    assert_eq!(ref_info.width, u32::from(info.width));
+    assert_eq!(ref_info.height, u32::from(info.height));
     assert_eq!(ref_info.bit_depth, png::BitDepth::Eight);
 
     let mut ref_data = vec![0; ref_info.buffer_size()];
@@ -53,7 +53,7 @@ fn reftest_file(path: &Path) {
 
     let mut max_diff = 0;
     let pixels: Vec<u8> = data.iter().zip(ref_data.iter()).map(|(&a, &b)| {
-        let diff = (a as i16 - b as i16).abs();
+        let diff = (i16::from(a) - i16::from(b)).abs();
         max_diff = cmp::max(diff, max_diff);
 
         // FIXME: Only a diff of 1 should be allowed?
@@ -72,7 +72,7 @@ fn reftest_file(path: &Path) {
     if pixels.iter().any(|&a| a < 255) {
         let output_path = path.with_file_name(format!("{}-diff.png", path.file_stem().unwrap().to_str().unwrap()));
         let output = File::create(&output_path).unwrap();
-        let mut encoder = png::Encoder::new(output, info.width as u32, info.height as u32);
+        let mut encoder = png::Encoder::new(output, u32::from(info.width), u32::from(info.height));
         encoder.set(png::BitDepth::Eight);
         encoder.set(ref_pixel_format);
         encoder.write_header().expect("png failed to write header").write_image_data(&pixels).expect("png failed to write data");
@@ -101,10 +101,10 @@ fn cmyk_to_rgb(input: &[u8]) -> Vec<u8> {
     let mut output = Vec::with_capacity(size);
 
     for pixel in input.chunks(4) {
-        let c = pixel[0] as f32 / 255.0;
-        let m = pixel[1] as f32 / 255.0;
-        let y = pixel[2] as f32 / 255.0;
-        let k = pixel[3] as f32 / 255.0;
+        let c = f32::from(pixel[0]) / 255.0;
+        let m = f32::from(pixel[1]) / 255.0;
+        let y = f32::from(pixel[2]) / 255.0;
+        let k = f32::from(pixel[3]) / 255.0;
 
         // CMYK -> CMY
         let c = c * (1.0 - k) + k;
