@@ -2,8 +2,9 @@ use byteorder::ReadBytesExt;
 use error::{Error, Result, UnsupportedFeature};
 use huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
 use marker::Marker;
-use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
-             parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, ScanInfo};
+use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding,
+             DhtTables, FrameInfo, ScanInfo,
+             parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos};
 use upsampler::Upsampler;
 use std::cmp;
 use std::io::Read;
@@ -232,7 +233,7 @@ impl<R: Read> Decoder<R> {
                 Marker::DQT => {
                     let tables = parse_dqt(&mut self.reader)?;
 
-                    for (i, &table) in tables.into_iter().enumerate() {
+                    for (i, &table) in tables.iter().enumerate() {
                         if let Some(table) = table {
                             let mut unzigzagged_table = [0u16; 64];
 
@@ -247,7 +248,7 @@ impl<R: Read> Decoder<R> {
                 // Huffman table-specification
                 Marker::DHT => {
                     let is_baseline = self.frame.as_ref().map(|frame| frame.is_baseline);
-                    let (dc_tables, ac_tables) = parse_dht(&mut self.reader, is_baseline)?;
+                    let DhtTables{dc_tables, ac_tables} = parse_dht(&mut self.reader, is_baseline)?;
 
                     let current_dc_tables = mem::replace(&mut self.dc_huffman_tables, vec![]);
                     self.dc_huffman_tables = dc_tables.into_iter()

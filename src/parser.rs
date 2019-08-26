@@ -395,11 +395,18 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
     Ok(tables)
 }
 
+pub struct DhtTables {
+    pub dc_tables: Vec<Option<HuffmanTable>>,
+    pub ac_tables: Vec<Option<HuffmanTable>>,
+}
+
 // Section B.2.4.2
-pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<(Vec<Option<HuffmanTable>>, Vec<Option<HuffmanTable>>)> {
+pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<DhtTables> {
     let mut length = read_length(reader, DHT)?;
-    let mut dc_tables = vec![None, None, None, None];
-    let mut ac_tables = vec![None, None, None, None];
+    let mut tables = DhtTables{
+        dc_tables: vec![None, None, None, None],
+        ac_tables: vec![None, None, None, None]
+    };
 
     // Each DHT segment may contain multiple huffman tables.
     while length > 17 {
@@ -436,8 +443,8 @@ pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<(
         reader.read_exact(&mut values)?;
 
         match class {
-            0 => dc_tables[index] = Some(HuffmanTable::new(&counts, &values, HuffmanTableClass::DC)?),
-            1 => ac_tables[index] = Some(HuffmanTable::new(&counts, &values, HuffmanTableClass::AC)?),
+            0 => tables.dc_tables[index] = Some(HuffmanTable::new(&counts, &values, HuffmanTableClass::DC)?),
+            1 => tables.ac_tables[index] = Some(HuffmanTable::new(&counts, &values, HuffmanTableClass::AC)?),
             _ => unreachable!(),
         }
 
@@ -448,7 +455,7 @@ pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<(
         return Err(Error::Format("invalid length in DHT".to_owned()));
     }
 
-    Ok((dc_tables, ac_tables))
+    Ok(tables)
 }
 
 // Section B.2.4.4
@@ -486,10 +493,10 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
                 bytes_read = buffer.len();
 
                 // http://www.w3.org/Graphics/JPEG/jfif3.pdf
-                if &buffer[0 .. 5] == &[b'J', b'F', b'I', b'F', b'\0'] {
+                if buffer[0 .. 5] == [b'J', b'F', b'I', b'F', b'\0'] {
                     result = Some(AppData::Jfif);
                 // https://sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#AVI1
-                } else if &buffer[0 .. 5] == &[b'A', b'V', b'I', b'1', b'\0'] {
+                } else if buffer[0 .. 5] == [b'A', b'V', b'I', b'1', b'\0'] {
                     result = Some(AppData::Avi1);
                 }
             }
@@ -501,7 +508,7 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
                 bytes_read = buffer.len();
 
                 // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-                if &buffer[0 .. 6] == &[b'A', b'd', b'o', b'b', b'e', b'\0'] {
+                if buffer[0 .. 6] == [b'A', b'd', b'o', b'b', b'e', b'\0'] {
                     let color_transform = match buffer[11] {
                         0 => AdobeColorTransform::Unknown,
                         1 => AdobeColorTransform::YCbCr,

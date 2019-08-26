@@ -127,10 +127,7 @@ impl Upsample for UpsamplerH1V1 {
                     output_width: usize,
                     output: &mut [u8]) {
         let input = &input[row * row_stride ..];
-
-        for i in 0 .. output_width {
-            output[i] = input[i];
-        }
+        output[..output_width].clone_from_slice(&input[..output_width]);
     }
 }
 
@@ -152,15 +149,18 @@ impl Upsample for UpsamplerH2V1 {
         }
 
         output[0] = input[0];
-        output[1] = ((input[0] as u32 * 3 + input[1] as u32 + 2) >> 2) as u8;
+        output[1] = ((u32::from(input[0]) * 3 + u32::from(input[1]) + 2) >> 2) as u8;
 
         for i in 1 .. input_width - 1 {
-            let sample = 3 * input[i] as u32 + 2;
-            output[i * 2]     = ((sample + input[i - 1] as u32) >> 2) as u8;
-            output[i * 2 + 1] = ((sample + input[i + 1] as u32) >> 2) as u8;
+            let sample = 3 * u32::from(input[i]) + 2;
+            output[i * 2]     = ((sample + u32::from(input[i - 1])) >> 2) as u8;
+            output[i * 2 + 1] = ((sample + u32::from(input[i + 1])) >> 2) as u8;
         }
 
-        output[(input_width - 1) * 2] = ((input[input_width - 1] as u32 * 3 + input[input_width - 2] as u32 + 2) >> 2) as u8;
+        output[(input_width - 1) * 2] = ((
+            u32::from(input[input_width - 1]) * 3 +
+                u32::from(input[input_width - 2]) + 2
+            ) >> 2) as u8;
         output[(input_width - 1) * 2 + 1] = input[input_width - 1];
     }
 }
@@ -183,7 +183,7 @@ impl Upsample for UpsamplerH1V2 {
         let input_far = &input[row_far as usize * row_stride ..];
 
         for i in 0 .. output_width {
-            output[i] = ((3 * input_near[i] as u32 + input_far[i] as u32 + 2) >> 2) as u8;
+            output[i] = ((3 * u32::from(input_near[i]) + u32::from(input_far[i]) + 2) >> 2) as u8;
         }
     }
 }
@@ -206,18 +206,18 @@ impl Upsample for UpsamplerH2V2 {
         let input_far = &input[row_far as usize * row_stride ..];
 
         if input_width == 1 {
-            let value = ((3 * input_near[0] as u32 + input_far[0] as u32 + 2) >> 2) as u8;
+            let value = ((3 * u32::from(input_near[0]) + u32::from(input_far[0]) + 2) >> 2) as u8;
             output[0] = value;
             output[1] = value;
             return;
         }
 
-        let mut t1 = 3 * input_near[0] as u32 + input_far[0] as u32;
+        let mut t1 = 3 * u32::from(input_near[0]) + u32::from(input_far[0]);
         output[0] = ((t1 + 2) >> 2) as u8;
 
         for i in 1 .. input_width {
             let t0 = t1;
-            t1 = 3 * input_near[i] as u32 + input_far[i] as u32;
+            t1 = 3 * u32::from(input_near[i]) + u32::from(input_far[i]);
 
             output[i * 2 - 1] = ((3 * t0 + t1 + 8) >> 4) as u8;
             output[i * 2]     = ((3 * t1 + t0 + 8) >> 4) as u8;
