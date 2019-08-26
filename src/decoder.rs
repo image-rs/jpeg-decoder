@@ -72,7 +72,7 @@ impl<R: Read> Decoder<R> {
     /// Creates a new `Decoder` using the reader `reader`.
     pub fn new(reader: R) -> Decoder<R> {
         Decoder {
-            reader: reader,
+            reader,
             frame: None,
             dc_huffman_tables: vec![None, None, None, None],
             ac_huffman_tables: vec![None, None, None, None],
@@ -103,7 +103,7 @@ impl<R: Read> Decoder<R> {
                 Some(ImageInfo {
                     width: frame.image_size.width,
                     height: frame.image_size.height,
-                    pixel_format: pixel_format,
+                    pixel_format,
                 })
             },
             None => None,

@@ -1,10 +1,12 @@
+use std::io::{self, Read};
+use std::ops::Range;
+
 use byteorder::{BigEndian, ReadBytesExt};
+
 use error::{Error, Result};
 use huffman::{HuffmanTable, HuffmanTableClass};
 use marker::Marker;
 use marker::Marker::*;
-use std::io::{self, Read};
-use std::ops::Range;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Dimensions {
@@ -197,9 +199,9 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
         }
 
         components.push(Component {
-            identifier: identifier,
-            horizontal_sampling_factor: horizontal_sampling_factor,
-            vertical_sampling_factor: vertical_sampling_factor,
+            identifier,
+            horizontal_sampling_factor,
+            vertical_sampling_factor,
             quantization_table_index: quantization_table_index as usize,
             size: Dimensions {width: 0, height: 0},
             block_size: Dimensions {width: 0, height: 0},
@@ -209,27 +211,27 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
     let h_max = components.iter().map(|c| c.horizontal_sampling_factor).max().unwrap();
     let v_max = components.iter().map(|c| c.vertical_sampling_factor).max().unwrap();
     let mcu_size = Dimensions {
-        width: (width as f32 / (h_max as f32 * 8.0)).ceil() as u16,
-        height: (height as f32 / (v_max as f32 * 8.0)).ceil() as u16,
+        width: (f32::from(width) / (f32::from(h_max) * 8.0)).ceil() as u16,
+        height: (f32::from(height) / (f32::from(v_max) * 8.0)).ceil() as u16,
     };
 
     for component in &mut components {
-        component.size.width = (width as f32 * (component.horizontal_sampling_factor as f32 / h_max as f32)).ceil() as u16;
-        component.size.height = (height as f32 * (component.vertical_sampling_factor as f32 / v_max as f32)).ceil() as u16;
+        component.size.width = (f32::from(width) * (f32::from(component.horizontal_sampling_factor) / f32::from(h_max))).ceil() as u16;
+        component.size.height = (f32::from(height) * (f32::from(component.vertical_sampling_factor) / f32::from(v_max))).ceil() as u16;
 
-        component.block_size.width = mcu_size.width * component.horizontal_sampling_factor as u16;
-        component.block_size.height = mcu_size.height * component.vertical_sampling_factor as u16;
+        component.block_size.width = mcu_size.width * u16::from(component.horizontal_sampling_factor);
+        component.block_size.height = mcu_size.height * u16::from(component.vertical_sampling_factor);
     }
 
     Ok(FrameInfo {
-        is_baseline: is_baseline,
-        is_differential: is_differential,
-        coding_process: coding_process,
-        entropy_coding: entropy_coding,
-        precision: precision,
-        image_size: Dimensions {width: width, height: height},
-        mcu_size: mcu_size,
-        components: components,
+        is_baseline,
+        is_differential,
+        coding_process,
+        entropy_coding,
+        precision,
+        image_size: Dimensions {width, height },
+        mcu_size,
+        components,
     })
 }
 
@@ -288,9 +290,11 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
         ac_table_indices.push(ac_table_index as usize);
     }
 
-    let blocks_per_mcu = component_indices.iter().map(|&i| {
-        frame.components[i].horizontal_sampling_factor as u32 * frame.components[i].vertical_sampling_factor as u32
-    }).fold(0, ::std::ops::Add::add);
+    let blocks_per_mcu: u32 = component_indices.iter()
+        .map(|&i| {
+            u32::from(frame.components[i].horizontal_sampling_factor) *
+                u32::from(frame.components[i].vertical_sampling_factor)
+        }).sum();
 
     if component_count > 1 && blocks_per_mcu > 10 {
         return Err(Error::Format("scan with more than one component and more than 10 blocks per MCU".to_owned()));
@@ -333,15 +337,12 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
     }
 
     Ok(ScanInfo {
-        component_indices: component_indices,
-        dc_table_indices: dc_table_indices,
-        ac_table_indices: ac_table_indices,
-        spectral_selection: Range {
-            start: spectral_selection_start,
-            end: spectral_selection_end + 1,
-        },
-        successive_approximation_high: successive_approximation_high,
-        successive_approximation_low: successive_approximation_low,
+        component_indices,
+        dc_table_indices,
+        ac_table_indices,
+        spectral_selection: spectral_selection_start..spectral_selection_end + 1,
+        successive_approximation_high,
+        successive_approximation_low,
     })
 }
 
@@ -376,9 +377,9 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
 
         let mut table = [0u16; 64];
 
-        for i in 0 .. 64 {
-            table[i] = match precision {
-                0 => reader.read_u8()? as u16,
+        for table_value in table.iter_mut() {
+            *table_value = match precision {
+                0 => u16::from(reader.read_u8()?),
                 1 => reader.read_u16::<BigEndian>()?,
                 _ => unreachable!(),
             };

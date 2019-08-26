@@ -4,7 +4,7 @@ extern crate png;
 use png::HasParameters;
 use std::env;
 use std::fs::File;
-use std::io::{self, BufReader, Write};
+use std::io::BufReader;
 use std::process;
 
 fn usage() -> ! {
@@ -41,6 +41,7 @@ fn main() {
            .expect("png encoding failed");
 }
 
+#[allow(clippy::many_single_char_names)]
 fn cmyk_to_rgb(input: &[u8]) -> Vec<u8> {
     let size = input.len() - input.len() / 4;
     let mut output = Vec::with_capacity(size);

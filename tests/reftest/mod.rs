@@ -96,6 +96,7 @@ fn rgba_to_rgb(input: &[u8]) -> Vec<u8> {
     output
 }
 
+#[allow(clippy::many_single_char_names)]
 fn cmyk_to_rgb(input: &[u8]) -> Vec<u8> {
     let size = input.len() - input.len() / 4;
     let mut output = Vec::with_capacity(size);

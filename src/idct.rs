@@ -3,6 +3,7 @@
 // That's why wrapping operators are needed.
 
 // This is based on stb_image's 'stbi__idct_block'.
+#[allow(clippy::excessive_precision)]
 pub fn dequantize_and_idct_block(coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
     debug_assert_eq!(coefficients.len(), 64);
 

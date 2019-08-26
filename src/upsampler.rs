@@ -26,7 +26,7 @@ impl Upsampler {
                                              output_width,
                                              output_height)?;
             upsampler_components.push(UpsamplerComponent {
-                upsampler: upsampler,
+                upsampler,
                 width: component.size.width as usize,
                 height: component.size.height as usize,
                 row_stride: component.block_size.width as usize * 8,
@@ -93,16 +93,14 @@ fn choose_upsampler(sampling_factors: (u8, u8),
     else if h2 && v2 {
         Ok(Box::new(UpsamplerH2V2))
     }
+    else if max_sampling_factors.0 % sampling_factors.0 != 0 || max_sampling_factors.1 % sampling_factors.1 != 0 {
+        Err(Error::Unsupported(UnsupportedFeature::NonIntegerSubsamplingRatio))
+    }
     else {
-        if max_sampling_factors.0 % sampling_factors.0 != 0 || max_sampling_factors.1 % sampling_factors.1 != 0 {
-            Err(Error::Unsupported(UnsupportedFeature::NonIntegerSubsamplingRatio))
-        }
-        else {
-            Ok(Box::new(UpsamplerGeneric {
-                horizontal_scaling_factor: max_sampling_factors.0 / sampling_factors.0,
-                vertical_scaling_factor: max_sampling_factors.1 / sampling_factors.1
-            }))
-        }
+        Ok(Box::new(UpsamplerGeneric {
+            horizontal_scaling_factor: max_sampling_factors.0 / sampling_factors.0,
+            vertical_scaling_factor: max_sampling_factors.1 / sampling_factors.1
+        }))
     }
 }
 
