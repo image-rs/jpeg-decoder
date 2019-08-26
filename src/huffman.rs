@@ -40,7 +40,7 @@ impl HuffmanDecoder {
             let bits = self.peek_bits(16);
 
             for i in LUT_BITS .. 16 {
-                let code = (bits >> (15 - i)) as i32;
+                let code = i32::from(bits >> (15 - i));
 
                 if code <= table.maxcode[i as usize] {
                     self.consume_bits(i + 1);
@@ -149,7 +149,7 @@ impl HuffmanDecoder {
                 }
             }
 
-            self.bits |= (byte as u64) << (56 - self.num_bits);
+            self.bits |= u64::from(byte) << (56 - self.num_bits);
             self.num_bits += 8;
         }
 
@@ -160,10 +160,10 @@ impl HuffmanDecoder {
 // Section F.2.2.1
 // Figure F.12
 fn extend(value: u16, count: u8) -> i16 {
-    let vt = 1 << (count as u16 - 1);
+    let vt = 1 << (u16::from(count) - 1);
 
     if value < vt {
-        value as i16 + (-1 << count as i16) + 1
+        value as i16 + (-1 << i16::from(count)) + 1
     } else {
         value as i16
     }
@@ -197,9 +197,9 @@ impl HuffmanTable {
 
         for i in 0 .. 16 {
             if bits[i] != 0 {
-                delta[i] = j as i32 - huffcode[j] as i32;
+                delta[i] = j as i32 - i32::from(huffcode[j]);
                 j += bits[i] as usize;
-                maxcode[i] = huffcode[j - 1] as i32;
+                maxcode[i] = i32::from(huffcode[j - 1]);
             }
         }
 
@@ -240,10 +240,10 @@ impl HuffmanTable {
 
         Ok(HuffmanTable {
             values: values.to_vec(),
-            delta: delta,
-            maxcode: maxcode,
-            lut: lut,
-            ac_lut: ac_lut,
+            delta,
+            maxcode,
+            lut,
+            ac_lut,
         })
     }
 }

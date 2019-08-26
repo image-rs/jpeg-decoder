@@ -3,7 +3,7 @@
 // That's why wrapping operators are needed.
 
 // This is based on stb_image's 'stbi__idct_block'.
-#[allow(clippy::excessive_precision)]
+#[allow(clippy::excessive_precision, clippy::unreadable_literal)]
 pub fn dequantize_and_idct_block(coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
     debug_assert_eq!(coefficients.len(), 64);
 
@@ -15,7 +15,7 @@ pub fn dequantize_and_idct_block(coefficients: &[i16], quantization_table: &[u16
         if coefficients[i + 8] == 0 && coefficients[i + 16] == 0 && coefficients[i + 24] == 0 &&
                 coefficients[i + 32] == 0 && coefficients[i + 40] == 0 && coefficients[i + 48] == 0 &&
                 coefficients[i + 56] == 0 {
-            let dcterm = (coefficients[i] as i32 * quantization_table[i] as i32).wrapping_shl(2);
+            let dcterm = (i32::from(coefficients[i]) * i32::from(quantization_table[i])).wrapping_shl(2);
             temp[i]      = dcterm;
             temp[i + 8]  = dcterm;
             temp[i + 16] = dcterm;
@@ -26,14 +26,14 @@ pub fn dequantize_and_idct_block(coefficients: &[i16], quantization_table: &[u16
             temp[i + 56] = dcterm;
         }
         else {
-            let s0 = coefficients[i] as i32      * quantization_table[i] as i32;
-            let s1 = coefficients[i + 8] as i32  * quantization_table[i + 8] as i32;
-            let s2 = coefficients[i + 16] as i32 * quantization_table[i + 16] as i32;
-            let s3 = coefficients[i + 24] as i32 * quantization_table[i + 24] as i32;
-            let s4 = coefficients[i + 32] as i32 * quantization_table[i + 32] as i32;
-            let s5 = coefficients[i + 40] as i32 * quantization_table[i + 40] as i32;
-            let s6 = coefficients[i + 48] as i32 * quantization_table[i + 48] as i32;
-            let s7 = coefficients[i + 56] as i32 * quantization_table[i + 56] as i32;
+            let s0 = i32::from(coefficients[i]) * i32::from(quantization_table[i]);
+            let s1 = i32::from(coefficients[i + 8]) * i32::from(quantization_table[i + 8]);
+            let s2 = i32::from(coefficients[i + 16]) * i32::from(quantization_table[i + 16]);
+            let s3 = i32::from(coefficients[i + 24]) * i32::from(quantization_table[i + 24]);
+            let s4 = i32::from(coefficients[i + 32]) * i32::from(quantization_table[i + 32]);
+            let s5 = i32::from(coefficients[i + 40]) * i32::from(quantization_table[i + 40]);
+            let s6 = i32::from(coefficients[i + 48]) * i32::from(quantization_table[i + 48]);
+            let s7 = i32::from(coefficients[i + 56]) * i32::from(quantization_table[i + 56]);
 
             let p2 = s2;
             let p3 = s6;

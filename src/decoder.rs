@@ -398,9 +398,10 @@ impl<R: Read> Decoder<R> {
             }
         }
 
-        let blocks_per_mcu: Vec<u16> = components.iter()
-                                                 .map(|c| c.horizontal_sampling_factor as u16 * c.vertical_sampling_factor as u16)
-                                                 .collect();
+        let blocks_per_mcu: Vec<u16> = components.iter().map(|c| {
+            u16::from(c.horizontal_sampling_factor) * u16::from(c.vertical_sampling_factor)
+        }).collect();
+
         let is_progressive = frame.coding_process == CodingProcess::DctProgressive;
         let is_interleaved = components.len() > 1;
         let mut dummy_block = [0i16; 64];
@@ -424,8 +425,10 @@ impl<R: Read> Decoder<R> {
                     for j in 0 .. blocks_per_mcu[i] {
                         let (block_x, block_y) = if is_interleaved {
                             // Section A.2.3
-                            (mcu_x * component.horizontal_sampling_factor as u16 + j % component.horizontal_sampling_factor as u16,
-                             mcu_y * component.vertical_sampling_factor as u16 + j / component.horizontal_sampling_factor as u16)
+                            (
+                                mcu_x * u16::from(component.horizontal_sampling_factor) + j % u16::from(component.horizontal_sampling_factor),
+                                mcu_y * u16::from(component.vertical_sampling_factor) + j / u16::from(component.horizontal_sampling_factor)
+                            )
                         }
                         else {
                             // Section A.2.2
@@ -886,9 +889,9 @@ fn color_convert_line_cmyk(data: &mut [u8], width: usize) {
 
 // ITU-R BT.601
 fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8) -> (u8, u8, u8) {
-    let y = y as f32;
-    let cb = cb as f32 - 128.0;
-    let cr = cr as f32 - 128.0;
+    let y  = f32::from(y);
+    let cb = f32::from(cb) - 128.0;
+    let cr = f32::from(cr) - 128.0;
 
     let r = y                + 1.40200 * cr;
     let g = y - 0.34414 * cb - 0.71414 * cr;
