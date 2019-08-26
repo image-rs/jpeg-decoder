@@ -1,17 +1,19 @@
-use byteorder::ReadBytesExt;
-use error::{Error, Result, UnsupportedFeature};
-use huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
-use marker::Marker;
-use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding,
-             DhtTables, FrameInfo, ScanInfo,
-             parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos};
-use upsampler::Upsampler;
 use std::cmp;
 use std::io::Read;
 use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
-use worker::{RowData, PlatformWorker, Worker};
+
+use byteorder::ReadBytesExt;
+
+use error::{Error, Result, UnsupportedFeature};
+use huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
+use marker::Marker;
+use parser::{AdobeColorTransform, AppData, CodingProcess, Component, DhtTables, Dimensions,
+             EntropyCoding, FrameInfo, parse_app,
+             parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, ScanInfo};
+use upsampler::Upsampler;
+use worker::{PlatformWorker, RowData, Worker};
 
 pub const MAX_COMPONENTS: usize = 4;
 
@@ -216,7 +218,7 @@ impl<R: Read> Decoder<R> {
                     }
 
                     let is_final_scan = scan.component_indices.iter().all(|&i| self.coefficients_finished[i] == !0);
-                    let (marker, data) = self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), is_final_scan)?;
+                    let ScanData { marker, data } = self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), is_final_scan)?;
 
                     if let Some(data) = data {
                         for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
@@ -359,7 +361,7 @@ impl<R: Read> Decoder<R> {
                    scan: &ScanInfo,
                    worker: &mut PlatformWorker,
                    produce_data: bool)
-                   -> Result<(Option<Marker>, Option<Vec<Vec<u8>>>)> {
+                   -> Result<ScanData> {
         assert!(scan.component_indices.len() <= MAX_COMPONENTS);
 
         let components: Vec<Component> = scan.component_indices.iter()
@@ -526,7 +528,7 @@ impl<R: Read> Decoder<R> {
 
         let marker = huffman.take_marker(&mut self.reader)?;
 
-        if produce_data {
+        let data = if produce_data {
             // Retrieve all the data from the worker thread.
             let mut data = vec![Vec::new(); frame.components.len()];
 
@@ -534,11 +536,9 @@ impl<R: Read> Decoder<R> {
                 data[component_index] = worker.get_result(i)?;
             }
 
-            Ok((marker, Some(data)))
-        }
-        else {
-            Ok((marker, None))
-        }
+            Some(data)
+        } else { None };
+        Ok(ScanData { marker, data })
     }
 }
 
@@ -628,6 +628,11 @@ fn decode_block<R: Read>(reader: &mut R,
     }
 
     Ok(())
+}
+
+struct ScanData {
+    marker: Option<Marker>,
+    data: Option<Vec<Vec<u8>>>,
 }
 
 fn decode_block_successive_approximation<R: Read>(reader: &mut R,
