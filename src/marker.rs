@@ -132,6 +132,7 @@ impl Marker {
             0xFD => Some(JPGn(13)),
             0xFE => Some(COM),
             0xFF => None, // Fill byte
+            #[allow(unreachable_patterns)]
             _ => unreachable!(),
         }
     }
