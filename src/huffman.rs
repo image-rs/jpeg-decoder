@@ -1,5 +1,6 @@
 use std::io::Read;
 use std::iter::repeat;
+use std::mem::swap;
 use std::ops::{Index, IndexMut};
 
 use byteorder::ReadBytesExt;
@@ -279,7 +280,7 @@ impl DhtTables {
             let new_values: &mut ComponentVec<HuffmanTable> = &mut new_tables[table_type];
             for i in 0..MAX_COMPONENTS {
                 if new_values[i].is_some() {
-                    std::mem::swap(&mut new_values[i], &mut current_values[i]);
+                    swap(&mut new_values[i], &mut current_values[i]);
                 }
             }
         }
