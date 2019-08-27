@@ -1,9 +1,13 @@
-use byteorder::ReadBytesExt;
-use error::{Error, Result};
-use marker::Marker;
-use parser::ScanInfo;
 use std::io::Read;
 use std::iter::repeat;
+use std::ops::{Index, IndexMut};
+
+use byteorder::ReadBytesExt;
+
+use error::{Error, Result};
+use huffman::HuffmanTableClass::{AC, DC};
+use marker::Marker;
+use parser::ScanInfo;
 
 const LUT_BITS: u8 = 8;
 
@@ -248,6 +252,62 @@ impl HuffmanTable {
     }
 }
 
+const MAX_COMPONENTS: usize = 4;
+
+pub type ComponentVec<T> = [Option<T>; MAX_COMPONENTS];
+
+pub fn empty_component_vec<T>() -> ComponentVec<T> {
+    [None, None, None, None]
+}
+
+/// AC and DC huffman tables
+pub struct DhtTables {
+    ac: ComponentVec<HuffmanTable>,
+    dc: ComponentVec<HuffmanTable>,
+}
+
+impl DhtTables {
+    pub fn new() -> Self {
+        DhtTables {
+            ac: empty_component_vec(),
+            dc: empty_component_vec(),
+        }
+    }
+    pub fn update(&mut self, mut new_tables: DhtTables) {
+        for &table_type in [HuffmanTableClass::AC, HuffmanTableClass::DC].iter() {
+            let current_values: &mut ComponentVec<HuffmanTable> = &mut self[table_type];
+            let new_values: &mut ComponentVec<HuffmanTable> = &mut new_tables[table_type];
+            for i in 0..MAX_COMPONENTS {
+                if new_values[i].is_some() {
+                    std::mem::swap(&mut new_values[i], &mut current_values[i]);
+                }
+            }
+        }
+    }
+}
+
+impl Index<HuffmanTableClass> for DhtTables {
+    type Output = ComponentVec<HuffmanTable>;
+
+    #[inline(always)]
+    fn index(&self, index: HuffmanTableClass) -> &Self::Output {
+        match index {
+            HuffmanTableClass::AC => &self.ac,
+            HuffmanTableClass::DC => &self.dc,
+        }
+    }
+}
+
+impl IndexMut<HuffmanTableClass> for DhtTables {
+    #[inline(always)]
+    fn index_mut(&mut self, index: HuffmanTableClass) -> &mut Self::Output {
+        match index {
+            HuffmanTableClass::AC => &mut self.ac,
+            HuffmanTableClass::DC => &mut self.dc,
+        }
+    }
+}
+
 // Section C.2
 fn derive_huffman_codes(bits: &[u8; 16]) -> Result<(Vec<u16>, Vec<u8>)> {
     // Figure C.1
@@ -290,25 +350,24 @@ fn derive_huffman_codes(bits: &[u8; 16]) -> Result<(Vec<u16>, Vec<u8>)> {
 //  segment to them, or else the decoder won't have any idea how to decompress the data.
 //  The exact table necessary is given in the OpenDML spec.""
 pub fn fill_default_mjpeg_tables(scan: &ScanInfo,
-                                 dc_huffman_tables: &mut[Option<HuffmanTable>],
-                                 ac_huffman_tables: &mut[Option<HuffmanTable>]) {
+                                 huffman_tables: &mut DhtTables) {
     // Section K.3.3
 
-    if dc_huffman_tables[0].is_none() && scan.dc_table_indices.iter().any(|&i| i == 0) {
+    if huffman_tables[DC][0].is_none() && scan.dc_table_indices.iter().any(|&i| i == 0) {
         // Table K.3
-        dc_huffman_tables[0] = Some(HuffmanTable::new(
+        huffman_tables[DC][0] = Some(HuffmanTable::new(
             &[0x00, 0x01, 0x05, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
             &[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B], HuffmanTableClass::DC).unwrap());
     }
-    if dc_huffman_tables[1].is_none() && scan.dc_table_indices.iter().any(|&i| i == 1) {
+    if huffman_tables[DC][1].is_none() && scan.dc_table_indices.iter().any(|&i| i == 1) {
         // Table K.4
-        dc_huffman_tables[1] = Some(HuffmanTable::new(
+        huffman_tables[DC][1] = Some(HuffmanTable::new(
             &[0x00, 0x03, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00],
             &[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B], HuffmanTableClass::DC).unwrap());
     }
-    if ac_huffman_tables[0].is_none() && scan.ac_table_indices.iter().any(|&i| i == 0) {
+    if huffman_tables[AC][0].is_none() && scan.ac_table_indices.iter().any(|&i| i == 0) {
         // Table K.5
-        ac_huffman_tables[0] = Some(HuffmanTable::new(
+        huffman_tables[AC][0] = Some(HuffmanTable::new(
             &[0x00, 0x02, 0x01, 0x03, 0x03, 0x02, 0x04, 0x03, 0x05, 0x05, 0x04, 0x04, 0x00, 0x00, 0x01, 0x7D],
             &[0x01, 0x02, 0x03, 0x00, 0x04, 0x11, 0x05, 0x12, 0x21, 0x31, 0x41, 0x06, 0x13, 0x51, 0x61, 0x07,
               0x22, 0x71, 0x14, 0x32, 0x81, 0x91, 0xA1, 0x08, 0x23, 0x42, 0xB1, 0xC1, 0x15, 0x52, 0xD1, 0xF0,
@@ -323,9 +382,9 @@ pub fn fill_default_mjpeg_tables(scan: &ScanInfo,
               0xF9, 0xFA
             ], HuffmanTableClass::AC).unwrap());
     }
-    if ac_huffman_tables[1].is_none() && scan.ac_table_indices.iter().any(|&i| i == 1) {
+    if huffman_tables[AC][1].is_none() && scan.ac_table_indices.iter().any(|&i| i == 1) {
         // Table K.6
-        ac_huffman_tables[1] = Some(HuffmanTable::new(
+        huffman_tables[AC][1] = Some(HuffmanTable::new(
             &[0x00, 0x02, 0x01, 0x02, 0x04, 0x04, 0x03, 0x04, 0x07, 0x05, 0x04, 0x04, 0x00, 0x01, 0x02, 0x77],
             &[0x00, 0x01, 0x02, 0x03, 0x11, 0x04, 0x05, 0x21, 0x31, 0x06, 0x12, 0x41, 0x51, 0x07, 0x61, 0x71,
               0x13, 0x22, 0x32, 0x81, 0x08, 0x14, 0x42, 0x91, 0xA1, 0xB1, 0xC1, 0x09, 0x23, 0x33, 0x52, 0xF0,

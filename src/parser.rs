@@ -4,7 +4,7 @@ use std::ops::RangeInclusive;
 use byteorder::{BigEndian, ReadBytesExt};
 
 use error::{Error, Result};
-use huffman::{HuffmanTable, HuffmanTableClass};
+use huffman::{DhtTables, HuffmanTable, HuffmanTableClass};
 use marker::Marker;
 use marker::Marker::*;
 
@@ -396,18 +396,10 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
     Ok(tables)
 }
 
-pub struct DhtTables {
-    pub dc_tables: Vec<Option<HuffmanTable>>,
-    pub ac_tables: Vec<Option<HuffmanTable>>,
-}
-
 // Section B.2.4.2
 pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<DhtTables> {
     let mut length = read_length(reader, DHT)?;
-    let mut tables = DhtTables{
-        dc_tables: vec![None, None, None, None],
-        ac_tables: vec![None, None, None, None]
-    };
+    let mut tables = DhtTables::new();
 
     // Each DHT segment may contain multiple huffman tables.
     while length > 17 {
@@ -415,9 +407,6 @@ pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<D
         let class = byte >> 4;
         let index = (byte & 0x0f) as usize;
 
-        if class != 0 && class != 1 {
-            return Err(Error::Format(format!("invalid class {} in DHT", class)));
-        }
         if is_baseline == Some(true) && index > 1 {
             return Err(Error::Format("a maximum of two huffman tables per class are allowed in baseline".to_owned()));
         }
@@ -443,11 +432,15 @@ pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<D
         let mut values = vec![0u8; size];
         reader.read_exact(&mut values)?;
 
-        match class {
-            0 => tables.dc_tables[index] = Some(HuffmanTable::new(&counts, &values, HuffmanTableClass::DC)?),
-            1 => tables.ac_tables[index] = Some(HuffmanTable::new(&counts, &values, HuffmanTableClass::AC)?),
-            _ => unreachable!(),
-        }
+        let table_type = match class {
+            0 => HuffmanTableClass::DC,
+            1 => HuffmanTableClass::AC,
+            _ => {
+                return Err(Error::Format(format!("invalid class {} in DHT", class)))
+            }
+        };
+
+        tables[table_type][index] = Some(HuffmanTable::new(&counts, &values, table_type)?);
 
         length -= 17 + size;
     }

@@ -7,13 +7,19 @@ use std::sync::Arc;
 use byteorder::ReadBytesExt;
 
 use error::{Error, Result, UnsupportedFeature};
-use huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
+use huffman::{
+    ComponentVec, DhtTables, empty_component_vec, fill_default_mjpeg_tables,
+    HuffmanDecoder, HuffmanTable,
+};
 use marker::Marker;
-use parser::{AdobeColorTransform, AppData, CodingProcess, Component, DhtTables, Dimensions,
-             EntropyCoding, FrameInfo, parse_app,
-             parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, ScanInfo};
+use parser::{
+    AdobeColorTransform, AppData, CodingProcess, Component,
+    Dimensions, EntropyCoding, FrameInfo,
+    parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, ScanInfo,
+};
 use upsampler::Upsampler;
 use worker::{PlatformWorker, RowData, Worker};
+use huffman::HuffmanTableClass::{DC, AC};
 
 pub const MAX_COMPONENTS: usize = 4;
 
@@ -55,10 +61,8 @@ pub struct Decoder<R> {
     reader: R,
 
     frame: Option<FrameInfo>,
-    dc_huffman_tables: Vec<Option<HuffmanTable>>,
-    ac_huffman_tables: Vec<Option<HuffmanTable>>,
-    quantization_tables: [Option<Arc<[u16; 64]>>; 4],
-
+    huffman_tables: DhtTables,
+    quantization_tables: ComponentVec<Arc<[u16; 64]>>,
     restart_interval: u16,
     color_transform: Option<AdobeColorTransform>,
     is_jfif: bool,
@@ -76,9 +80,8 @@ impl<R: Read> Decoder<R> {
         Decoder {
             reader,
             frame: None,
-            dc_huffman_tables: vec![None, None, None, None],
-            ac_huffman_tables: vec![None, None, None, None],
-            quantization_tables: [None, None, None, None],
+            huffman_tables: DhtTables::new(),
+            quantization_tables: empty_component_vec(),
             restart_interval: 0,
             color_transform: None,
             is_jfif: false,
@@ -250,19 +253,7 @@ impl<R: Read> Decoder<R> {
                 // Huffman table-specification
                 Marker::DHT => {
                     let is_baseline = self.frame.as_ref().map(|frame| frame.is_baseline);
-                    let DhtTables{dc_tables, ac_tables} = parse_dht(&mut self.reader, is_baseline)?;
-
-                    let current_dc_tables = mem::replace(&mut self.dc_huffman_tables, vec![]);
-                    self.dc_huffman_tables = dc_tables.into_iter()
-                                                      .zip(current_dc_tables.into_iter())
-                                                      .map(|(a, b)| a.or(b))
-                                                      .collect();
-
-                    let current_ac_tables = mem::replace(&mut self.ac_huffman_tables, vec![]);
-                    self.ac_huffman_tables = ac_tables.into_iter()
-                                                      .zip(current_ac_tables.into_iter())
-                                                      .map(|(a, b)| a.or(b))
-                                                      .collect();
+                    self.huffman_tables.update(parse_dht(&mut self.reader, is_baseline)?);
                 },
                 // Arithmetic conditioning table-specification
                 Marker::DAC => return Err(Error::Unsupported(UnsupportedFeature::ArithmeticEntropyCoding)),
@@ -374,16 +365,16 @@ impl<R: Read> Decoder<R> {
         }
 
         if self.is_mjpeg {
-            fill_default_mjpeg_tables(scan, &mut self.dc_huffman_tables, &mut self.ac_huffman_tables);
+            fill_default_mjpeg_tables(scan, &mut self.huffman_tables);
         }
 
         // Verify that all required huffman tables has been set.
         if *scan.spectral_selection.start() == 0 &&
-                scan.dc_table_indices.iter().any(|&i| self.dc_huffman_tables[i].is_none()) {
+                scan.dc_table_indices.iter().any(|&i| self.huffman_tables[DC][i].is_none()) {
             return Err(Error::Format("scan makes use of unset dc huffman table".to_owned()));
         }
         if *scan.spectral_selection.end() > 0 &&
-                scan.ac_table_indices.iter().any(|&i| self.ac_huffman_tables[i].is_none()) {
+                scan.ac_table_indices.iter().any(|&i| self.huffman_tables[AC][i].is_none()) {
             return Err(Error::Format("scan makes use of unset ac huffman table".to_owned()));
         }
 
@@ -463,8 +454,8 @@ impl<R: Read> Decoder<R> {
                             decode_block(&mut self.reader,
                                          coefficients,
                                          &mut huffman,
-                                         self.dc_huffman_tables[scan.dc_table_indices[i]].as_ref(),
-                                         self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
+                                         self.huffman_tables[DC][scan.dc_table_indices[i]].as_ref(),
+                                         self.huffman_tables[AC][scan.ac_table_indices[i]].as_ref(),
                                          scan.spectral_selection.clone(),
                                          scan.successive_approximation_low,
                                          &mut eob_run,
@@ -474,7 +465,7 @@ impl<R: Read> Decoder<R> {
                             decode_block_successive_approximation(&mut self.reader,
                                                                   coefficients,
                                                                   &mut huffman,
-                                                                  self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
+                                                                  self.huffman_tables[AC][scan.ac_table_indices[i]].as_ref(),
                                                                   scan.spectral_selection.clone(),
                                                                   scan.successive_approximation_low,
                                                                   &mut eob_run)?;
