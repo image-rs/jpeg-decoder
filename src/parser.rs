@@ -1,5 +1,5 @@
 use std::io::{self, Read};
-use std::ops::Range;
+use std::ops::RangeInclusive;
 
 use byteorder::{BigEndian, ReadBytesExt};
 
@@ -46,7 +46,7 @@ pub struct ScanInfo {
     pub dc_table_indices: Vec<usize>,
     pub ac_table_indices: Vec<usize>,
 
-    pub spectral_selection: Range<u8>,
+    pub spectral_selection: RangeInclusive<u8>,
     pub successive_approximation_high: u8,
     pub successive_approximation_low: u8,
 }
@@ -340,7 +340,7 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
         component_indices,
         dc_table_indices,
         ac_table_indices,
-        spectral_selection: spectral_selection_start..spectral_selection_end + 1,
+        spectral_selection: spectral_selection_start..=spectral_selection_end,
         successive_approximation_high,
         successive_approximation_low,
     })
