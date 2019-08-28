@@ -9,6 +9,7 @@ use error::{Error, Result};
 use huffman::HuffmanTableClass::{AC, DC};
 use marker::Marker;
 use parser::ScanInfo;
+use decoder::MAX_COMPONENTS;
 
 const LUT_BITS: u8 = 8;
 
@@ -252,8 +253,6 @@ impl HuffmanTable {
         })
     }
 }
-
-const MAX_COMPONENTS: usize = 4;
 
 pub type ComponentVec<T> = [Option<T>; MAX_COMPONENTS];
 

@@ -18,7 +18,7 @@ fn reftest() {
 fn reftest_file(path: &Path) {
     let file = File::open(path).unwrap();
     let mut decoder = jpeg::Decoder::new(file);
-    let mut data = decoder.decode().unwrap_or_else(|_| panic!("failed to decode file: {:?}", path));
+    let mut data = decoder.decode().unwrap_or_else(|e| panic!("failed to decode file {:?}: {}", path, e));
     let info = decoder.info().unwrap();
     let mut pixel_format = info.pixel_format;
 
