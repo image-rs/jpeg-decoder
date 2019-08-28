@@ -515,8 +515,6 @@ fn decode_block<R: Read>(reader: &mut R,
     let ac_table = huffman_tables[AC][scan.ac_table_indices[component_index]].as_ref();
     let spectral_selection = scan.spectral_selection.clone();
     let successive_approximation_low = scan.successive_approximation_low;
-    let eob_run = &mut decode_state.eob_run;
-    let dc_predictor = &mut decode_state.dc_predictors[component_index];
 
     let (spectral_selection_start, spectral_selection_end) = spectral_selection.into_inner();
     if spectral_selection_start == 0 {
@@ -533,6 +531,7 @@ fn decode_block<R: Read>(reader: &mut R,
             count => decode_state.huffman.receive_extend(reader, count)?,
         };
 
+        let dc_predictor = &mut decode_state.dc_predictors[component_index];
         // Malicious JPEG files can cause this add to overflow, therefore we use wrapping_add.
         // One example of such a file is tests/crashtest/images/dc-predictor-overflow.jpg
         *dc_predictor = dc_predictor.wrapping_add(diff);
@@ -541,8 +540,8 @@ fn decode_block<R: Read>(reader: &mut R,
 
     let mut index = cmp::max(spectral_selection_start, 1);
 
-    if index <= spectral_selection_end && *eob_run > 0 {
-        *eob_run -= 1;
+    if index <= spectral_selection_end && decode_state.eob_run > 0 {
+        decode_state.eob_run -= 1;
         return Ok(());
     }
 
@@ -596,7 +595,6 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
     debug_assert_eq!(coefficients.len(), 64);
     let spectral_selection = scan.spectral_selection.clone();
     let successive_approximation_low = scan.successive_approximation_low;
-    let eob_run = &mut decode_state.eob_run;
 
     let bit = 1 << successive_approximation_low;
 
@@ -610,8 +608,8 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
     else {
         // Section G.1.2.3
 
-        if *eob_run > 0 {
-            *eob_run -= 1;
+        if decode_state.eob_run > 0 {
+            decode_state.eob_run -= 1;
             refine_non_zeroes(reader, coefficients, &mut decode_state.huffman, spectral_selection, 64, bit)?;
             return Ok(());
         }
