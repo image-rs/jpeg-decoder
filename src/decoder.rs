@@ -378,18 +378,6 @@ impl<R: Read> Decoder<R> {
             return Err(Error::Format("scan makes use of unset ac huffman table".to_owned()));
         }
 
-        if produce_data {
-            // Prepare the worker thread for the work to come.
-            for (i, component) in components.iter().enumerate() {
-                let row_data = RowData {
-                    index: i,
-                    component: component.clone(),
-                    quantization_table: self.quantization_tables[component.quantization_table_index].clone().unwrap(),
-                };
-
-                worker.start(row_data)?;
-            }
-        }
 
         let blocks_per_mcu: Vec<u16> = components.iter().map(|c| {
             u16::from(c.horizontal_sampling_factor) * u16::from(c.vertical_sampling_factor)
@@ -399,12 +387,16 @@ impl<R: Read> Decoder<R> {
         let is_interleaved = components.len() > 1;
 
         let mut dummy_block = [0; 64];
-        let mut decode_state = DecodeScanState::new(self.restart_interval, components.len());
+        let mut decode_state = DecodeScanState::new(
+            produce_data,
+            self.restart_interval,
+            components.len(),
+        );
 
         for mcu_y in 0 .. frame.mcu_size.height {
             for mcu_x in 0 .. frame.mcu_size.width {
                 for (i, component) in components.iter().enumerate() {
-                    decode_state.new_component(component);
+                    decode_state.new_component(i, component, worker, &self.quantization_tables);
                     for j in 0 .. blocks_per_mcu[i] {
                         let (block_x, block_y) = if is_interleaved {
                             // Section A.2.3
@@ -660,10 +652,11 @@ struct DecodeScanState {
     expected_rst_num: u8,
     eob_run: u16,
     mcu_row_coefficients: Vec<Vec<i16>>,
+    produce_data: bool,
 }
 
 impl DecodeScanState {
-    fn new(restart_interval: u16, component_count: usize) -> DecodeScanState {
+    fn new(produce_data: bool, restart_interval: u16, component_count: usize) -> DecodeScanState {
         DecodeScanState {
             huffman: HuffmanDecoder::new(),
             dc_predictors: [0i16; MAX_COMPONENTS],
@@ -672,12 +665,28 @@ impl DecodeScanState {
             expected_rst_num: 0,
             eob_run: 0,
             mcu_row_coefficients: Vec::with_capacity(component_count),
+            produce_data
         }
     }
 
-    fn new_component(&mut self, component: &Component) {
+    fn new_component(&mut self,
+                     i: usize,
+                     component: &Component,
+                     worker: &mut PlatformWorker,
+                     quantization_tables: &ComponentVec<Arc<[u16; 64]>>,
+    ) -> Result<()> {
         let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
-        self.mcu_row_coefficients.push(vec![0i16; coefficients_per_mcu_row]);
+
+        // seeing this component for the 1st time:
+        if i >= self.mcu_row_coefficients.len() && self.produce_data {
+            self.mcu_row_coefficients.push(vec![0i16; coefficients_per_mcu_row]);
+            worker.start(RowData {
+                index: i,
+                component: component.clone(),
+                quantization_table: quantization_tables[component.quantization_table_index].clone().unwrap(),
+            })?;
+        }
+        Ok(())
     }
 
     fn advance_mcu<R: Read>(&mut self, reader: &mut R, is_last_mcu: bool) -> Result<()> {
