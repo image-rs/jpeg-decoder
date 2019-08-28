@@ -386,7 +386,6 @@ impl<R: Read> Decoder<R> {
         let is_progressive = frame.coding_process == CodingProcess::DctProgressive;
         let is_interleaved = components.len() > 1;
 
-        let mut dummy_block = [0; 64];
         let mut decode_state = DecodeScanState::new(
             produce_data,
             self.restart_interval,
@@ -427,10 +426,8 @@ impl<R: Read> Decoder<R> {
 
                         let mut coefficients = if is_progressive {
                             &mut self.coefficients[scan.component_indices[i]][block_offset .. block_offset + 64]
-                        } else if produce_data {
-                            &mut decode_state.mcu_row_coefficients[i][block_offset - mcu_row_offset..block_offset - mcu_row_offset + 64]
                         } else {
-                            &mut dummy_block[..]
+                            decode_state.coefficient_block(block_offset - mcu_row_offset)
                         }.to_vec();
 
                         if scan.successive_approximation_high == 0 {
@@ -450,10 +447,8 @@ impl<R: Read> Decoder<R> {
                         }
                         if is_progressive {
                             &mut self.coefficients[scan.component_indices[i]][block_offset..block_offset + 64]
-                        } else if produce_data {
-                            &mut decode_state.mcu_row_coefficients[i][block_offset - mcu_row_offset..block_offset - mcu_row_offset + 64]
                         } else {
-                            &mut dummy_block[..]
+                            decode_state.coefficient_block(block_offset - mcu_row_offset)
                         }.copy_from_slice(&coefficients);
                     }
                 }
@@ -647,7 +642,9 @@ struct DecodeScanState {
     expected_rst_num: u8,
     eob_run: u16,
     mcu_row_coefficients: Vec<Vec<i16>>,
+    dummy_block: [i16; 64],
     produce_data: bool,
+    coefficient_idx: usize,
 }
 
 impl DecodeScanState {
@@ -660,7 +657,9 @@ impl DecodeScanState {
             expected_rst_num: 0,
             eob_run: 0,
             mcu_row_coefficients: Vec::with_capacity(component_count),
-            produce_data
+            dummy_block: [0i16; 64],
+            produce_data,
+            coefficient_idx: 0
         }
     }
 
@@ -670,8 +669,8 @@ impl DecodeScanState {
                      worker: &mut PlatformWorker,
                      quantization_tables: &ComponentVec<Arc<[u16; 64]>>,
     ) -> Result<()> {
+        self.coefficient_idx = i;
         let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
-
         // seeing this component for the 1st time:
         if i >= self.mcu_row_coefficients.len() && self.produce_data {
             self.mcu_row_coefficients.push(vec![0i16; coefficients_per_mcu_row]);
@@ -703,6 +702,14 @@ impl DecodeScanState {
             }
         }
         Ok(())
+    }
+
+    fn coefficient_block(&mut self, offset: usize) -> &mut [i16] {
+        if self.produce_data {
+            &mut self.mcu_row_coefficients[self.coefficient_idx][offset..offset + 64]
+        } else {
+            &mut self.dummy_block[..]
+        }
     }
 
     fn advance_eob<R: Read>(&mut self, reader: &mut R, r: u8) -> Result<()> {
