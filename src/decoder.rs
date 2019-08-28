@@ -435,8 +435,7 @@ impl<R: Read> Decoder<R> {
                                          &mut coefficients,
                                          &mut decode_state,
                                          &self.huffman_tables,
-                                         scan,
-                                         i)?;
+                                         scan)?;
                         }
                         else {
                             decode_block_successive_approximation(&mut self.reader,
@@ -494,17 +493,16 @@ fn decode_block<R: Read>(reader: &mut R,
                          coefficients: &mut [i16],
                          decode_state: &mut DecodeScanState,
                          huffman_tables: &DhtTables,
-                         scan: &ScanInfo,
-                         component_index: usize) -> Result<()> {
+                         scan: &ScanInfo) -> Result<()> {
     debug_assert_eq!(coefficients.len(), 64);
 
-    let dc_table = huffman_tables[DC][scan.dc_table_indices[component_index]].as_ref();
-    let ac_table = huffman_tables[AC][scan.ac_table_indices[component_index]].as_ref();
+    let idx = decode_state.component_idx;
 
     if *scan.spectral_selection.start() == 0 {
         // Section F.2.2.1
         // Figure F.12
-        let value = decode_state.huffman.decode(reader, dc_table.unwrap())?;
+        let dc_table = huffman_tables[DC][scan.dc_table_indices[idx]].as_ref().unwrap();
+        let value = decode_state.huffman.decode(reader, dc_table)?;
         let diff = match value {
             0 => 0,
             value if value > 11 => {
@@ -515,7 +513,7 @@ fn decode_block<R: Read>(reader: &mut R,
             count => decode_state.huffman.receive_extend(reader, count)?,
         };
 
-        let dc_predictor = &mut decode_state.dc_predictors[component_index];
+        let dc_predictor = &mut decode_state.dc_predictors[idx];
         // Malicious JPEG files can cause this add to overflow, therefore we use wrapping_add.
         // One example of such a file is tests/crashtest/images/dc-predictor-overflow.jpg
         *dc_predictor = dc_predictor.wrapping_add(diff);
@@ -528,6 +526,8 @@ fn decode_block<R: Read>(reader: &mut R,
         decode_state.eob_run -= 1;
         return Ok(());
     }
+
+    let ac_table = huffman_tables[AC][scan.ac_table_indices[idx]].as_ref();
 
     // Section F.1.2.2.1
     while index <= *scan.spectral_selection.end() {
@@ -644,7 +644,7 @@ struct DecodeScanState {
     mcu_row_coefficients: Vec<Vec<i16>>,
     dummy_block: [i16; 64],
     produce_data: bool,
-    coefficient_idx: usize,
+    component_idx: usize,
 }
 
 impl DecodeScanState {
@@ -659,7 +659,7 @@ impl DecodeScanState {
             mcu_row_coefficients: Vec::with_capacity(component_count),
             dummy_block: [0i16; 64],
             produce_data,
-            coefficient_idx: 0
+            component_idx: 0
         }
     }
 
@@ -669,7 +669,7 @@ impl DecodeScanState {
                      worker: &mut PlatformWorker,
                      quantization_tables: &ComponentVec<Arc<[u16; 64]>>,
     ) -> Result<()> {
-        self.coefficient_idx = i;
+        self.component_idx = i;
         let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
         // seeing this component for the 1st time:
         if i >= self.mcu_row_coefficients.len() && self.produce_data {
@@ -706,7 +706,7 @@ impl DecodeScanState {
 
     fn coefficient_block(&mut self, offset: usize) -> &mut [i16] {
         if self.produce_data {
-            &mut self.mcu_row_coefficients[self.coefficient_idx][offset..offset + 64]
+            &mut self.mcu_row_coefficients[self.component_idx][offset..offset + 64]
         } else {
             &mut self.dummy_block[..]
         }
