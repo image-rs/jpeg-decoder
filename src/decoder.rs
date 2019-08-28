@@ -563,10 +563,7 @@ fn decode_block<R: Read>(reader: &mut R,
             match (byte >> 4, byte & 0x0f) { // Match on higher and lower 4 bits
                 (15, 0) => index += 16, // Run length of 16 zero coefficients.
                 (r, 0) => {
-                    *eob_run = (1 << r) - 1;
-                    if r > 0 {
-                        *eob_run += decode_state.huffman.get_bits(reader, r)?;
-                    }
+                    decode_state.advance_eob(reader, r)?;
                     break;
                 },
                 (r, s) => {
@@ -597,8 +594,6 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
                                                   ac_table: Option<&HuffmanTable>,
                                                   scan: &ScanInfo) -> Result<()> {
     debug_assert_eq!(coefficients.len(), 64);
-
-    let huffman = &mut decode_state.huffman;
     let spectral_selection = scan.spectral_selection.clone();
     let successive_approximation_low = scan.successive_approximation_low;
     let eob_run = &mut decode_state.eob_run;
@@ -608,7 +603,7 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
     if *spectral_selection.start() == 0 {
         // Section G.1.2.1
 
-        if huffman.get_bits(reader, 1)? == 1 {
+        if decode_state.huffman.get_bits(reader, 1)? == 1 {
             coefficients[0] |= bit;
         }
     }
@@ -617,55 +612,36 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
 
         if *eob_run > 0 {
             *eob_run -= 1;
-            refine_non_zeroes(reader, coefficients, huffman, spectral_selection, 64, bit)?;
+            refine_non_zeroes(reader, coefficients, &mut decode_state.huffman, spectral_selection, 64, bit)?;
             return Ok(());
         }
 
         let mut index = *spectral_selection.start();
 
         while index <= *spectral_selection.end() {
-            let byte = huffman.decode(reader, ac_table.unwrap())?;
-            let r = byte >> 4;
-            let s = byte & 0x0f;
-
-            let mut zero_run_length = r;
-            let mut value = 0;
-
-            match s {
-                0 => {
-                    match r {
-                        15 => {
-                            // Run length of 16 zero coefficients.
-                            // We don't need to do anything special here, zero_run_length is 15
-                            // and then value (which is zero) gets written, resulting in 16
-                            // zero coefficients.
-                        },
-                        _ => {
-                            *eob_run = (1 << r) - 1;
-
-                            if r > 0 {
-                                *eob_run += huffman.get_bits(reader, r)?;
-                            }
-
-                            // Force end of block.
-                            zero_run_length = 64;
-                        },
-                    }
+            let byte = decode_state.huffman.decode(reader, ac_table.unwrap())?;
+            let (zero_run_length, value) = match (byte >> 4, byte & 0x0f) {
+                (15, 0) => {
+                    // Run length of 16 zero coefficients.
+                    // We don't need to do anything special here, zero_run_length is 15
+                    // and then value (which is zero) gets written, resulting in 16
+                    // zero coefficients.
+                    (15, 0)
                 },
-                1 => {
-                    if huffman.get_bits(reader, 1)? == 1 {
-                        value = bit;
-                    }
-                    else {
-                        value = -bit;
-                    }
+                (r, 0) => {
+                    decode_state.advance_eob(reader, r)?;
+                    (64, 0) // Force end of block.
+                },
+                (r, 1) => {
+                    let opposite = decode_state.huffman.get_bits(reader, 1)? != 1;
+                    (r, if opposite { -bit } else { bit })
                 },
                 _ => return Err(Error::Format("unexpected huffman code".to_owned())),
-            }
+            };
 
             let range = index ..= *spectral_selection.end();
 
-            index = refine_non_zeroes(reader, coefficients, huffman, range, zero_run_length, bit)?;
+            index = refine_non_zeroes(reader, coefficients, &mut decode_state.huffman, range, zero_run_length, bit)?;
 
             if value != 0 {
                 coefficients[UNZIGZAG[index as usize] as usize] = value;
@@ -723,6 +699,14 @@ impl DecodeScanState {
                 Some(marker) => return Err(Error::Format(format!("found marker {:?} inside scan where RST{} was expected", marker, self.expected_rst_num))),
                 None => return Err(Error::Format(format!("no marker found where RST{} was expected", self.expected_rst_num))),
             }
+        }
+        Ok(())
+    }
+
+    fn advance_eob<R: Read>(&mut self, reader: &mut R, r: u8) -> Result<()> {
+        self.eob_run = (1 << r) - 1;
+        if r > 0 {
+            self.eob_run += self.huffman.get_bits(reader, r)?;
         }
         Ok(())
     }
