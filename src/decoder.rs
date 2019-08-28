@@ -396,7 +396,7 @@ impl<R: Read> Decoder<R> {
         for mcu_y in 0 .. frame.mcu_size.height {
             for mcu_x in 0 .. frame.mcu_size.width {
                 for (i, component) in components.iter().enumerate() {
-                    decode_state.new_component(i, component, worker, &self.quantization_tables);
+                    decode_state.new_component(i, component, worker, &self.quantization_tables)?;
                     for j in 0 .. blocks_per_mcu[i] {
                         let (block_x, block_y) = if is_interleaved {
                             // Section A.2.3
@@ -505,11 +505,8 @@ fn decode_block<R: Read>(reader: &mut R,
 
     let dc_table = huffman_tables[DC][scan.dc_table_indices[component_index]].as_ref();
     let ac_table = huffman_tables[AC][scan.ac_table_indices[component_index]].as_ref();
-    let spectral_selection = scan.spectral_selection.clone();
-    let successive_approximation_low = scan.successive_approximation_low;
 
-    let (spectral_selection_start, spectral_selection_end) = spectral_selection.into_inner();
-    if spectral_selection_start == 0 {
+    if *scan.spectral_selection.start() == 0 {
         // Section F.2.2.1
         // Figure F.12
         let value = decode_state.huffman.decode(reader, dc_table.unwrap())?;
@@ -527,26 +524,26 @@ fn decode_block<R: Read>(reader: &mut R,
         // Malicious JPEG files can cause this add to overflow, therefore we use wrapping_add.
         // One example of such a file is tests/crashtest/images/dc-predictor-overflow.jpg
         *dc_predictor = dc_predictor.wrapping_add(diff);
-        coefficients[0] = *dc_predictor << successive_approximation_low;
+        coefficients[0] = *dc_predictor << scan.successive_approximation_low;
     }
 
-    let mut index = cmp::max(spectral_selection_start, 1);
+    let mut index = cmp::max(*scan.spectral_selection.start(), 1);
 
-    if index <= spectral_selection_end && decode_state.eob_run > 0 {
+    if index <= *scan.spectral_selection.end() && decode_state.eob_run > 0 {
         decode_state.eob_run -= 1;
         return Ok(());
     }
 
     // Section F.1.2.2.1
-    while index <= spectral_selection_end {
+    while index <= *scan.spectral_selection.end() {
         if let Some((value, run)) = decode_state.huffman.decode_fast_ac(reader, ac_table.unwrap())? {
             index += run;
 
-            if index > spectral_selection_end {
+            if index > *scan.spectral_selection.end() {
                 break;
             }
 
-            coefficients[UNZIGZAG[index as usize] as usize] = value << successive_approximation_low;
+            coefficients[UNZIGZAG[index as usize] as usize] = value << scan.successive_approximation_low;
             index += 1;
         }
         else {
@@ -560,11 +557,12 @@ fn decode_block<R: Read>(reader: &mut R,
                 (r, s) => {
                     index += r;
 
-                    if index > spectral_selection_end {
+                    if index > *scan.spectral_selection.end() {
                         break;
                     }
 
-                    coefficients[UNZIGZAG[index as usize] as usize] = decode_state.huffman.receive_extend(reader, s)? << successive_approximation_low;
+                    coefficients[UNZIGZAG[index as usize] as usize] =
+                        decode_state.huffman.receive_extend(reader, s)? << scan.successive_approximation_low;
                     index += 1;
                 }
             }
@@ -585,12 +583,9 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
                                                   ac_table: Option<&HuffmanTable>,
                                                   scan: &ScanInfo) -> Result<()> {
     debug_assert_eq!(coefficients.len(), 64);
-    let spectral_selection = scan.spectral_selection.clone();
-    let successive_approximation_low = scan.successive_approximation_low;
+    let bit = 1 << scan.successive_approximation_low;
 
-    let bit = 1 << successive_approximation_low;
-
-    if *spectral_selection.start() == 0 {
+    if *scan.spectral_selection.start() == 0 {
         // Section G.1.2.1
 
         if decode_state.huffman.get_bits(reader, 1)? == 1 {
@@ -602,13 +597,13 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
 
         if decode_state.eob_run > 0 {
             decode_state.eob_run -= 1;
-            refine_non_zeroes(reader, coefficients, &mut decode_state.huffman, spectral_selection, 64, bit)?;
+            refine_non_zeroes(reader, coefficients, &mut decode_state.huffman, scan.spectral_selection.clone(), 64, bit)?;
             return Ok(());
         }
 
-        let mut index = *spectral_selection.start();
+        let mut index = *scan.spectral_selection.start();
 
-        while index <= *spectral_selection.end() {
+        while index <= *scan.spectral_selection.end() {
             let byte = decode_state.huffman.decode(reader, ac_table.unwrap())?;
             let (zero_run_length, value) = match (byte >> 4, byte & 0x0f) {
                 (15, 0) => {
@@ -629,7 +624,7 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
                 _ => return Err(Error::Format("unexpected huffman code".to_owned())),
             };
 
-            let range = index ..= *spectral_selection.end();
+            let range = index ..= *scan.spectral_selection.end();
 
             index = refine_non_zeroes(reader, coefficients, &mut decode_state.huffman, range, zero_run_length, bit)?;
 
