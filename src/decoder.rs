@@ -560,32 +560,25 @@ fn decode_block<R: Read>(reader: &mut R,
         }
         else {
             let byte = decode_state.huffman.decode(reader, ac_table.unwrap())?;
-            let r = byte >> 4;
-            let s = byte & 0x0f;
-
-            if s == 0 {
-                match r {
-                    15 => index += 16, // Run length of 16 zero coefficients.
-                    _  => {
-                        *eob_run = (1 << r) - 1;
-
-                        if r > 0 {
-                            *eob_run += decode_state.huffman.get_bits(reader, r)?;
-                        }
-
-                        break;
-                    },
-                }
-            }
-            else {
-                index += r;
-
-                if index > spectral_selection_end {
+            match (byte >> 4, byte & 0x0f) { // Match on higher and lower 4 bits
+                (15, 0) => index += 16, // Run length of 16 zero coefficients.
+                (r, 0) => {
+                    *eob_run = (1 << r) - 1;
+                    if r > 0 {
+                        *eob_run += decode_state.huffman.get_bits(reader, r)?;
+                    }
                     break;
-                }
+                },
+                (r, s) => {
+                    index += r;
 
-                coefficients[UNZIGZAG[index as usize] as usize] = decode_state.huffman.receive_extend(reader, s)? << successive_approximation_low;
-                index += 1;
+                    if index > spectral_selection_end {
+                        break;
+                    }
+
+                    coefficients[UNZIGZAG[index as usize] as usize] = decode_state.huffman.receive_extend(reader, s)? << successive_approximation_low;
+                    index += 1;
+                }
             }
         }
     }
