@@ -367,15 +367,7 @@ impl<R: Read> Decoder<R> {
             fill_default_mjpeg_tables(scan, &mut self.huffman_tables);
         }
 
-        // Verify that all required huffman tables has been set.
-        if *scan.spectral_selection.start() == 0 &&
-                scan.dc_table_indices.iter().any(|&i| self.huffman_tables[DC][i].is_none()) {
-            return Err(Error::Format("scan makes use of unset dc huffman table".to_owned()));
-        }
-        if *scan.spectral_selection.end() > 0 &&
-                scan.ac_table_indices.iter().any(|&i| self.huffman_tables[AC][i].is_none()) {
-            return Err(Error::Format("scan makes use of unset ac huffman table".to_owned()));
-        }
+        self.check_huffman_tables_for_scan(scan)?;
 
         let is_interleaved = components.len() > 1;
 
@@ -441,6 +433,20 @@ impl<R: Read> Decoder<R> {
             Some(data)
         } else { None };
         Ok(ScanData { marker, data })
+    }
+
+    /// Verify that all required huffman tables have been set.
+    #[inline]
+    fn check_huffman_tables_for_scan(&mut self, scan: &ScanInfo) -> Result<()> {
+        if *scan.spectral_selection.start() == 0 &&
+            scan.dc_table_indices.iter().any(|&i| self.huffman_tables[DC][i].is_none()) {
+            Err(Error::Format("scan makes use of unset dc huffman table".to_owned()))
+        } else if *scan.spectral_selection.end() > 0 &&
+            scan.ac_table_indices.iter().any(|&i| self.huffman_tables[AC][i].is_none()) {
+            Err(Error::Format("scan makes use of unset ac huffman table".to_owned()))
+        } else {
+            Ok(())
+        }
     }
 }
 
