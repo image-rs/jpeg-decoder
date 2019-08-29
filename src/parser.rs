@@ -365,9 +365,12 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
         //      shall be zero for 8 bit sample precision P (see B.2.2)."
         // libjpeg allows this behavior though, and there are images in the wild using it. So to
         // match libjpeg's behavior we are deviating from the JPEG spec here.
-        if precision > 1 {
-            return Err(Error::Format(format!("invalid precision {} in DQT", precision)));
-        }
+        let is_precise = match precision {
+            0 => false,
+            1 => true,
+            _ => return Err(Error::Format(format!("invalid precision {} in DQT", precision)))
+        };
+
         if index > 3 {
             return Err(Error::Format(format!("invalid destination identifier {} in DQT", index)));
         }
@@ -378,10 +381,10 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
         let mut table = [0u16; 64];
 
         for table_value in table.iter_mut() {
-            *table_value = match precision {
-                0 => u16::from(reader.read_u8()?),
-                1 => reader.read_u16::<BigEndian>()?,
-                _ => unreachable!(),
+            *table_value = if is_precise {
+                reader.read_u16::<BigEndian>()?
+            } else {
+                u16::from(reader.read_u8()?)
             };
         }
 
