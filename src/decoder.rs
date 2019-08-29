@@ -377,11 +377,6 @@ impl<R: Read> Decoder<R> {
             return Err(Error::Format("scan makes use of unset ac huffman table".to_owned()));
         }
 
-
-        let blocks_per_mcu: Vec<u16> = components.iter().map(|c| {
-            u16::from(c.horizontal_sampling_factor) * u16::from(c.vertical_sampling_factor)
-        }).collect();
-
         let is_interleaved = components.len() > 1;
 
         let mut decode_state = DecodeScanState::new(produce_data, self.restart_interval);
@@ -391,8 +386,8 @@ impl<R: Read> Decoder<R> {
                 for (i, component) in components.iter().enumerate() {
                     let coefficient_line = &mut self.coefficients[scan.component_indices[i]];
                     decode_state.new_component(i, component, worker, &self.quantization_tables)?;
-                    for j in 0 .. blocks_per_mcu[i] {
-                        let (block_x, block_y) = block_position(frame, blocks_per_mcu[i], is_interleaved, (mcu_x, mcu_y), component, j);
+                    for j in 0 .. component.blocks_per_mcu() {
+                        let (block_x, block_y) = block_position(frame, is_interleaved, (mcu_x, mcu_y), component, j);
                         if !is_interleaved && (block_x * 8 >= component.size.width || block_y * 8 >= component.size.height) {
                             continue;
                         }
@@ -452,23 +447,23 @@ impl<R: Read> Decoder<R> {
 #[inline]
 fn block_position(
     frame: &FrameInfo,
-    blocks_per_mcu: u16,
     is_interleaved: bool,
     (mcu_x, mcu_y): (u16, u16),
     component: &Component,
     block_index: u16) -> (u16, u16) {
+    let sampling_h = u16::from(component.horizontal_sampling_factor);
+    let sampling_v = u16::from(component.vertical_sampling_factor);
+
     if is_interleaved {
         // Section A.2.3
-        let sampling_h = u16::from(component.horizontal_sampling_factor);
-        let sampling_v = u16::from(component.vertical_sampling_factor);
         (mcu_x * sampling_h + block_index % sampling_h,
          mcu_y * sampling_v + block_index / sampling_h)
     } else {
         // Section A.2.2
-
         let blocks_per_row = component.block_size.width as usize;
         let block_num = block_index as usize +
-            (mcu_y as usize * frame.mcu_size.width as usize + mcu_x as usize) * blocks_per_mcu as usize;
+            (mcu_y as usize * frame.mcu_size.width as usize + mcu_x as usize) *
+                (sampling_h * sampling_v) as usize;
 
         let x = (block_num % blocks_per_row) as u16;
         let y = (block_num / blocks_per_row) as u16;

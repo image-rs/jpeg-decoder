@@ -64,6 +64,14 @@ pub struct Component {
     pub block_size: Dimensions,
 }
 
+impl Component {
+    #[inline]
+    pub fn blocks_per_mcu(&self) -> u16 {
+        u16::from(self.horizontal_sampling_factor) *
+            u16::from(self.vertical_sampling_factor)
+    }
+}
+
 #[derive(Debug)]
 pub enum AppData {
     Adobe(AdobeColorTransform),
