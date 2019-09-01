@@ -85,7 +85,7 @@ fn read_length<R: Read>(reader: &mut R, marker: Marker) -> Result<usize> {
     // length is including itself.
     let length = reader.read_u16::<BigEndian>()? as usize;
 
-    if length < 2 {
+    if length <= 2 {
         return Err(Error::Format(format!("encountered {:?} with invalid length {}", marker, length)));
     }
 
