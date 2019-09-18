@@ -498,10 +498,10 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
                 bytes_read = buffer.len();
 
                 // http://www.w3.org/Graphics/JPEG/jfif3.pdf
-                if buffer[0 .. 5] == [b'J', b'F', b'I', b'F', b'\0'] {
+                if buffer.starts_with(b"JFIF\0") {
                     result = Some(AppData::Jfif);
                 // https://sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#AVI1
-                } else if buffer[0 .. 5] == [b'A', b'V', b'I', b'1', b'\0'] {
+                } else if buffer.start_with(b"AVI1\0") {
                     result = Some(AppData::Avi1);
                 }
             }
@@ -513,7 +513,7 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
                 bytes_read = buffer.len();
 
                 // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-                if buffer[0 .. 6] == [b'A', b'd', b'o', b'b', b'e', b'\0'] {
+                if buffer.starts_with(b"Adobe\0") {
                     let color_transform = match buffer[11] {
                         0 => AdobeColorTransform::Unknown,
                         1 => AdobeColorTransform::YCbCr,
