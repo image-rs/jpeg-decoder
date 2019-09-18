@@ -501,7 +501,7 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
                 if buffer.starts_with(b"JFIF\0") {
                     result = Some(AppData::Jfif);
                 // https://sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#AVI1
-                } else if buffer.start_with(b"AVI1\0") {
+                } else if buffer.starts_with(b"AVI1\0") {
                     result = Some(AppData::Avi1);
                 }
             }
