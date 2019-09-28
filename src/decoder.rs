@@ -40,9 +40,9 @@ impl PixelFormat {
     /// Determine the size in bytes of each pixel in this format
     pub fn pixel_size(&self) -> usize {
         match self {
-            Self::L8 => 1,
-            Self::RGB24 => 3,
-            Self::CMYK32 => 4,
+            PixelFormat::L8 => 1,
+            PixelFormat::RGB24 => 3,
+            PixelFormat::CMYK32 => 4,
         }
     }
 }
