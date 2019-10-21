@@ -2,7 +2,7 @@ use byteorder::ReadBytesExt;
 use error::{Error, Result, UnsupportedFeature};
 use huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
 use marker::Marker;
-use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
+use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, JfifApp0, Density, EntropyCoding, FrameInfo,
              parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, ScanInfo};
 use upsampler::Upsampler;
 use std::cmp;
@@ -45,6 +45,8 @@ pub struct ImageInfo {
     pub height: u16,
     /// The pixel format of the image.
     pub pixel_format: PixelFormat,
+    /// The density of the image, if available.
+    pub density: Option<Density>,
 }
 
 /// JPEG decoder
@@ -58,7 +60,7 @@ pub struct Decoder<R> {
 
     restart_interval: u16,
     color_transform: Option<AdobeColorTransform>,
-    is_jfif: bool,
+    jfif_app0: Option<JfifApp0>,
     is_mjpeg: bool,
 
     // Used for progressive JPEGs.
@@ -78,7 +80,7 @@ impl<R: Read> Decoder<R> {
             quantization_tables: [None, None, None, None],
             restart_interval: 0,
             color_transform: None,
-            is_jfif: false,
+            jfif_app0: None,
             is_mjpeg: false,
             coefficients: Vec::new(),
             coefficients_finished: [0; MAX_COMPONENTS],
@@ -99,10 +101,13 @@ impl<R: Read> Decoder<R> {
                     _ => panic!(),
                 };
 
+                let density = self.jfif_app0.as_ref().map(|j| j.density.clone());
+
                 Some(ImageInfo {
                     width: frame.image_size.width,
                     height: frame.image_size.height,
-                    pixel_format: pixel_format,
+                    pixel_format,
+                    density,
                 })
             },
             None => None,
@@ -274,7 +279,7 @@ impl<R: Read> Decoder<R> {
                     if let Some(data) = parse_app(&mut self.reader, marker)? {
                         match data {
                             AppData::Adobe(color_transform) => self.color_transform = Some(color_transform),
-                            AppData::Jfif => {
+                            AppData::Jfif(jfif) => {
                                 // From the JFIF spec:
                                 // "The APP0 marker is used to identify a JPEG FIF file.
                                 //     The JPEG FIF APP0 marker is mandatory right after the SOI marker."
@@ -286,7 +291,7 @@ impl<R: Read> Decoder<R> {
                                 }
                                 */
 
-                                self.is_jfif = true;
+                                self.jfif_app0 = Some(jfif);
                             },
                             AppData::Avi1 => self.is_mjpeg = true,
                         }
@@ -329,7 +334,7 @@ impl<R: Read> Decoder<R> {
         }
 
         let frame = self.frame.as_ref().unwrap();
-        compute_image(&frame.components, &planes, frame.image_size, self.is_jfif, self.color_transform)
+        compute_image(&frame.components, &planes, frame.image_size, self.jfif_app0.is_some(), self.color_transform)
     }
 
     fn read_marker(&mut self) -> Result<Marker> {

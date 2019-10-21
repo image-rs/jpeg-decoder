@@ -12,6 +12,45 @@ pub struct Dimensions {
     pub height: u16,
 }
 
+/// The image density, in x and y directions with a common unit
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Density {
+    /// The pixel density, measured in `units`, in the x direction
+    pub x: u16,
+    /// The pixel density, measured in `units`, in the y direction
+    pub y: u16,
+    /// The unit of measurement that both `x` and `y` are specified in.
+    pub units: DensityUnits,
+}
+
+/// The different units that `x` and `y` pixel density can be measured in
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DensityUnits {
+    /// no units, `x` and `y` specify the pixel aspect ratio
+    PixelAspectRatio,
+    /// `x` and `y` are dots per inch
+    DotsPerInch,
+    /// `x` and `y` are dots per cm
+    DotsPerCm,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Thumbnail {
+    pub width: u8,
+    pub height: u8,
+
+    // XXX: Thumbnail data is "(3n bytes) Packed (24-bit) RGB values for the thumbnail
+    // pixels, n = Xthumbnail * Ythumbnail".
+    // data: Vec<u8>
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct JfifApp0 {
+    // version: &[u8; 4],
+    pub density: Density,
+    thumbnail: Thumbnail,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EntropyCoding {
     Huffman,
@@ -65,7 +104,7 @@ pub struct Component {
 #[derive(Debug)]
 pub enum AppData {
     Adobe(AdobeColorTransform),
-    Jfif,
+    Jfif(JfifApp0),
     Avi1,
 }
 
@@ -472,6 +511,43 @@ pub fn parse_com<R: Read>(reader: &mut R) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
+// https://www.w3.org/Graphics/JPEG/jfif3.pdf
+pub fn parse_jfif_app0<R: Read>(reader: &mut R, length: usize) -> Result<JfifApp0> {
+    // Total length of APP0 = 16 bytes + 3 * n, where n = Xthumbnail * Ythumbnail
+    // We already read the 2-byte length and 5-byte identifier, so at least 9 bytes remain.
+    // We are going to ignore the thumbnail for now.
+    if length < 9 {
+        return Err(Error::Format("JFIF APP0 with invalid length".to_owned()));
+    }
+
+    // version = 0x0102
+    skip_bytes(reader, 2)?;
+
+    let units = match reader.read_u8()? {
+        0 => DensityUnits::PixelAspectRatio,
+        1 => DensityUnits::DotsPerInch,
+        2 => DensityUnits::DotsPerCm,
+        _ => return Err(Error::Format("invalid density units in APP0".to_owned())),
+    };
+    let x_density = reader.read_u16::<BigEndian>()?;
+    let y_density = reader.read_u16::<BigEndian>()?;
+
+    let x_thumbnail = reader.read_u8()?;
+    let y_thumbnail = reader.read_u8()?;
+
+    Ok(JfifApp0 {
+        density: Density {
+            x: x_density,
+            y: y_density,
+            units,
+        },
+        thumbnail: Thumbnail {
+            width: x_thumbnail,
+            height: y_thumbnail,
+        }
+    })
+}
+
 // Section B.2.4.6
 pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppData>> {
     let length = read_length(reader, marker)?;
@@ -487,7 +563,9 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
 
                 // http://www.w3.org/Graphics/JPEG/jfif3.pdf
                 if &buffer[0 .. 5] == &[b'J', b'F', b'I', b'F', b'\0'] {
-                    result = Some(AppData::Jfif);
+                    let jfif = parse_jfif_app0(reader, length - bytes_read)?;
+                    bytes_read += 9;
+                    result = Some(AppData::Jfif(jfif));
                 // https://sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#AVI1
                 } else if &buffer[0 .. 5] == &[b'A', b'V', b'I', b'1', b'\0'] {
                     result = Some(AppData::Avi1);
