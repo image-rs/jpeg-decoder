@@ -2,8 +2,15 @@
 // One example is tests/crashtest/images/imagetestsuite/b0b8914cc5f7a6eff409f16d8cc236c5.jpg
 // That's why wrapping operators are needed.
 
+pub fn dequantize_and_idct_block_1x1(coefficients: &[i16], quantization_table: &[u16; 64], _output_linestride: usize, output: &mut [u8]) {
+    debug_assert_eq!(coefficients.len(), 64);
+
+    let s0 = (coefficients[0] as i32 * quantization_table[0] as i32).wrapping_add(128 * 8) / 8;
+    output[0] = stbi_clamp(s0);
+}
+
 // This is based on stb_image's 'stbi__idct_block'.
-pub fn dequantize_and_idct_block(coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
+pub fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
     debug_assert_eq!(coefficients.len(), 64);
 
     let mut temp = [0i32; 64];

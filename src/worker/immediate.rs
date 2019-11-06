@@ -1,6 +1,6 @@
 use decoder::MAX_COMPONENTS;
 use error::Result;
-use idct::dequantize_and_idct_block;
+use idct::{ dequantize_and_idct_block_8x8, dequantize_and_idct_block_1x1 };
 use std::mem;
 use std::sync::Arc;
 use parser::Component;
@@ -26,7 +26,7 @@ impl ImmediateWorker {
         assert!(self.results[data.index].is_empty());
 
         self.offsets[data.index] = 0;
-        self.results[data.index].resize(data.component.block_size.width as usize * data.component.block_size.height as usize * 64, 0u8);
+        self.results[data.index].resize(data.component.block_size.width as usize * data.component.block_size.height as usize * data.component.dct_scale * data.component.dct_scale, 0u8);
         self.components[data.index] = Some(data.component);
         self.quantization_tables[data.index] = Some(data.quantization_table);
     }
@@ -36,20 +36,25 @@ impl ImmediateWorker {
         let component = self.components[index].as_ref().unwrap();
         let quantization_table = self.quantization_tables[index].as_ref().unwrap();
         let block_count = component.block_size.width as usize * component.vertical_sampling_factor as usize;
-        let line_stride = component.block_size.width as usize * 8;
+        let line_stride = component.block_size.width as usize * component.dct_scale;
 
         assert_eq!(data.len(), block_count * 64);
 
         for i in 0..block_count {
-            let x = (i % component.block_size.width as usize) * 8;
-            let y = (i / component.block_size.width as usize) * 8;
-            dequantize_and_idct_block(&data[i * 64..(i + 1) * 64],
-                                    quantization_table,
-                                    line_stride,
-                                    &mut self.results[index][self.offsets[index] + y * line_stride + x..]);
+            let x = (i % component.block_size.width as usize) * component.dct_scale;
+            let y = (i / component.block_size.width as usize) * component.dct_scale;
+
+            let coefficients = &data[i * 64..(i + 1) * 64];
+            let output = &mut self.results[index][self.offsets[index] + y * line_stride + x..];
+
+            match component.dct_scale {
+                8 => dequantize_and_idct_block_8x8(coefficients, quantization_table, line_stride, output),
+                1 => dequantize_and_idct_block_1x1(coefficients, quantization_table, line_stride, output),
+                _ => unimplemented!(),
+            }
         }
 
-        self.offsets[index] += data.len();
+        self.offsets[index] += block_count * component.dct_scale * component.dct_scale;
     }
     pub fn get_result_immediate(&mut self, index: usize) -> Vec<u8> {
         mem::replace(&mut self.results[index], Vec::new())

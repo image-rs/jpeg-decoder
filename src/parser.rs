@@ -34,6 +34,7 @@ pub struct FrameInfo {
     pub precision: u8,
 
     pub image_size: Dimensions,
+    pub output_size: Dimensions,
     pub mcu_size: Dimensions,
     pub components: Vec<Component>,
 }
@@ -57,6 +58,8 @@ pub struct Component {
     pub vertical_sampling_factor: u8,
 
     pub quantization_table_index: usize,
+
+    pub dct_scale: usize,
 
     pub size: Dimensions,
     pub block_size: Dimensions,
@@ -104,7 +107,7 @@ fn skip_bytes<R: Read>(reader: &mut R, length: usize) -> Result<()> {
 }
 
 // Section B.2.2
-pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
+pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker, scale: usize) -> Result<FrameInfo> {
     let length = read_length(reader, marker)?;
 
     if length <= 6 {
@@ -201,6 +204,7 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
             horizontal_sampling_factor: horizontal_sampling_factor,
             vertical_sampling_factor: vertical_sampling_factor,
             quantization_table_index: quantization_table_index as usize,
+            dct_scale: scale,
             size: Dimensions {width: 0, height: 0},
             block_size: Dimensions {width: 0, height: 0},
         });
@@ -214,8 +218,8 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
     };
 
     for component in &mut components {
-        component.size.width = (width as f32 * (component.horizontal_sampling_factor as f32 / h_max as f32)).ceil() as u16;
-        component.size.height = (height as f32 * (component.vertical_sampling_factor as f32 / v_max as f32)).ceil() as u16;
+        component.size.width = (width as f32 * component.horizontal_sampling_factor as f32 * component.dct_scale as f32 / (h_max as f32 * 8.0)).ceil() as u16;
+        component.size.height = (height as f32 * component.vertical_sampling_factor as f32 * component.dct_scale as f32 / (v_max as f32 * 8.0)).ceil() as u16;
 
         component.block_size.width = mcu_size.width * component.horizontal_sampling_factor as u16;
         component.block_size.height = mcu_size.height * component.vertical_sampling_factor as u16;
@@ -228,6 +232,7 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
         entropy_coding: entropy_coding,
         precision: precision,
         image_size: Dimensions {width: width, height: height},
+        output_size: Dimensions {width: (width as f32 * scale as f32 / 8.0).ceil() as u16, height: (height as f32 * scale as f32 / 8.0).ceil() as u16},
         mcu_size: mcu_size,
         components: components,
     })
