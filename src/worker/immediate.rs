@@ -1,6 +1,6 @@
 use decoder::MAX_COMPONENTS;
 use error::Result;
-use idct::{ dequantize_and_idct_block_8x8, dequantize_and_idct_block_1x1 };
+use idct::{ dequantize_and_idct_block_8x8, dequantize_and_idct_block_4x4, dequantize_and_idct_block_2x2, dequantize_and_idct_block_1x1 };
 use std::mem;
 use std::sync::Arc;
 use parser::Component;
@@ -49,6 +49,8 @@ impl ImmediateWorker {
 
             match component.dct_scale {
                 8 => dequantize_and_idct_block_8x8(coefficients, quantization_table, line_stride, output),
+                4 => dequantize_and_idct_block_4x4(coefficients, quantization_table, line_stride, output),
+                2 => dequantize_and_idct_block_2x2(coefficients, quantization_table, line_stride, output),
                 1 => dequantize_and_idct_block_1x1(coefficients, quantization_table, line_stride, output),
                 _ => unimplemented!(),
             }
