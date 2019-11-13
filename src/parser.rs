@@ -107,7 +107,7 @@ fn skip_bytes<R: Read>(reader: &mut R, length: usize) -> Result<()> {
 }
 
 // Section B.2.2
-pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker, scale: usize) -> Result<FrameInfo> {
+pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker, requested_size: Option<Dimensions>) -> Result<FrameInfo> {
     let length = read_length(reader, marker)?;
 
     if length <= 6 {
@@ -158,6 +158,10 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker, scale: usize) -> Resul
     if width == 0 {
         return Err(Error::Format("zero width in frame header".to_owned()));
     }
+
+    let scale = if let Some(req) = requested_size {
+        crate::idct::choose_idct_size(Dimensions { width, height }, req)
+    } else { 8 };
 
     let component_count = reader.read_u8()?;
 

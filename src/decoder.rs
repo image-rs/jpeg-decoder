@@ -50,7 +50,7 @@ pub struct ImageInfo {
 /// JPEG decoder
 pub struct Decoder<R> {
     reader: R,
-    scale: usize,
+    requested_size: Option<Dimensions>,
 
     frame: Option<FrameInfo>,
     dc_huffman_tables: Vec<Option<HuffmanTable>>,
@@ -71,15 +71,26 @@ pub struct Decoder<R> {
 impl<R: Read> Decoder<R> {
     /// Creates a new `Decoder` using the reader `reader`.
     pub fn new(reader: R) -> Decoder<R> {
-        Decoder::new_scaled(reader, 8)
+        Decoder::init(reader, None)
     }
 
-    /// Creates a new `Decoder` using the reader `reader` that scales
-    /// down the image by a factor of `scale/8`.
-    pub fn new_scaled(reader: R, scale: usize) -> Decoder<R> {
+    /// Creates a new `Decoder` using the reader `reader` that returns a
+    /// scaled image that is equal to or larger than the requested size in at
+    /// least one axis, or the full size of the image if the requested size is
+    /// larger.
+    /// 
+    /// This efficiently scales down the image by one of a fixed set of
+    /// available ratios during decoding. To generate a thumbnail of an
+    /// exact size, pass the desired size or larger and then scale to the
+    /// final size using a traditional resampling algorithm.
+    pub fn scaled(reader: R, requested_width: u16, requested_height: u16) -> Decoder<R> {
+        Decoder::init(reader, Some(Dimensions{ width: requested_width, height: requested_height }))
+    }
+    
+    fn init(reader: R, requested_size: Option<Dimensions>) -> Decoder<R> {
         Decoder {
             reader: reader,
-            scale: scale,
+            requested_size,
             frame: None,
             dc_huffman_tables: vec![None, None, None, None],
             ac_huffman_tables: vec![None, None, None, None],
@@ -161,7 +172,7 @@ impl<R: Read> Decoder<R> {
                         return Err(Error::Unsupported(UnsupportedFeature::Hierarchical));
                     }
 
-                    let frame = parse_sof(&mut self.reader, marker, self.scale)?;
+                    let frame = parse_sof(&mut self.reader, marker, self.requested_size)?;
                     let component_count = frame.components.len();
 
                     if frame.is_differential {
