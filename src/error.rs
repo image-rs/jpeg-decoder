@@ -1,8 +1,6 @@
-use std::any::Any;
 use std::error::Error as StdError;
 use std::fmt;
 use std::io::Error as IoError;
-use std::sync::mpsc::{RecvError, SendError};
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 
@@ -41,7 +39,7 @@ pub enum Error {
     /// An I/O error occurred while decoding the image.
     Io(IoError),
     /// An internal error occurred while decoding the image.
-    Internal(Box<dyn StdError>),
+    Internal(Box<dyn StdError + Send + Sync + 'static>), //TODO: not used, can be removed with the next version bump
 }
 
 impl fmt::Display for Error {
@@ -77,17 +75,5 @@ impl StdError for Error {
 impl From<IoError> for Error {
     fn from(err: IoError) -> Error {
         Error::Io(err)
-    }
-}
-
-impl From<RecvError> for Error {
-    fn from(err: RecvError) -> Error {
-        Error::Internal(Box::new(err))
-    }
-}
-
-impl<T: Any + Send> From<SendError<T>> for Error {
-    fn from(err: SendError<T>) -> Error {
-        Error::Internal(Box::new(err))
     }
 }
