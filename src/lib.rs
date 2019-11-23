@@ -27,6 +27,7 @@
 //! ```
 
 #![deny(missing_docs)]
+#![forbid(unsafe_code)]
 
 extern crate byteorder;
 #[cfg(feature="rayon")]
