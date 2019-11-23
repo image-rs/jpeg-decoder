@@ -232,7 +232,7 @@ impl<R: Read> Decoder<R> {
                 Marker::DQT => {
                     let tables = parse_dqt(&mut self.reader)?;
 
-                    for (i, &table) in tables.into_iter().enumerate() {
+                    for (i, &table) in tables.iter().enumerate() {
                         if let Some(table) = table {
                             let mut unzigzagged_table = [0u16; 64];
 
