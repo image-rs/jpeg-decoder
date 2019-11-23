@@ -40,14 +40,14 @@ impl Worker for ThreadedWorker {
         Ok(ThreadedWorker { sender: tx })
     }
     fn start(&mut self, row_data: RowData) -> Result<()> {
-        Ok(self.sender.send(WorkerMsg::Start(row_data))?)
+        Ok(self.sender.send(WorkerMsg::Start(row_data)).expect("jpeg-decoder worker thread error"))
     }
     fn append_row(&mut self, row: (usize, Vec<i16>)) -> Result<()> {
-        Ok(self.sender.send(WorkerMsg::AppendRow(row))?)
+        Ok(self.sender.send(WorkerMsg::AppendRow(row)).expect("jpeg-decoder worker thread error"))
     }
     fn get_result(&mut self, index: usize) -> Result<Vec<u8>> {
         let (tx, rx) = mpsc::channel();
-        self.sender.send(WorkerMsg::GetResult((index, tx)))?;
-        Ok(rx.recv()?)
+        self.sender.send(WorkerMsg::GetResult((index, tx))).expect("jpeg-decoder worker thread error");
+        Ok(rx.recv().expect("jpeg-decoder worker thread error"))
     }
 }
