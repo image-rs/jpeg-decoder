@@ -13,3 +13,6 @@ env:
 script:
   - cargo build --verbose --no-default-features --features "$FEATURES"
   - cargo test --verbose --no-default-features --features "$FEATURES"
+  - cargo bench --verbose --no-default-features --features "$FEATURES"
+
+cache: cargo
