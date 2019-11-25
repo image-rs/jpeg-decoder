@@ -32,7 +32,9 @@ fn reftest_file(path: &Path) {
 
 fn reftest_scaled_file(path: &Path, width: u16, height: u16, ref_path: &Path) {
     let file = File::open(path).unwrap();
-    let decoder = jpeg::Decoder::scaled(file, width, height);
+    let mut decoder = jpeg::Decoder::new(file);
+    decoder.read_info().unwrap();
+    decoder.scale(width, height).unwrap();
     reftest_decoder(decoder, path, &ref_path);
 }
 

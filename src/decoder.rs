@@ -50,7 +50,6 @@ pub struct ImageInfo {
 /// JPEG decoder
 pub struct Decoder<R> {
     reader: R,
-    requested_size: Option<Dimensions>,
 
     frame: Option<FrameInfo>,
     dc_huffman_tables: Vec<Option<HuffmanTable>>,
@@ -71,26 +70,8 @@ pub struct Decoder<R> {
 impl<R: Read> Decoder<R> {
     /// Creates a new `Decoder` using the reader `reader`.
     pub fn new(reader: R) -> Decoder<R> {
-        Decoder::init(reader, None)
-    }
-
-    /// Creates a new `Decoder` using the reader `reader` that returns a
-    /// scaled image that is equal to or larger than the requested size in at
-    /// least one axis, or the full size of the image if the requested size is
-    /// larger.
-    /// 
-    /// This efficiently scales down the image by one of a fixed set of
-    /// available ratios during decoding. To generate a thumbnail of an
-    /// exact size, pass the desired size or larger and then scale to the
-    /// final size using a traditional resampling algorithm.
-    pub fn scaled(reader: R, requested_width: u16, requested_height: u16) -> Decoder<R> {
-        Decoder::init(reader, Some(Dimensions{ width: requested_width, height: requested_height }))
-    }
-    
-    fn init(reader: R, requested_size: Option<Dimensions>) -> Decoder<R> {
         Decoder {
             reader: reader,
-            requested_size,
             frame: None,
             dc_huffman_tables: vec![None, None, None, None],
             ac_huffman_tables: vec![None, None, None, None],
@@ -135,6 +116,23 @@ impl<R: Read> Decoder<R> {
         self.decode_internal(true).map(|_| ())
     }
 
+    /// Configure the decoder to scale the image during decoding.
+    /// 
+    /// This efficiently scales the image by the smallest supported scale
+    /// factor that produces an image larger than or equal to the requested
+    /// size in at least one axis. The currently implemented scale factors
+    /// are 1/8, 1/4, 1/2 and 1.
+    /// 
+    /// To generate a thumbnail of an exact size, pass the desired size and
+    /// then scale to the final size using a traditional resampling algorithm.
+    pub fn scale(&mut self, requested_width: u16, requested_height: u16) -> Result<(u16, u16)> {
+        self.read_info()?;
+        let frame = self.frame.as_mut().unwrap();
+        let idct_size = crate::idct::choose_idct_size(frame.image_size, Dimensions{ width: requested_width, height: requested_height });
+        frame.update_idct_size(idct_size);
+        Ok((frame.output_size.width, frame.output_size.height))
+    }
+
     /// Decodes the image and returns the decoded pixels if successful.
     pub fn decode(&mut self) -> Result<Vec<u8>> {
         self.decode_internal(false)
@@ -172,7 +170,7 @@ impl<R: Read> Decoder<R> {
                         return Err(Error::Unsupported(UnsupportedFeature::Hierarchical));
                     }
 
-                    let frame = parse_sof(&mut self.reader, marker, self.requested_size)?;
+                    let frame = parse_sof(&mut self.reader, marker)?;
                     let component_count = frame.components.len();
 
                     if frame.is_differential {

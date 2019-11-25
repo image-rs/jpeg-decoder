@@ -3,7 +3,7 @@
 // That's why wrapping operators are needed.
 use crate::parser::Dimensions;
 
-pub fn choose_idct_size(full_size: Dimensions, requested_size: Dimensions) -> usize {
+pub(crate) fn choose_idct_size(full_size: Dimensions, requested_size: Dimensions) -> usize {
     fn scaled(len: u16, scale: usize) -> u16 { ((len as u32 * scale as u32 - 1) / 8 + 1) as u16 }
 
     for &scale in &[1, 2, 4] {
@@ -34,7 +34,7 @@ fn test_choose_idct_size() {
     assert_eq!(choose_idct_size(Dimensions{width: 5472, height: 3648}, Dimensions{width: 16384, height: 16384}), 8);
 }
 
-pub fn dequantize_and_idct_block(scale: usize, coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
+pub(crate) fn dequantize_and_idct_block(scale: usize, coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
     match scale {
         8 => dequantize_and_idct_block_8x8(coefficients, quantization_table, output_linestride, output),
         4 => dequantize_and_idct_block_4x4(coefficients, quantization_table, output_linestride, output),
