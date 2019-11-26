@@ -1,8 +1,7 @@
 extern crate criterion;
 extern crate jpeg_decoder;
 
-
-use criterion::{black_box, Criterion, criterion_group, criterion_main};
+use criterion::{black_box, Criterion};
 
 use jpeg_decoder as jpeg;
 use jpeg_decoder::ImageInfo;
@@ -17,7 +16,8 @@ fn read_metadata(image: &[u8]) -> ImageInfo {
     decoder.info().unwrap()
 }
 
-pub fn criterion_benchmark(c: &mut Criterion) {
+fn main() {
+    let mut c = Criterion::default().configure_from_args();
     c.bench_function("decode a 512x512 JPEG", |b| b.iter(|| {
         read_image(include_bytes!("tower.jpg"))
     }));
@@ -29,7 +29,5 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("extract metadata from an image", |b| b.iter(|| {
         read_metadata(include_bytes!("tower.jpg"))
     }));
+    c.final_summary();
 }
-
-criterion_group!(benches, criterion_benchmark);
-criterion_main!(benches);

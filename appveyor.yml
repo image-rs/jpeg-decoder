@@ -16,5 +16,5 @@ build: false
 
 test_script:
   - cargo build --verbose
-  - cargo test --verbose
-  - cargo bench --verbose
+  - cargo test --tests --benches
+  - cargo bench --bench decoding_benchmark --no-default-features --features "$FEATURES" -- --warm-up-time 1 --measurement-time 1 --sample-size 25
