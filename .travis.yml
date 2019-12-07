@@ -12,4 +12,7 @@ env:
   - FEATURES="rayon"
 script:
   - cargo build --verbose --no-default-features --features "$FEATURES"
-  - cargo test --verbose --no-default-features --features "$FEATURES"
+  - cargo test --tests --benches --no-default-features --features "$FEATURES"
+  - cargo bench --bench decoding_benchmark --no-default-features --features "$FEATURES" -- --warm-up-time 1 --measurement-time 1 --sample-size 25
+
+cache: cargo
