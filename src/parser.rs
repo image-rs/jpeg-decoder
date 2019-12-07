@@ -34,6 +34,7 @@ pub struct FrameInfo {
     pub precision: u8,
 
     pub image_size: Dimensions,
+    pub output_size: Dimensions,
     pub mcu_size: Dimensions,
     pub components: Vec<Component>,
 }
@@ -58,6 +59,8 @@ pub struct Component {
 
     pub quantization_table_index: usize,
 
+    pub dct_scale: usize,
+
     pub size: Dimensions,
     pub block_size: Dimensions,
 }
@@ -77,6 +80,21 @@ pub enum AdobeColorTransform {
     YCbCr,
     // YCbCrK
     YCCK,
+}
+
+impl FrameInfo {
+    pub(crate) fn update_idct_size(&mut self, idct_size: usize) {
+        for component in &mut self.components {
+            component.dct_scale = idct_size;
+        }
+
+        update_component_sizes(self.image_size, &mut self.components);
+
+        self.output_size = Dimensions {
+            width: (self.image_size.width as f32 * idct_size as f32 / 8.0).ceil() as u16,
+            height: (self.image_size.height as f32 * idct_size as f32 / 8.0).ceil() as u16
+        };
+    }
 }
 
 fn read_length<R: Read>(reader: &mut R, marker: Marker) -> Result<usize> {
@@ -201,25 +219,13 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
             horizontal_sampling_factor: horizontal_sampling_factor,
             vertical_sampling_factor: vertical_sampling_factor,
             quantization_table_index: quantization_table_index as usize,
+            dct_scale: 8,
             size: Dimensions {width: 0, height: 0},
             block_size: Dimensions {width: 0, height: 0},
         });
     }
 
-    let h_max = components.iter().map(|c| c.horizontal_sampling_factor).max().unwrap();
-    let v_max = components.iter().map(|c| c.vertical_sampling_factor).max().unwrap();
-    let mcu_size = Dimensions {
-        width: (width as f32 / (h_max as f32 * 8.0)).ceil() as u16,
-        height: (height as f32 / (v_max as f32 * 8.0)).ceil() as u16,
-    };
-
-    for component in &mut components {
-        component.size.width = (width as f32 * (component.horizontal_sampling_factor as f32 / h_max as f32)).ceil() as u16;
-        component.size.height = (height as f32 * (component.vertical_sampling_factor as f32 / v_max as f32)).ceil() as u16;
-
-        component.block_size.width = mcu_size.width * component.horizontal_sampling_factor as u16;
-        component.block_size.height = mcu_size.height * component.vertical_sampling_factor as u16;
-    }
+    let mcu_size = update_component_sizes(Dimensions { width, height }, &mut components);
 
     Ok(FrameInfo {
         is_baseline: is_baseline,
@@ -227,10 +233,31 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
         coding_process: coding_process,
         entropy_coding: entropy_coding,
         precision: precision,
-        image_size: Dimensions {width: width, height: height},
-        mcu_size: mcu_size,
+        image_size: Dimensions { width, height },
+        output_size: Dimensions { width, height },
+        mcu_size,
         components: components,
     })
+}
+
+fn update_component_sizes(size: Dimensions, components: &mut [Component]) -> Dimensions {
+    let h_max = components.iter().map(|c| c.horizontal_sampling_factor).max().unwrap();
+    let v_max = components.iter().map(|c| c.vertical_sampling_factor).max().unwrap();
+
+    let mcu_size = Dimensions {
+        width: (size.width as f32 / (h_max as f32 * 8.0)).ceil() as u16,
+        height: (size.height as f32 / (v_max as f32 * 8.0)).ceil() as u16,
+    };
+
+    for component in components {
+        component.size.width = (size.width as f32 * component.horizontal_sampling_factor as f32 * component.dct_scale as f32 / (h_max as f32 * 8.0)).ceil() as u16;
+        component.size.height = (size.height as f32 * component.vertical_sampling_factor as f32 * component.dct_scale as f32 / (v_max as f32 * 8.0)).ceil() as u16;
+
+        component.block_size.width = mcu_size.width * component.horizontal_sampling_factor as u16;
+        component.block_size.height = mcu_size.height * component.vertical_sampling_factor as u16;
+    }
+
+    mcu_size
 }
 
 // Section B.2.3

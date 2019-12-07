@@ -29,7 +29,7 @@ impl Upsampler {
                 upsampler: upsampler,
                 width: component.size.width as usize,
                 height: component.size.height as usize,
-                row_stride: component.block_size.width as usize * 8,
+                row_stride: component.block_size.width as usize * component.dct_scale,
             });
         }
 

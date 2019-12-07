@@ -15,9 +15,30 @@ fn reftest() {
     }
 }
 
+#[test]
+fn reftest_scaled() {
+    let base = &Path::new("tests").join("reftest").join("images");
+    reftest_scaled_file(&base.join("rgb.jpg"), 500, 333, &base.join("rgb.png"));
+    reftest_scaled_file(&base.join("rgb.jpg"), 250, 167, &base.join("rgb_250x167.png"));
+    reftest_scaled_file(&base.join("rgb.jpg"), 125, 84,  &base.join("rgb_125x84.png"));
+    reftest_scaled_file(&base.join("rgb.jpg"), 63,  42,  &base.join("rgb_63x42.png"));
+}
+
 fn reftest_file(path: &Path) {
     let file = File::open(path).unwrap();
+    let decoder = jpeg::Decoder::new(file);
+    reftest_decoder(decoder, path, &path.with_extension("png"));
+}
+
+fn reftest_scaled_file(path: &Path, width: u16, height: u16, ref_path: &Path) {
+    let file = File::open(path).unwrap();
     let mut decoder = jpeg::Decoder::new(file);
+    decoder.read_info().unwrap();
+    decoder.scale(width, height).unwrap();
+    reftest_decoder(decoder, path, &ref_path);
+}
+
+fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path, ref_path: &Path) {
     let mut data = decoder.decode().expect(&format!("failed to decode file: {:?}", path));
     let info = decoder.info().unwrap();
     let mut pixel_format = info.pixel_format;
@@ -27,7 +48,7 @@ fn reftest_file(path: &Path) {
         pixel_format = jpeg::PixelFormat::RGB24;
     }
 
-    let ref_file = File::open(path.with_extension("png")).unwrap();
+    let ref_file = File::open(ref_path).unwrap();
     let (ref_info, mut ref_reader) = png::Decoder::new(ref_file).read_info().expect("png failed to read info");
 
     assert_eq!(ref_info.width, info.width as u32);

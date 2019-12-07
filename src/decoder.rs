@@ -100,8 +100,8 @@ impl<R: Read> Decoder<R> {
                 };
 
                 Some(ImageInfo {
-                    width: frame.image_size.width,
-                    height: frame.image_size.height,
+                    width: frame.output_size.width,
+                    height: frame.output_size.height,
                     pixel_format: pixel_format,
                 })
             },
@@ -114,6 +114,23 @@ impl<R: Read> Decoder<R> {
     /// If successful, the metadata can be obtained using the `info` method.
     pub fn read_info(&mut self) -> Result<()> {
         self.decode_internal(true).map(|_| ())
+    }
+
+    /// Configure the decoder to scale the image during decoding.
+    /// 
+    /// This efficiently scales the image by the smallest supported scale
+    /// factor that produces an image larger than or equal to the requested
+    /// size in at least one axis. The currently implemented scale factors
+    /// are 1/8, 1/4, 1/2 and 1.
+    /// 
+    /// To generate a thumbnail of an exact size, pass the desired size and
+    /// then scale to the final size using a traditional resampling algorithm.
+    pub fn scale(&mut self, requested_width: u16, requested_height: u16) -> Result<(u16, u16)> {
+        self.read_info()?;
+        let frame = self.frame.as_mut().unwrap();
+        let idct_size = crate::idct::choose_idct_size(frame.image_size, Dimensions{ width: requested_width, height: requested_height });
+        frame.update_idct_size(idct_size);
+        Ok((frame.output_size.width, frame.output_size.height))
     }
 
     /// Decodes the image and returns the decoded pixels if successful.
@@ -329,7 +346,7 @@ impl<R: Read> Decoder<R> {
         }
 
         let frame = self.frame.as_ref().unwrap();
-        compute_image(&frame.components, &planes, frame.image_size, self.is_jfif, self.color_transform)
+        compute_image(&frame.components, &planes, frame.output_size, self.is_jfif, self.color_transform)
     }
 
     fn read_marker(&mut self) -> Result<Marker> {
@@ -435,7 +452,7 @@ impl<R: Read> Decoder<R> {
                             let x = (block_num % blocks_per_row) as u16;
                             let y = (block_num / blocks_per_row) as u16;
 
-                            if x * 8 >= component.size.width || y * 8 >= component.size.height {
+                            if x * component.dct_scale as u16 >= component.size.width || y * component.dct_scale as u16 >= component.size.height {
                                 continue;
                             }
 
@@ -764,12 +781,15 @@ fn compute_image(components: &[Component],
             return Ok(data[0].clone())
         }
 
-        let mut buffer = vec![0u8; component.size.width as usize * component.size.height as usize];
-        let line_stride = component.block_size.width as usize * 8;
+        let width = component.size.width as usize;
+        let height = component.size.height as usize;
 
-        for y in 0 .. component.size.height as usize {
-            for x in 0 .. component.size.width as usize {
-                buffer[y * component.size.width as usize + x] = data[0][y * line_stride + x];
+        let mut buffer = vec![0u8; width * height];
+        let line_stride = width * component.dct_scale;
+
+        for y in 0 .. width {
+            for x in 0 .. height {
+                buffer[y * width + x] = data[0][y * line_stride + x];
             }
         }
 
