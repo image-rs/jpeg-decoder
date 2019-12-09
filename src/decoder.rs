@@ -788,9 +788,11 @@ fn compute_image(components: &[Component],
         let line_stride = component.block_size.width as usize * component.dct_scale;
 
         for y in 0 .. height {
-            for x in 0 .. width {
-                buffer[y * width + x] = data[0][y * line_stride + x];
-            }
+            let destination_idx = y * width;
+            let source_idx = y * line_stride;
+            let destination = &mut buffer[destination_idx..destination_idx + width];
+            let source = &data[0][source_idx..source_idx + width];
+            destination.copy_from_slice(source);
         }
 
         Ok(buffer)
