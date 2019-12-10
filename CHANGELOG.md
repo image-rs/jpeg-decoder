@@ -4,6 +4,9 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
 
+## v0.1.18 (2019-12-10)
+- Fix two bugs causing panics introduced in 0.1.17.
+
 ## v0.1.17 (2019-12-08)
 - Minimum supported rust version changed to 1.34
 - Fix clippy::into_iter_on_array warning
