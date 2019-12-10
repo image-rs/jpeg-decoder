@@ -785,10 +785,10 @@ fn compute_image(components: &[Component],
         let height = component.size.height as usize;
 
         let mut buffer = vec![0u8; width * height];
-        let line_stride = width * component.dct_scale;
+        let line_stride = component.block_size.width as usize * component.dct_scale;
 
-        for y in 0 .. width {
-            for x in 0 .. height {
+        for y in 0 .. height {
+            for x in 0 .. width {
                 buffer[y * width + x] = data[0][y * line_stride + x];
             }
         }
