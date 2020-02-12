@@ -12,6 +12,14 @@ path = "src/fuzz_decode.rs"
 name = "reproduce_decode"
 path = "src/reproduce_decode.rs"
 
+[[bin]]
+name = "fuzz_info"
+path = "src/fuzz_info.rs"
+
+[[bin]]
+name = "reproduce_info"
+path = "src/reproduce_info.rs"
+
 [dependencies]
 afl = "0.4"
 jpeg-decoder = { path = "../" }
