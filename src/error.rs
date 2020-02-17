@@ -54,16 +54,7 @@ impl fmt::Display for Error {
 }
 
 impl StdError for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Error::Format(_)         => "invalid JPEG format",
-            Error::Unsupported(_)    => "unsupported JPEG feature",
-            Error::Io(ref err)       => err.description(),
-            Error::Internal(ref err) => err.description(),
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn StdError> {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match *self {
             Error::Io(ref err) => Some(err),
             Error::Internal(ref err) => Some(&**err),
