@@ -1,5 +1,5 @@
 use jpeg;
-use png::{self, HasParameters};
+use png;
 use std::cmp;
 use std::fs::File;
 use std::path::Path;
@@ -94,8 +94,8 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
         let output_path = path.with_file_name(format!("{}-diff.png", path.file_stem().unwrap().to_str().unwrap()));
         let output = File::create(&output_path).unwrap();
         let mut encoder = png::Encoder::new(output, info.width as u32, info.height as u32);
-        encoder.set(png::BitDepth::Eight);
-        encoder.set(ref_pixel_format);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.set_color(ref_pixel_format);
         encoder.write_header().expect("png failed to write header").write_image_data(&pixels).expect("png failed to write data");
 
         panic!("decoding difference: {:?}, maximum difference was {}", output_path, max_diff);
