@@ -24,14 +24,14 @@ fn main() {
 
     let output_file = File::create(output_path).unwrap();
     let mut encoder = png::Encoder::new(output_file, info.width as u32, info.height as u32);
-    encoder.set(png::BitDepth::Eight);
+    encoder.set_depth(png::BitDepth::Eight);
 
     match info.pixel_format {
-        jpeg::PixelFormat::L8     => encoder.set(png::ColorType::Grayscale),
-        jpeg::PixelFormat::RGB24  => encoder.set(png::ColorType::RGB),
+        jpeg::PixelFormat::L8     => encoder.set_color(png::ColorType::Grayscale),
+        jpeg::PixelFormat::RGB24  => encoder.set_color(png::ColorType::RGB),
         jpeg::PixelFormat::CMYK32 => {
             data = cmyk_to_rgb(&mut data);
-            encoder.set(png::ColorType::RGB)
+            encoder.set_color(png::ColorType::RGB)
         },
     };
 
