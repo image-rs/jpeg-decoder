@@ -1,0 +1,33 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [ master, github-actions ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        rust: ["1.34.2", stable, beta, nightly]
+        features: ["", "rayon"]
+        command: [test, benchmark]
+    steps:
+    - uses: actions/checkout@v2
+    - run: rustup default ${{ matrix.rust }}
+    - name: test
+      run: >
+        cargo build --verbose --no-default-features --features "$FEATURES" &&
+        cargo test --tests --benches --no-default-features --features "$FEATURES"
+      if: ${{ matrix.command == 'test' }}
+      env:
+        FEATURES: ${{ matrix.features }}
+    - name: benchmark
+      run: cargo bench --bench decoding_benchmark --no-default-features --features "$FEATURES" -- --warm-up-time 1 --measurement-time 1 --sample-size 25
+      if: ${{ matrix.command == 'benchmark' }}
+      env:
+        FEATURES: ${{ matrix.features }}
