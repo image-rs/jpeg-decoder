@@ -297,13 +297,7 @@ fn dequantize_and_idct_block_1x1(coefficients: &[i16], quantization_table: &[u16
 // take a -128..127 value and stbi__clamp it and convert to 0..255
 fn stbi_clamp(x: i32) -> u8
 {
-   // trick to use a single test to catch both cases
-   if x as u32 > 255 {
-      if x < 0 { return 0; }
-      if x > 255 { return 255; }
-   }
-
-   x as u8
+   x.max(0).min(255) as u8
 }
 
 fn stbi_f2f(x: f32) -> i32 {
