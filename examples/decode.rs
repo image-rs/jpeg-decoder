@@ -1,7 +1,6 @@
 extern crate jpeg_decoder as jpeg;
 extern crate png;
 
-use png::HasParameters;
 use std::env;
 use std::fs::File;
 use std::io::{self, BufReader, Write};
