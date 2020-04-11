@@ -307,3 +307,74 @@ fn stbi_f2f(x: f32) -> i32 {
 fn stbi_fsh(x: i32) -> i32 {
     x << 12
 }
+
+#[test]
+fn test_dequantize_and_idct_block_8x8() {
+    let coefficients: [i16; 8 * 8] = [
+        -14, -39, 58, -2, 3, 3, 0, 1,
+        11, 27, 4, -3, 3, 0, 1, 0,
+        -6, -13, -9, -1, -2, -1, 0, 0,
+        -4, 0, -1, -2, 0, 0, 0, 0,
+        3, 0, 0, 0, 0, 0, 0, 0,
+        -3, -2, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0];
+
+    let quantization_table: [u16; 8 * 8] = [
+        8, 6, 5, 8, 12, 20, 26, 31,
+        6, 6, 7, 10, 13, 29, 30, 28,
+        7, 7, 8, 12, 20, 29, 35, 28,
+        7, 9, 11, 15, 26, 44, 40, 31,
+        9, 11, 19, 28, 34, 55, 52, 39,
+        12, 18, 28, 32, 41, 52, 57, 46,
+        25, 32, 39, 44, 52, 61, 60, 51,
+        36, 46, 48, 49, 56, 50, 52, 50];
+    let output_linestride: usize = 8;
+    let mut output = [0u8; 8 * 8];
+    dequantize_and_idct_block_8x8(
+        &coefficients,
+        &quantization_table,
+        output_linestride,
+        &mut output);
+    let expected_output = [
+        118, 92, 110, 83, 77, 93, 144, 198,
+        172, 116, 114, 87, 78, 93, 146, 191,
+        194, 107, 91, 76, 71, 93, 160, 198,
+        196, 100, 80, 74, 67, 92, 174, 209,
+        182, 104, 88, 81, 68, 89, 178, 206,
+        105, 64, 59, 59, 63, 94, 183, 201,
+        35, 27, 28, 37, 72, 121, 203, 204,
+        37, 45, 41, 47, 98, 154, 223, 208];
+    assert_eq!(&output[..], &expected_output[..]);
+}
+
+#[test]
+fn test_dequantize_and_idct_block_8x8_all_zero() {
+    let mut output = [0u8; 8 * 8];
+    dequantize_and_idct_block_8x8(
+        &[0; 8*8],
+        &[666; 8*8],
+        8,
+        &mut output);
+    assert_eq!(&output[..], &[128; 8*8][..]);
+}
+
+#[test]
+fn test_dequantize_and_idct_block_8x8_saturated() {
+    let mut output = [0u8; 8 * 8];
+    dequantize_and_idct_block_8x8(
+        &[std::i16::MAX; 8*8],
+        &[std::u16::MAX; 8*8],
+        8,
+        &mut output);
+    let expected = [
+        0, 0, 0, 255, 255, 0, 0, 255,
+        0, 0, 215, 0, 0, 255, 255, 0,
+        255, 255, 255, 255, 255, 0, 0, 255,
+        0, 0, 255, 0, 255, 0, 255, 255,
+        0, 0, 255, 255, 0, 255, 0, 0,
+        255, 255, 0, 255, 255, 255, 170, 0,
+        0, 255, 0, 0, 0, 0, 0, 255,
+        255, 255, 0, 255, 0, 255, 0, 0];
+    assert_eq!(&output[..], &expected[..]);
+}
