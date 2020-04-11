@@ -2,6 +2,7 @@
 // One example is tests/crashtest/images/imagetestsuite/b0b8914cc5f7a6eff409f16d8cc236c5.jpg
 // That's why wrapping operators are needed.
 use crate::parser::Dimensions;
+use std::num::Wrapping;
 
 pub(crate) fn choose_idct_size(full_size: Dimensions, requested_size: Dimensions) -> usize {
     fn scaled(len: u16, scale: usize) -> u16 { ((len as u32 * scale as u32 - 1) / 8 + 1) as u16 }
@@ -48,7 +49,7 @@ pub(crate) fn dequantize_and_idct_block(scale: usize, coefficients: &[i16], quan
 fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
     debug_assert_eq!(coefficients.len(), 64);
 
-    let mut temp = [0i32; 64];
+    let mut temp = [Wrapping(0i32); 64];
 
     // columns
     for i in 0 .. 8 {
@@ -56,7 +57,7 @@ fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16
         if coefficients[i + 8] == 0 && coefficients[i + 16] == 0 && coefficients[i + 24] == 0 &&
                 coefficients[i + 32] == 0 && coefficients[i + 40] == 0 && coefficients[i + 48] == 0 &&
                 coefficients[i + 56] == 0 {
-            let dcterm = (coefficients[i] as i32 * quantization_table[i] as i32).wrapping_shl(2);
+            let dcterm = Wrapping(coefficients[i] as i32 * quantization_table[i] as i32) << 2;
             temp[i]      = dcterm;
             temp[i + 8]  = dcterm;
             temp[i + 16] = dcterm;
@@ -67,65 +68,65 @@ fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16
             temp[i + 56] = dcterm;
         }
         else {
-            let s0 = coefficients[i] as i32      * quantization_table[i] as i32;
-            let s1 = coefficients[i + 8] as i32  * quantization_table[i + 8] as i32;
-            let s2 = coefficients[i + 16] as i32 * quantization_table[i + 16] as i32;
-            let s3 = coefficients[i + 24] as i32 * quantization_table[i + 24] as i32;
-            let s4 = coefficients[i + 32] as i32 * quantization_table[i + 32] as i32;
-            let s5 = coefficients[i + 40] as i32 * quantization_table[i + 40] as i32;
-            let s6 = coefficients[i + 48] as i32 * quantization_table[i + 48] as i32;
-            let s7 = coefficients[i + 56] as i32 * quantization_table[i + 56] as i32;
+            let s0 = Wrapping(coefficients[i] as i32 * quantization_table[i] as i32);
+            let s1 = Wrapping(coefficients[i + 8] as i32 * quantization_table[i + 8] as i32);
+            let s2 = Wrapping(coefficients[i + 16] as i32 * quantization_table[i + 16] as i32);
+            let s3 = Wrapping(coefficients[i + 24] as i32 * quantization_table[i + 24] as i32);
+            let s4 = Wrapping(coefficients[i + 32] as i32 * quantization_table[i + 32] as i32);
+            let s5 = Wrapping(coefficients[i + 40] as i32 * quantization_table[i + 40] as i32);
+            let s6 = Wrapping(coefficients[i + 48] as i32 * quantization_table[i + 48] as i32);
+            let s7 = Wrapping(coefficients[i + 56] as i32 * quantization_table[i + 56] as i32);
 
             let p2 = s2;
             let p3 = s6;
-            let p1 = p2.wrapping_add(p3).wrapping_mul(stbi_f2f(0.5411961));
-            let t2 = p1.wrapping_add(p3.wrapping_mul(stbi_f2f(-1.847759065)));
-            let t3 = p1.wrapping_add(p2.wrapping_mul(stbi_f2f(0.765366865)));
+            let p1 = (p2 + p3) * stbi_f2f(0.5411961);
+            let t2 = p1 + p3 * stbi_f2f(-1.847759065);
+            let t3 = p1 + p2 * stbi_f2f(0.765366865);
             let p2 = s0;
             let p3 = s4;
-            let t0 = stbi_fsh(p2.wrapping_add(p3));
-            let t1 = stbi_fsh(p2.wrapping_sub(p3));
-            let x0 = t0.wrapping_add(t3);
-            let x3 = t0.wrapping_sub(t3);
-            let x1 = t1.wrapping_add(t2);
-            let x2 = t1.wrapping_sub(t2);
+            let t0 = stbi_fsh(p2 + p3);
+            let t1 = stbi_fsh(p2 - p3);
+            let x0 = t0 + t3;
+            let x3 = t0 - t3;
+            let x1 = t1 + t2;
+            let x2 = t1 - t2;
             let t0 = s7;
             let t1 = s5;
             let t2 = s3;
             let t3 = s1;
-            let p3 = t0.wrapping_add(t2);
-            let p4 = t1.wrapping_add(t3);
-            let p1 = t0.wrapping_add(t3);
-            let p2 = t1.wrapping_add(t2);
-            let p5 = p3.wrapping_add(p4).wrapping_mul(stbi_f2f(1.175875602));
-            let t0 = t0.wrapping_mul(stbi_f2f(0.298631336));
-            let t1 = t1.wrapping_mul(stbi_f2f(2.053119869));
-            let t2 = t2.wrapping_mul(stbi_f2f(3.072711026));
-            let t3 = t3.wrapping_mul(stbi_f2f(1.501321110));
-            let p1 = p5.wrapping_add(p1.wrapping_mul(stbi_f2f(-0.899976223)));
-            let p2 = p5.wrapping_add(p2.wrapping_mul(stbi_f2f(-2.562915447)));
-            let p3 = p3.wrapping_mul(stbi_f2f(-1.961570560));
-            let p4 = p4.wrapping_mul(stbi_f2f(-0.390180644));
-            let t3 = t3.wrapping_add(p1.wrapping_add(p4));
-            let t2 = t2.wrapping_add(p2.wrapping_add(p3));
-            let t1 = t1.wrapping_add(p2.wrapping_add(p4));
-            let t0 = t0.wrapping_add(p1.wrapping_add(p3));
+            let p3 = t0 + t2;
+            let p4 = t1 + t3;
+            let p1 = t0 + t3;
+            let p2 = t1 + t2;
+            let p5 = (p3 + p4) * stbi_f2f(1.175875602);
+            let t0 = t0 * stbi_f2f(0.298631336);
+            let t1 = t1 * stbi_f2f(2.053119869);
+            let t2 = t2 * stbi_f2f(3.072711026);
+            let t3 = t3 * stbi_f2f(1.501321110);
+            let p1 = p5 + (p1 * stbi_f2f(-0.899976223));
+            let p2 = p5 + (p2 * stbi_f2f(-2.562915447));
+            let p3 = p3 * stbi_f2f(-1.961570560);
+            let p4 = p4 * stbi_f2f(-0.390180644);
+            let t3 = t3 + p1 + p4;
+            let t2 = t2 + p2 + p3;
+            let t1 = t1 + p2 + p4;
+            let t0 = t0 + p1 + p3;
 
             // constants scaled things up by 1<<12; let's bring them back
             // down, but keep 2 extra bits of precision
-            let x0 = x0.wrapping_add(512);
-            let x1 = x1.wrapping_add(512);
-            let x2 = x2.wrapping_add(512);
-            let x3 = x3.wrapping_add(512);
+            let x0 = x0 + Wrapping(512);
+            let x1 = x1 + Wrapping(512);
+            let x2 = x2 + Wrapping(512);
+            let x3 = x3 + Wrapping(512);
 
-            temp[i]      = x0.wrapping_add(t3).wrapping_shr(10);
-            temp[i + 56] = x0.wrapping_sub(t3).wrapping_shr(10);
-            temp[i + 8]  = x1.wrapping_add(t2).wrapping_shr(10);
-            temp[i + 48] = x1.wrapping_sub(t2).wrapping_shr(10);
-            temp[i + 16] = x2.wrapping_add(t1).wrapping_shr(10);
-            temp[i + 40] = x2.wrapping_sub(t1).wrapping_shr(10);
-            temp[i + 24] = x3.wrapping_add(t0).wrapping_shr(10);
-            temp[i + 32] = x3.wrapping_sub(t0).wrapping_shr(10);
+            temp[i] = (x0 + t3) >> 10;
+            temp[i + 56] = (x0 - t3) >> 10;
+            temp[i + 8] = (x1 + t2) >> 10;
+            temp[i + 48] = (x1 - t2) >> 10;
+            temp[i + 16] = (x2 + t1) >> 10;
+            temp[i + 40] = (x2 - t1) >> 10;
+            temp[i + 24] = (x3 + t0) >> 10;
+            temp[i + 32] = (x3 - t0) >> 10;
         }
     }
 
@@ -142,38 +143,38 @@ fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16
 
         let p2 = s2;
         let p3 = s6;
-        let p1 = p2.wrapping_add(p3).wrapping_mul(stbi_f2f(0.5411961));
-        let t2 = p1.wrapping_add(p3.wrapping_mul(stbi_f2f(-1.847759065)));
-        let t3 = p1.wrapping_add(p2.wrapping_mul(stbi_f2f(0.765366865)));
+        let p1 = (p2 + p3) * stbi_f2f(0.5411961);
+        let t2 = p1 + p3 * stbi_f2f(-1.847759065);
+        let t3 = p1 + p2 * stbi_f2f(0.765366865);
         let p2 = s0;
         let p3 = s4;
-        let t0 = stbi_fsh(p2.wrapping_add(p3));
-        let t1 = stbi_fsh(p2.wrapping_sub(p3));
-        let x0 = t0.wrapping_add(t3);
-        let x3 = t0.wrapping_sub(t3);
-        let x1 = t1.wrapping_add(t2);
-        let x2 = t1.wrapping_sub(t2);
+        let t0 = stbi_fsh(p2 + p3);
+        let t1 = stbi_fsh(p2 - p3);
+        let x0 = t0 + t3;
+        let x3 = t0 - t3;
+        let x1 = t1 + t2;
+        let x2 = t1 - t2;
         let t0 = s7;
         let t1 = s5;
         let t2 = s3;
         let t3 = s1;
-        let p3 = t0.wrapping_add(t2);
-        let p4 = t1.wrapping_add(t3);
-        let p1 = t0.wrapping_add(t3);
-        let p2 = t1.wrapping_add(t2);
-        let p5 = p3.wrapping_add(p4).wrapping_mul(stbi_f2f(1.175875602));
-        let t0 = t0.wrapping_mul(stbi_f2f(0.298631336));
-        let t1 = t1.wrapping_mul(stbi_f2f(2.053119869));
-        let t2 = t2.wrapping_mul(stbi_f2f(3.072711026));
-        let t3 = t3.wrapping_mul(stbi_f2f(1.501321110));
-        let p1 = p5.wrapping_add(p1.wrapping_mul(stbi_f2f(-0.899976223)));
-        let p2 = p5.wrapping_add(p2.wrapping_mul(stbi_f2f(-2.562915447)));
-        let p3 = p3.wrapping_mul(stbi_f2f(-1.961570560));
-        let p4 = p4.wrapping_mul(stbi_f2f(-0.390180644));
-        let t3 = t3.wrapping_add(p1.wrapping_add(p4));
-        let t2 = t2.wrapping_add(p2.wrapping_add(p3));
-        let t1 = t1.wrapping_add(p2.wrapping_add(p4));
-        let t0 = t0.wrapping_add(p1.wrapping_add(p3));
+        let p3 = t0 + t2;
+        let p4 = t1 + t3;
+        let p1 = t0 + t3;
+        let p2 = t1 + t2;
+        let p5 = (p3 + p4) * stbi_f2f(1.175875602);
+        let t0 = t0 * stbi_f2f(0.298631336);
+        let t1 = t1 * stbi_f2f(2.053119869);
+        let t2 = t2 * stbi_f2f(3.072711026);
+        let t3 = t3 * stbi_f2f(1.501321110);
+        let p1 = p5 + p1 * stbi_f2f(-0.899976223);
+        let p2 = p5 + p2 * stbi_f2f(-2.562915447);
+        let p3 = p3 * stbi_f2f(-1.961570560);
+        let p4 = p4 * stbi_f2f(-0.390180644);
+        let t3 = t3 + p1 + p4;
+        let t2 = t2 + p2 + p3;
+        let t1 = t1 + p2 + p4;
+        let t0 = t0 + p1 + p3;
 
         // constants scaled things up by 1<<12, plus we had 1<<2 from first
         // loop, plus horizontal and vertical each scale by sqrt(8) so together
@@ -181,19 +182,19 @@ fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16
         // so we want to round that, which means adding 0.5 * 1<<17,
         // aka 65536. Also, we'll end up with -128 to 127 that we want
         // to encode as 0..255 by adding 128, so we'll add that before the shift
-        let x0 = x0.wrapping_add(65536 + (128 << 17));
-        let x1 = x1.wrapping_add(65536 + (128 << 17));
-        let x2 = x2.wrapping_add(65536 + (128 << 17));
-        let x3 = x3.wrapping_add(65536 + (128 << 17));
+        let x0 = x0 + Wrapping(65536 + (128 << 17));
+        let x1 = x1 + Wrapping(65536 + (128 << 17));
+        let x2 = x2 + Wrapping(65536 + (128 << 17));
+        let x3 = x3 + Wrapping(65536 + (128 << 17));
 
-        output[i * output_linestride]     = stbi_clamp(x0.wrapping_add(t3).wrapping_shr(17));
-        output[i * output_linestride + 7] = stbi_clamp(x0.wrapping_sub(t3).wrapping_shr(17));
-        output[i * output_linestride + 1] = stbi_clamp(x1.wrapping_add(t2).wrapping_shr(17));
-        output[i * output_linestride + 6] = stbi_clamp(x1.wrapping_sub(t2).wrapping_shr(17));
-        output[i * output_linestride + 2] = stbi_clamp(x2.wrapping_add(t1).wrapping_shr(17));
-        output[i * output_linestride + 5] = stbi_clamp(x2.wrapping_sub(t1).wrapping_shr(17));
-        output[i * output_linestride + 3] = stbi_clamp(x3.wrapping_add(t0).wrapping_shr(17));
-        output[i * output_linestride + 4] = stbi_clamp(x3.wrapping_sub(t0).wrapping_shr(17));
+        output[i * output_linestride] = stbi_clamp((x0 + t3) >> 17);
+        output[i * output_linestride + 7] = stbi_clamp((x0 - t3) >> 17);
+        output[i * output_linestride + 1] = stbi_clamp((x1 + t2) >> 17);
+        output[i * output_linestride + 6] = stbi_clamp((x1 - t2) >> 17);
+        output[i * output_linestride + 2] = stbi_clamp((x2 + t1) >> 17);
+        output[i * output_linestride + 5] = stbi_clamp((x2 - t1) >> 17);
+        output[i * output_linestride + 3] = stbi_clamp((x3 + t0) >> 17);
+        output[i * output_linestride + 4] = stbi_clamp((x3 - t0) >> 17);
     }
 }
 
@@ -201,30 +202,30 @@ fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16
 // http://sylvana.net/jpegcrop/jidctred/
 fn dequantize_and_idct_block_4x4(coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
     debug_assert_eq!(coefficients.len(), 64);
-    let mut temp = [0i32; 4*4];
+    let mut temp = [Wrapping(0i32); 4 * 4];
 
-    const CONST_BITS: u32 = 12;
-    const PASS1_BITS: u32 = 2;
-    const FINAL_BITS: u32 = CONST_BITS + PASS1_BITS + 3;
+    const CONST_BITS: usize = 12;
+    const PASS1_BITS: usize = 2;
+    const FINAL_BITS: usize = CONST_BITS + PASS1_BITS + 3;
 
     // columns
-    for i in 0 .. 4 {
-        let s0 = coefficients[i + 8*0] as i32 * quantization_table[i + 8*0] as i32;
-        let s1 = coefficients[i + 8*1] as i32 * quantization_table[i + 8*1] as i32;
-        let s2 = coefficients[i + 8*2] as i32 * quantization_table[i + 8*2] as i32;
-        let s3 = coefficients[i + 8*3] as i32 * quantization_table[i + 8*3] as i32;
-    
-        let x0 = s0.wrapping_add(s2).wrapping_shl(PASS1_BITS);
-        let x2 = s0.wrapping_sub(s2).wrapping_shl(PASS1_BITS);
+    for i in 0..4 {
+        let s0 = Wrapping(coefficients[i + 8 * 0] as i32 * quantization_table[i + 8 * 0] as i32);
+        let s1 = Wrapping(coefficients[i + 8 * 1] as i32 * quantization_table[i + 8 * 1] as i32);
+        let s2 = Wrapping(coefficients[i + 8 * 2] as i32 * quantization_table[i + 8 * 2] as i32);
+        let s3 = Wrapping(coefficients[i + 8 * 3] as i32 * quantization_table[i + 8 * 3] as i32);
 
-        let p1 = s1.wrapping_add(s3).wrapping_mul(stbi_f2f(0.541196100));
-        let t0 = p1.wrapping_add(s3.wrapping_mul(stbi_f2f(-1.847759065))).wrapping_add(512).wrapping_shr(CONST_BITS - PASS1_BITS);
-        let t2 = p1.wrapping_add(s1.wrapping_mul(stbi_f2f( 0.765366865))).wrapping_add(512).wrapping_shr(CONST_BITS - PASS1_BITS);
+        let x0 = (s0 + s2) << PASS1_BITS;
+        let x2 = (s0 - s2) << PASS1_BITS;
 
-        temp[i + 4*0] = x0.wrapping_add(t2);
-        temp[i + 4*3] = x0.wrapping_sub(t2);
-        temp[i + 4*1] = x2.wrapping_add(t0);
-        temp[i + 4*2] = x2.wrapping_sub(t0);
+        let p1 = (s1 + s3) * stbi_f2f(0.541196100);
+        let t0 = (p1 + s3 * stbi_f2f(-1.847759065) + Wrapping(512)) >> (CONST_BITS - PASS1_BITS);
+        let t2 = (p1 + s1 * stbi_f2f(0.765366865) + Wrapping(512)) >> (CONST_BITS - PASS1_BITS);
+
+        temp[i + 4 * 0] = x0 + t2;
+        temp[i + 4 * 3] = x0 - t2;
+        temp[i + 4 * 1] = x2 + t0;
+        temp[i + 4 * 2] = x2 - t0;
     }
 
     for i in 0 .. 4 {
@@ -233,12 +234,12 @@ fn dequantize_and_idct_block_4x4(coefficients: &[i16], quantization_table: &[u16
         let s2 = temp[i * 4 + 2];
         let s3 = temp[i * 4 + 3];
 
-        let x0 = s0.wrapping_add(s2).wrapping_shl(CONST_BITS);
-        let x2 = s0.wrapping_sub(s2).wrapping_shl(CONST_BITS);
+        let x0 = (s0 + s2) << CONST_BITS;
+        let x2 = (s0 - s2) << CONST_BITS;
 
-        let p1 = s1.wrapping_add(s3).wrapping_mul(stbi_f2f(0.541196100));
-        let t0 = p1.wrapping_add(s3.wrapping_mul(stbi_f2f(-1.847759065)));
-        let t2 = p1.wrapping_add(s1.wrapping_mul(stbi_f2f(0.765366865)));
+        let p1 = (s1 + s3) * stbi_f2f(0.541196100);
+        let t0 = p1 + s3 * stbi_f2f(-1.847759065);
+        let t2 = p1 + s1 * stbi_f2f(0.765366865);
 
         // constants scaled things up by 1<<12, plus we had 1<<2 from first
         // loop, plus horizontal and vertical each scale by sqrt(8) so together
@@ -246,64 +247,64 @@ fn dequantize_and_idct_block_4x4(coefficients: &[i16], quantization_table: &[u16
         // so we want to round that, which means adding 0.5 * 1<<17,
         // aka 65536. Also, we'll end up with -128 to 127 that we want
         // to encode as 0..255 by adding 128, so we'll add that before the shift
-        let x0 = x0.wrapping_add((1 << (FINAL_BITS - 1)) + (128 << FINAL_BITS));
-        let x2 = x2.wrapping_add((1 << (FINAL_BITS - 1)) + (128 << FINAL_BITS));
+        let x0 = x0 + Wrapping(1 << (FINAL_BITS - 1)) + Wrapping(128 << FINAL_BITS);
+        let x2 = x2 + Wrapping(1 << (FINAL_BITS - 1)) + Wrapping(128 << FINAL_BITS);
 
-        output[i * output_linestride + 0] = stbi_clamp(x0.wrapping_add(t2).wrapping_shr(FINAL_BITS));
-        output[i * output_linestride + 3] = stbi_clamp(x0.wrapping_sub(t2).wrapping_shr(FINAL_BITS));
-        output[i * output_linestride + 1] = stbi_clamp(x2.wrapping_add(t0).wrapping_shr(FINAL_BITS));
-        output[i * output_linestride + 2] = stbi_clamp(x2.wrapping_sub(t0).wrapping_shr(FINAL_BITS));
+        output[i * output_linestride + 0] = stbi_clamp((x0 + t2) >> FINAL_BITS);
+        output[i * output_linestride + 3] = stbi_clamp((x0 - t2) >> FINAL_BITS);
+        output[i * output_linestride + 1] = stbi_clamp((x2 + t0) >> FINAL_BITS);
+        output[i * output_linestride + 2] = stbi_clamp((x2 - t0) >> FINAL_BITS);
     }
 }
 
 fn dequantize_and_idct_block_2x2(coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
     debug_assert_eq!(coefficients.len(), 64);
 
-    const SCALE_BITS: u32 = 3;
+    const SCALE_BITS: usize = 3;
 
     // Column 0
-    let s00 = coefficients[8*0] as i32 * quantization_table[8*0] as i32;
-    let s10 = coefficients[8*1] as i32 * quantization_table[8*1] as i32;
+    let s00 = Wrapping(coefficients[8 * 0] as i32 * quantization_table[8 * 0] as i32);
+    let s10 = Wrapping(coefficients[8 * 1] as i32 * quantization_table[8 * 1] as i32);
 
-    let x0 = s00.wrapping_add(s10);
-    let x2 = s00.wrapping_sub(s10);
+    let x0 = s00 + s10;
+    let x2 = s00 - s10;
 
     // Column 1
-    let s01 = coefficients[8*0+1] as i32 * quantization_table[8*0+1] as i32;
-    let s11 = coefficients[8*1+1] as i32 * quantization_table[8*1+1] as i32;
+    let s01 = Wrapping(coefficients[8 * 0 + 1] as i32 * quantization_table[8 * 0 + 1] as i32);
+    let s11 = Wrapping(coefficients[8 * 1 + 1] as i32 * quantization_table[8 * 1 + 1] as i32);
 
-    let x1 = s01.wrapping_add(s11);
-    let x3 = s01.wrapping_sub(s11);
+    let x1 = s01 + s11;
+    let x3 = s01 - s11;
 
-    let x0 = x0.wrapping_add((1 << (SCALE_BITS-1)) + (128 << SCALE_BITS));
-    let x2 = x2.wrapping_add((1 << (SCALE_BITS-1)) + (128 << SCALE_BITS));
+    let x0 = x0 + Wrapping(1 << (SCALE_BITS - 1)) + Wrapping(128 << SCALE_BITS);
+    let x2 = x2 + Wrapping(1 << (SCALE_BITS - 1)) + Wrapping(128 << SCALE_BITS);
 
     // Row 0
-    output[0] = stbi_clamp(x0.wrapping_add(x1).wrapping_shr(SCALE_BITS));
-    output[1] = stbi_clamp(x0.wrapping_sub(x1).wrapping_shr(SCALE_BITS));
+    output[0] = stbi_clamp((x0 + x1) >> SCALE_BITS);
+    output[1] = stbi_clamp((x0 - x1) >> SCALE_BITS);
 
     // Row 1
-    output[output_linestride + 0] = stbi_clamp(x2.wrapping_add(x3).wrapping_shr(SCALE_BITS));
-    output[output_linestride + 1] = stbi_clamp(x2.wrapping_sub(x3).wrapping_shr(SCALE_BITS));
+    output[output_linestride + 0] = stbi_clamp((x2 + x3) >> SCALE_BITS);
+    output[output_linestride + 1] = stbi_clamp((x2 - x3) >> SCALE_BITS);
 }
 
 fn dequantize_and_idct_block_1x1(coefficients: &[i16], quantization_table: &[u16; 64], _output_linestride: usize, output: &mut [u8]) {
     debug_assert_eq!(coefficients.len(), 64);
 
-    let s0 = (coefficients[0] as i32 * quantization_table[0] as i32).wrapping_add(128 * 8) / 8;
+    let s0 = (Wrapping(coefficients[0] as i32 * quantization_table[0] as i32) + Wrapping(128 * 8)) / Wrapping(8);
     output[0] = stbi_clamp(s0);
 }
 
 // take a -128..127 value and stbi__clamp it and convert to 0..255
-fn stbi_clamp(x: i32) -> u8
+fn stbi_clamp(x: Wrapping<i32>) -> u8
 {
-   x.max(0).min(255) as u8
+    x.0.max(0).min(255) as u8
 }
 
-fn stbi_f2f(x: f32) -> i32 {
-    (x * 4096.0 + 0.5) as i32
+fn stbi_f2f(x: f32) -> Wrapping<i32> {
+    Wrapping((x * 4096.0 + 0.5) as i32)
 }
 
-fn stbi_fsh(x: i32) -> i32 {
+fn stbi_fsh(x: Wrapping<i32>) -> Wrapping<i32> {
     x << 12
 }

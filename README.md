@@ -1,6 +1,6 @@
 # jpeg-decoder
 
-[![Rust CI](https://github.com/image-rs/jpeg-decoder/workflows/Rust%20CI/badge.svg)
+[![Rust CI](https://github.com/image-rs/jpeg-decoder/workflows/Rust%20CI/badge.svg)](https://github.com/image-rs/jpeg-decoder/actions)
 [![AppVeyor Build Status](https://ci.appveyor.com/api/projects/status/k65rrkd0f8yb4o9w/branch/master?svg=true)](https://ci.appveyor.com/project/kaksmet/jpeg-decoder/branch/master)
 [![Crates.io](https://img.shields.io/crates/v/jpeg-decoder.svg)](https://crates.io/crates/jpeg-decoder)
 
