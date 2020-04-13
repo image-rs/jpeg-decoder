@@ -32,6 +32,7 @@
 extern crate byteorder;
 #[cfg(feature="rayon")]
 extern crate rayon;
+extern crate packed_simd;
 
 pub use decoder::{Decoder, ImageInfo, PixelFormat};
 pub use error::{Error, UnsupportedFeature};
