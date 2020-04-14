@@ -75,20 +75,17 @@ fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16
     let x = idct_1d_x(&s, 512);
     let t = idct_1d_t(&s);
 
-    let tmp0 = (x[0] + t[3]) >> 10;
-    let tmp1 = (x[1] + t[2]) >> 10;
-    let tmp2 = (x[2] + t[1]) >> 10;
-    let tmp3 = (x[3] + t[0]) >> 10;
-    let tmp4 = (x[3] - t[0]) >> 10;
-    let tmp5 = (x[2] - t[1]) >> 10;
-    let tmp6 = (x[1] - t[2]) >> 10;
-    let tmp7 = (x[0] - t[3]) >> 10;
+    s[0] = (x[0] + t[3]) >> 10;
+    s[1] = (x[1] + t[2]) >> 10;
+    s[2] = (x[2] + t[1]) >> 10;
+    s[3] = (x[3] + t[0]) >> 10;
+    s[4] = (x[3] - t[0]) >> 10;
+    s[5] = (x[2] - t[1]) >> 10;
+    s[6] = (x[1] - t[2]) >> 10;
+    s[7] = (x[0] - t[3]) >> 10;
 
     // columns
-    for i in 0..8 {
-        s[i] = i32x8::new(tmp0.extract(i), tmp1.extract(i), tmp2.extract(i), tmp3.extract(i),
-                          tmp4.extract(i), tmp5.extract(i), tmp6.extract(i), tmp7.extract(i), )
-    }
+    simd_transpose(&mut s);
 
     // constants scaled things up by 1<<12, plus we had 1<<2 from first
     // loop, plus horizontal and vertical each scale by sqrt(8) so together
@@ -158,6 +155,18 @@ fn idct_1d_t(s: &[i32x8; 8]) -> [i32x8; 4] {
     let p3 = p3 * stbi_f2f_simd(-1.961570560);
     let p4 = p4 * stbi_f2f_simd(-0.390180644);
     [t0 + p1 + p3, t1 + p2 + p4, t2 + p2 + p3, t3 + p1 + p4, ]
+}
+
+/// Transpose an 8x8 matrix represented by SIMD vectors
+#[inline(always)]
+fn simd_transpose(s: &mut [i32x8; 8]) {
+    for i in 0..8 {
+        for j in i + 1..8 {
+            let tmp = s[i].extract(j);
+            s[i] = s[i].replace(j, s[j].extract(i));
+            s[j] = s[j].replace(i, tmp);
+        }
+    }
 }
 
 // 4x4 and 2x2 IDCT based on Rakesh Dugad and Narendra Ahuja: "A Fast Scheme for Image Size Change in the Compressed Domain" (2001).
