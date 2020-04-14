@@ -51,40 +51,99 @@ pub(crate) fn dequantize_and_idct_block(scale: usize, coefficients: &[i16], quan
 fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
     debug_assert_eq!(coefficients.len(), 64);
 
-    let s0 = i32x8::from(i16x8::from_slice_unaligned(&coefficients[0..0 + 8])) *
-        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[0..0 + 8]));
-    let s1 = i32x8::from(i16x8::from_slice_unaligned(&coefficients[8..8 + 8])) *
-        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[8..8 + 8]));
-    let s2 = i32x8::from(i16x8::from_slice_unaligned(&coefficients[16..16 + 8])) *
-        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[16..16 + 8]));
-    let s3 = i32x8::from(i16x8::from_slice_unaligned(&coefficients[24..24 + 8])) *
-        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[24..24 + 8]));
-    let s4 = i32x8::from(i16x8::from_slice_unaligned(&coefficients[32..32 + 8])) *
-        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[32..32 + 8]));
-    let s5 = i32x8::from(i16x8::from_slice_unaligned(&coefficients[40..40 + 8])) *
-        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[40..40 + 8]));
-    let s6 = i32x8::from(i16x8::from_slice_unaligned(&coefficients[48..48 + 8])) *
-        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[48..48 + 8]));
-    let s7 = i32x8::from(i16x8::from_slice_unaligned(&coefficients[56..56 + 8])) *
-        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[56..56 + 8]));
+    let mut s: [i32x8; 8] = [
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[0..0 + 8])) *
+            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[0..0 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[8..8 + 8])) *
+            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[8..8 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[16..16 + 8])) *
+            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[16..16 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[24..24 + 8])) *
+            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[24..24 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[32..32 + 8])) *
+            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[32..32 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[40..40 + 8])) *
+            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[40..40 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[48..48 + 8])) *
+            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[48..48 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[56..56 + 8])) *
+            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[56..56 + 8])),
+    ];
 
-    let p2 = s2;
-    let p3 = s6;
+    // constants scaled things up by 1<<12; let's bring them back
+    // down, but keep 2 extra bits of precision
+    let x = idct_1d_x(&s, 512);
+    let t = idct_1d_t(&s);
+
+    let tmp0 = (x[0] + t[3]) >> 10;
+    let tmp1 = (x[1] + t[2]) >> 10;
+    let tmp2 = (x[2] + t[1]) >> 10;
+    let tmp3 = (x[3] + t[0]) >> 10;
+    let tmp4 = (x[3] - t[0]) >> 10;
+    let tmp5 = (x[2] - t[1]) >> 10;
+    let tmp6 = (x[1] - t[2]) >> 10;
+    let tmp7 = (x[0] - t[3]) >> 10;
+
+    // columns
+    for i in 0..8 {
+        s[i] = i32x8::new(tmp0.extract(i), tmp1.extract(i), tmp2.extract(i), tmp3.extract(i),
+                          tmp4.extract(i), tmp5.extract(i), tmp6.extract(i), tmp7.extract(i), )
+    }
+
+    // constants scaled things up by 1<<12, plus we had 1<<2 from first
+    // loop, plus horizontal and vertical each scale by sqrt(8) so together
+    // we've got an extra 1<<3, so 1<<17 total we need to remove.
+    // so we want to round that, which means adding 0.5 * 1<<17,
+    // aka 65536. Also, we'll end up with -128 to 127 that we want
+    // to encode as 0..255 by adding 128, so we'll add that before the shift
+    let x = idct_1d_x(&s, 65536 + (128 << 17));
+    let t = idct_1d_t(&s);
+
+    let results = [
+        stbi_clamp_simd((x[0] + t[3]) >> 17),
+        stbi_clamp_simd((x[1] + t[2]) >> 17),
+        stbi_clamp_simd((x[2] + t[1]) >> 17),
+        stbi_clamp_simd((x[3] + t[0]) >> 17),
+        stbi_clamp_simd((x[3] - t[0]) >> 17),
+        stbi_clamp_simd((x[2] - t[1]) >> 17),
+        stbi_clamp_simd((x[1] - t[2]) >> 17),
+        stbi_clamp_simd((x[0] - t[3]) >> 17),
+    ];
+
+    for i in 0..8 {
+        for j in 0..8 {
+            output[i * output_linestride + j] = results[j].extract(i);
+        }
+    }
+}
+
+#[inline(always)]
+fn idct_1d_x(s: &[i32x8; 8], correction: i32) -> [i32x8; 4] {
+    let p2 = s[2];
+    let p3 = s[6];
     let p1 = (p2 + p3) * stbi_f2f_simd(0.5411961);
     let t2 = p1 + p3 * stbi_f2f_simd(-1.847759065);
     let t3 = p1 + p2 * stbi_f2f_simd(0.765366865);
-    let p2 = s0;
-    let p3 = s4;
+    let p2 = s[0];
+    let p3 = s[4];
     let t0 = stbi_fsh_simd(p2 + p3);
     let t1 = stbi_fsh_simd(p2 - p3);
-    let x0 = t0 + t3;
-    let x3 = t0 - t3;
-    let x1 = t1 + t2;
-    let x2 = t1 - t2;
-    let t0 = s7;
-    let t1 = s5;
-    let t2 = s3;
-    let t3 = s1;
+    let correction = i32x8::splat(correction);
+    [
+        t0 + t3 + correction,
+        t1 + t2 + correction,
+        t1 - t2 + correction,
+        t0 - t3 + correction,
+    ]
+}
+
+
+#[inline(always)]
+fn idct_1d_t(s: &[i32x8; 8]) -> [i32x8; 4] {
+    let t0 = s[7];
+    let t1 = s[5];
+    let t2 = s[3];
+    let t3 = s[1];
     let p3 = t0 + t2;
     let p4 = t1 + t3;
     let p1 = t0 + t3;
@@ -98,133 +157,7 @@ fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16
     let p2 = p5 + (p2 * stbi_f2f_simd(-2.562915447));
     let p3 = p3 * stbi_f2f_simd(-1.961570560);
     let p4 = p4 * stbi_f2f_simd(-0.390180644);
-    let t3 = t3 + p1 + p4;
-    let t2 = t2 + p2 + p3;
-    let t1 = t1 + p2 + p4;
-    let t0 = t0 + p1 + p3;
-
-    // constants scaled things up by 1<<12; let's bring them back
-    // down, but keep 2 extra bits of precision
-    let x0 = x0 + i32x8::splat(512);
-    let x1 = x1 + i32x8::splat(512);
-    let x2 = x2 + i32x8::splat(512);
-    let x3 = x3 + i32x8::splat(512);
-
-
-    let tmp0 = (x0 + t3) >> 10;
-    let tmp1 = (x1 + t2) >> 10;
-    let tmp2 = (x2 + t1) >> 10;
-    let tmp3 = (x3 + t0) >> 10;
-    let tmp4 = (x3 - t0) >> 10;
-    let tmp5 = (x2 - t1) >> 10;
-    let tmp6 = (x1 - t2) >> 10;
-    let tmp7 = (x0 - t3) >> 10;
-
-    // columns
-    let s0 = i32x8::new(
-        tmp0.extract(0), tmp1.extract(0), tmp2.extract(0), tmp3.extract(0),
-        tmp4.extract(0), tmp5.extract(0), tmp6.extract(0), tmp7.extract(0),
-    );
-
-    let s1 = i32x8::new(
-        tmp0.extract(1), tmp1.extract(1), tmp2.extract(1), tmp3.extract(1),
-        tmp4.extract(1), tmp5.extract(1), tmp6.extract(1), tmp7.extract(1),
-    );
-
-    let s2 = i32x8::new(
-        tmp0.extract(2), tmp1.extract(2), tmp2.extract(2), tmp3.extract(2),
-        tmp4.extract(2), tmp5.extract(2), tmp6.extract(2), tmp7.extract(2),
-    );
-
-    let s3 = i32x8::new(
-        tmp0.extract(3), tmp1.extract(3), tmp2.extract(3), tmp3.extract(3),
-        tmp4.extract(3), tmp5.extract(3), tmp6.extract(3), tmp7.extract(3),
-    );
-
-    let s4 = i32x8::new(
-        tmp0.extract(4), tmp1.extract(4), tmp2.extract(4), tmp3.extract(4),
-        tmp4.extract(4), tmp5.extract(4), tmp6.extract(4), tmp7.extract(4),
-    );
-
-    let s5 = i32x8::new(
-        tmp0.extract(5), tmp1.extract(5), tmp2.extract(5), tmp3.extract(5),
-        tmp4.extract(5), tmp5.extract(5), tmp6.extract(5), tmp7.extract(5),
-    );
-
-    let s6 = i32x8::new(
-        tmp0.extract(6), tmp1.extract(6), tmp2.extract(6), tmp3.extract(6),
-        tmp4.extract(6), tmp5.extract(6), tmp6.extract(6), tmp7.extract(6),
-    );
-
-    let s7 = i32x8::new(
-        tmp0.extract(7), tmp1.extract(7), tmp2.extract(7), tmp3.extract(7),
-        tmp4.extract(7), tmp5.extract(7), tmp6.extract(7), tmp7.extract(7),
-    );
-
-
-    let p2 = s2;
-    let p3 = s6;
-    let p1 = (p2 + p3) * stbi_f2f_simd(0.5411961);
-    let t2 = p1 + p3 * stbi_f2f_simd(-1.847759065);
-    let t3 = p1 + p2 * stbi_f2f_simd(0.765366865);
-    let p2 = s0;
-    let p3 = s4;
-    let t0 = stbi_fsh_simd(p2 + p3);
-    let t1 = stbi_fsh_simd(p2 - p3);
-    let x0 = t0 + t3;
-    let x3 = t0 - t3;
-    let x1 = t1 + t2;
-    let x2 = t1 - t2;
-    let t0 = s7;
-    let t1 = s5;
-    let t2 = s3;
-    let t3 = s1;
-    let p3 = t0 + t2;
-    let p4 = t1 + t3;
-    let p1 = t0 + t3;
-    let p2 = t1 + t2;
-    let p5 = (p3 + p4) * stbi_f2f_simd(1.175875602);
-    let t0 = t0 * stbi_f2f_simd(0.298631336);
-    let t1 = t1 * stbi_f2f_simd(2.053119869);
-    let t2 = t2 * stbi_f2f_simd(3.072711026);
-    let t3 = t3 * stbi_f2f_simd(1.501321110);
-    let p1 = p5 + p1 * stbi_f2f_simd(-0.899976223);
-    let p2 = p5 + p2 * stbi_f2f_simd(-2.562915447);
-    let p3 = p3 * stbi_f2f_simd(-1.961570560);
-    let p4 = p4 * stbi_f2f_simd(-0.390180644);
-    let t3 = t3 + p1 + p4;
-    let t2 = t2 + p2 + p3;
-    let t1 = t1 + p2 + p4;
-    let t0 = t0 + p1 + p3;
-
-
-    // constants scaled things up by 1<<12, plus we had 1<<2 from first
-    // loop, plus horizontal and vertical each scale by sqrt(8) so together
-    // we've got an extra 1<<3, so 1<<17 total we need to remove.
-    // so we want to round that, which means adding 0.5 * 1<<17,
-    // aka 65536. Also, we'll end up with -128 to 127 that we want
-    // to encode as 0..255 by adding 128, so we'll add that before the shift
-    let x0 = x0 + i32x8::splat(65536 + (128 << 17));
-    let x1 = x1 + i32x8::splat(65536 + (128 << 17));
-    let x2 = x2 + i32x8::splat(65536 + (128 << 17));
-    let x3 = x3 + i32x8::splat(65536 + (128 << 17));
-
-    let results = [
-        stbi_clamp_simd((x0 + t3) >> 17),
-        stbi_clamp_simd((x1 + t2) >> 17),
-        stbi_clamp_simd((x2 + t1) >> 17),
-        stbi_clamp_simd((x3 + t0) >> 17),
-        stbi_clamp_simd((x3 - t0) >> 17),
-        stbi_clamp_simd((x2 - t1) >> 17),
-        stbi_clamp_simd((x1 - t2) >> 17),
-        stbi_clamp_simd((x0 - t3) >> 17),
-    ];
-
-    for i in 0..8 {
-        for j in 0..8 {
-            output[i * output_linestride + j] = results[j].extract(i);
-        }
-    }
+    [t0 + p1 + p3, t1 + p2 + p4, t2 + p2 + p3, t3 + p1 + p4, ]
 }
 
 // 4x4 and 2x2 IDCT based on Rakesh Dugad and Narendra Ahuja: "A Fast Scheme for Image Size Change in the Compressed Domain" (2001).
