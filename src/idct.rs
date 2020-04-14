@@ -4,7 +4,7 @@
 use crate::parser::Dimensions;
 use std::num::Wrapping;
 
-use packed_simd::{i32x8, i16x8, u16x8};
+use packed_simd::{i32x8, i16x8, u16x8, u8x8, FromCast};
 
 pub(crate) fn choose_idct_size(full_size: Dimensions, requested_size: Dimensions) -> usize {
     fn scaled(len: u16, scale: usize) -> u16 { ((len as u32 * scale as u32 - 1) / 8 + 1) as u16 }
@@ -50,8 +50,6 @@ pub(crate) fn dequantize_and_idct_block(scale: usize, coefficients: &[i16], quan
 // This is based on stb_image's 'stbi__idct_block'.
 fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
     debug_assert_eq!(coefficients.len(), 64);
-
-    let mut temp = [0i32; 64];
 
     let s0 = i32x8::from(i16x8::from_slice_unaligned(&coefficients[0..0 + 8])) *
         i32x8::from(u16x8::from_slice_unaligned(&quantization_table[0..0 + 8]));
@@ -112,81 +110,120 @@ fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16
     let x2 = x2 + i32x8::splat(512);
     let x3 = x3 + i32x8::splat(512);
 
-    ((x0 + t3) >> 10).write_to_slice_unaligned(&mut temp[0..0 + 8]);
-    ((x0 - t3) >> 10).write_to_slice_unaligned(&mut temp[56..56 + 8]);
-    ((x1 + t2) >> 10).write_to_slice_unaligned(&mut temp[8..8 + 8]);
-    ((x1 - t2) >> 10).write_to_slice_unaligned(&mut temp[48..48 + 8]);
-    ((x2 + t1) >> 10).write_to_slice_unaligned(&mut temp[16..16 + 8]);
-    ((x2 - t1) >> 10).write_to_slice_unaligned(&mut temp[40..40 + 8]);
-    ((x3 + t0) >> 10).write_to_slice_unaligned(&mut temp[24..24 + 8]);
-    ((x3 - t0) >> 10).write_to_slice_unaligned(&mut temp[32..32 + 8]);
+
+    let tmp0 = (x0 + t3) >> 10;
+    let tmp1 = (x1 + t2) >> 10;
+    let tmp2 = (x2 + t1) >> 10;
+    let tmp3 = (x3 + t0) >> 10;
+    let tmp4 = (x3 - t0) >> 10;
+    let tmp5 = (x2 - t1) >> 10;
+    let tmp6 = (x1 - t2) >> 10;
+    let tmp7 = (x0 - t3) >> 10;
 
     // columns
+    let s0 = i32x8::new(
+        tmp0.extract(0), tmp1.extract(0), tmp2.extract(0), tmp3.extract(0),
+        tmp4.extract(0), tmp5.extract(0), tmp6.extract(0), tmp7.extract(0),
+    );
+
+    let s1 = i32x8::new(
+        tmp0.extract(1), tmp1.extract(1), tmp2.extract(1), tmp3.extract(1),
+        tmp4.extract(1), tmp5.extract(1), tmp6.extract(1), tmp7.extract(1),
+    );
+
+    let s2 = i32x8::new(
+        tmp0.extract(2), tmp1.extract(2), tmp2.extract(2), tmp3.extract(2),
+        tmp4.extract(2), tmp5.extract(2), tmp6.extract(2), tmp7.extract(2),
+    );
+
+    let s3 = i32x8::new(
+        tmp0.extract(3), tmp1.extract(3), tmp2.extract(3), tmp3.extract(3),
+        tmp4.extract(3), tmp5.extract(3), tmp6.extract(3), tmp7.extract(3),
+    );
+
+    let s4 = i32x8::new(
+        tmp0.extract(4), tmp1.extract(4), tmp2.extract(4), tmp3.extract(4),
+        tmp4.extract(4), tmp5.extract(4), tmp6.extract(4), tmp7.extract(4),
+    );
+
+    let s5 = i32x8::new(
+        tmp0.extract(5), tmp1.extract(5), tmp2.extract(5), tmp3.extract(5),
+        tmp4.extract(5), tmp5.extract(5), tmp6.extract(5), tmp7.extract(5),
+    );
+
+    let s6 = i32x8::new(
+        tmp0.extract(6), tmp1.extract(6), tmp2.extract(6), tmp3.extract(6),
+        tmp4.extract(6), tmp5.extract(6), tmp6.extract(6), tmp7.extract(6),
+    );
+
+    let s7 = i32x8::new(
+        tmp0.extract(7), tmp1.extract(7), tmp2.extract(7), tmp3.extract(7),
+        tmp4.extract(7), tmp5.extract(7), tmp6.extract(7), tmp7.extract(7),
+    );
+
+
+    let p2 = s2;
+    let p3 = s6;
+    let p1 = (p2 + p3) * stbi_f2f_simd(0.5411961);
+    let t2 = p1 + p3 * stbi_f2f_simd(-1.847759065);
+    let t3 = p1 + p2 * stbi_f2f_simd(0.765366865);
+    let p2 = s0;
+    let p3 = s4;
+    let t0 = stbi_fsh_simd(p2 + p3);
+    let t1 = stbi_fsh_simd(p2 - p3);
+    let x0 = t0 + t3;
+    let x3 = t0 - t3;
+    let x1 = t1 + t2;
+    let x2 = t1 - t2;
+    let t0 = s7;
+    let t1 = s5;
+    let t2 = s3;
+    let t3 = s1;
+    let p3 = t0 + t2;
+    let p4 = t1 + t3;
+    let p1 = t0 + t3;
+    let p2 = t1 + t2;
+    let p5 = (p3 + p4) * stbi_f2f_simd(1.175875602);
+    let t0 = t0 * stbi_f2f_simd(0.298631336);
+    let t1 = t1 * stbi_f2f_simd(2.053119869);
+    let t2 = t2 * stbi_f2f_simd(3.072711026);
+    let t3 = t3 * stbi_f2f_simd(1.501321110);
+    let p1 = p5 + p1 * stbi_f2f_simd(-0.899976223);
+    let p2 = p5 + p2 * stbi_f2f_simd(-2.562915447);
+    let p3 = p3 * stbi_f2f_simd(-1.961570560);
+    let p4 = p4 * stbi_f2f_simd(-0.390180644);
+    let t3 = t3 + p1 + p4;
+    let t2 = t2 + p2 + p3;
+    let t1 = t1 + p2 + p4;
+    let t0 = t0 + p1 + p3;
+
+
+    // constants scaled things up by 1<<12, plus we had 1<<2 from first
+    // loop, plus horizontal and vertical each scale by sqrt(8) so together
+    // we've got an extra 1<<3, so 1<<17 total we need to remove.
+    // so we want to round that, which means adding 0.5 * 1<<17,
+    // aka 65536. Also, we'll end up with -128 to 127 that we want
+    // to encode as 0..255 by adding 128, so we'll add that before the shift
+    let x0 = x0 + i32x8::splat(65536 + (128 << 17));
+    let x1 = x1 + i32x8::splat(65536 + (128 << 17));
+    let x2 = x2 + i32x8::splat(65536 + (128 << 17));
+    let x3 = x3 + i32x8::splat(65536 + (128 << 17));
+
+    let results = [
+        stbi_clamp_simd((x0 + t3) >> 17),
+        stbi_clamp_simd((x1 + t2) >> 17),
+        stbi_clamp_simd((x2 + t1) >> 17),
+        stbi_clamp_simd((x3 + t0) >> 17),
+        stbi_clamp_simd((x3 - t0) >> 17),
+        stbi_clamp_simd((x2 - t1) >> 17),
+        stbi_clamp_simd((x1 - t2) >> 17),
+        stbi_clamp_simd((x0 - t3) >> 17),
+    ];
+
     for i in 0..8 {
-        // no fast case since the first 1D IDCT spread components out
-        let s0 = Wrapping(temp[i * 8]);
-        let s1 = Wrapping(temp[i * 8 + 1]);
-        let s2 = Wrapping(temp[i * 8 + 2]);
-        let s3 = Wrapping(temp[i * 8 + 3]);
-        let s4 = Wrapping(temp[i * 8 + 4]);
-        let s5 = Wrapping(temp[i * 8 + 5]);
-        let s6 = Wrapping(temp[i * 8 + 6]);
-        let s7 = Wrapping(temp[i * 8 + 7]);
-
-        let p2 = s2;
-        let p3 = s6;
-        let p1 = (p2 + p3) * stbi_f2f(0.5411961);
-        let t2 = p1 + p3 * stbi_f2f(-1.847759065);
-        let t3 = p1 + p2 * stbi_f2f(0.765366865);
-        let p2 = s0;
-        let p3 = s4;
-        let t0 = stbi_fsh(p2 + p3);
-        let t1 = stbi_fsh(p2 - p3);
-        let x0 = t0 + t3;
-        let x3 = t0 - t3;
-        let x1 = t1 + t2;
-        let x2 = t1 - t2;
-        let t0 = s7;
-        let t1 = s5;
-        let t2 = s3;
-        let t3 = s1;
-        let p3 = t0 + t2;
-        let p4 = t1 + t3;
-        let p1 = t0 + t3;
-        let p2 = t1 + t2;
-        let p5 = (p3 + p4) * stbi_f2f(1.175875602);
-        let t0 = t0 * stbi_f2f(0.298631336);
-        let t1 = t1 * stbi_f2f(2.053119869);
-        let t2 = t2 * stbi_f2f(3.072711026);
-        let t3 = t3 * stbi_f2f(1.501321110);
-        let p1 = p5 + p1 * stbi_f2f(-0.899976223);
-        let p2 = p5 + p2 * stbi_f2f(-2.562915447);
-        let p3 = p3 * stbi_f2f(-1.961570560);
-        let p4 = p4 * stbi_f2f(-0.390180644);
-        let t3 = t3 + p1 + p4;
-        let t2 = t2 + p2 + p3;
-        let t1 = t1 + p2 + p4;
-        let t0 = t0 + p1 + p3;
-
-        // constants scaled things up by 1<<12, plus we had 1<<2 from first
-        // loop, plus horizontal and vertical each scale by sqrt(8) so together
-        // we've got an extra 1<<3, so 1<<17 total we need to remove.
-        // so we want to round that, which means adding 0.5 * 1<<17,
-        // aka 65536. Also, we'll end up with -128 to 127 that we want
-        // to encode as 0..255 by adding 128, so we'll add that before the shift
-        let x0 = x0 + Wrapping(65536 + (128 << 17));
-        let x1 = x1 + Wrapping(65536 + (128 << 17));
-        let x2 = x2 + Wrapping(65536 + (128 << 17));
-        let x3 = x3 + Wrapping(65536 + (128 << 17));
-
-        output[i * output_linestride] = stbi_clamp((x0 + t3) >> 17);
-        output[i * output_linestride + 7] = stbi_clamp((x0 - t3) >> 17);
-        output[i * output_linestride + 1] = stbi_clamp((x1 + t2) >> 17);
-        output[i * output_linestride + 6] = stbi_clamp((x1 - t2) >> 17);
-        output[i * output_linestride + 2] = stbi_clamp((x2 + t1) >> 17);
-        output[i * output_linestride + 5] = stbi_clamp((x2 - t1) >> 17);
-        output[i * output_linestride + 3] = stbi_clamp((x3 + t0) >> 17);
-        output[i * output_linestride + 4] = stbi_clamp((x3 - t0) >> 17);
+        for j in 0..8 {
+            output[i * output_linestride + j] = results[j].extract(i);
+        }
     }
 }
 
@@ -297,8 +334,10 @@ fn stbi_f2f(x: f32) -> Wrapping<i32> {
     Wrapping((x * 4096.0 + 0.5) as i32)
 }
 
-fn stbi_fsh(x: Wrapping<i32>) -> Wrapping<i32> {
-    x << 12
+// take a -128..127 value and stbi__clamp it and convert to 0..255
+fn stbi_clamp_simd(x: i32x8) -> u8x8
+{
+    u8x8::from_cast(x.max(i32x8::splat(0)).min(i32x8::splat(255)))
 }
 
 fn stbi_f2f_simd(x: f32) -> i32x8 {
