@@ -4,7 +4,19 @@
 use crate::parser::Dimensions;
 use std::num::Wrapping;
 
-use packed_simd::{
+#[cfg(feature = "packed_simd")]
+extern crate packed_simd;
+
+#[cfg(feature = "packed_simd")]
+use self::packed_simd as simd;
+
+#[cfg(not(feature = "packed_simd"))]
+extern crate ssimd;
+
+#[cfg(not(feature = "packed_simd"))]
+use self::ssimd as simd;
+
+use self::simd::{
     i32x8, i16x8, u16x8, u8x8,
     i32x4, i16x4, u16x4, u8x4,
     FromCast,
