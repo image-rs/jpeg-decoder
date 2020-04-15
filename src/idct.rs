@@ -149,7 +149,7 @@ fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16
     let x = idct_1d_x(&s, 65536 + (128 << 17));
     let t = idct_1d_t(&s);
 
-    let results = [
+    let mut results = [
         stbi_clamp_simd!(i32x8,u8x8, (x[0] + t[3]) >> 17),
         stbi_clamp_simd!(i32x8,u8x8, (x[1] + t[2]) >> 17),
         stbi_clamp_simd!(i32x8,u8x8, (x[2] + t[1]) >> 17),
@@ -160,10 +160,10 @@ fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16
         stbi_clamp_simd!(i32x8,u8x8, (x[0] - t[3]) >> 17),
     ];
 
+    simd_transpose!(results);
+
     for i in 0..8 {
-        for j in 0..8 {
-            output[i * output_linestride + j] = results[j].extract(i);
-        }
+        results[i].write_to_slice_aligned(&mut output[i * output_linestride..]);
     }
 }
 
