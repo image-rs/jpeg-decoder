@@ -90,23 +90,37 @@ macro_rules! stbi_clamp_simd {
 fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
     debug_assert_eq!(coefficients.len(), 64);
 
+    let coeff_vectors = [
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[0..0 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[8..8 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[16..16 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[24..24 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[32..32 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[40..40 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[48..48 + 8])),
+        i32x8::from(i16x8::from_slice_unaligned(&coefficients[56..56 + 8])),
+    ];
+
+    let quant_vectors = [
+        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[0..0 + 8])),
+        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[8..8 + 8])),
+        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[16..16 + 8])),
+        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[24..24 + 8])),
+        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[32..32 + 8])),
+        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[40..40 + 8])),
+        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[48..48 + 8])),
+        i32x8::from(u16x8::from_slice_unaligned(&quantization_table[56..56 + 8])),
+    ];
+
     let mut s: [i32x8; 8] = [
-        i32x8::from(i16x8::from_slice_unaligned(&coefficients[0..0 + 8])) *
-            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[0..0 + 8])),
-        i32x8::from(i16x8::from_slice_unaligned(&coefficients[8..8 + 8])) *
-            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[8..8 + 8])),
-        i32x8::from(i16x8::from_slice_unaligned(&coefficients[16..16 + 8])) *
-            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[16..16 + 8])),
-        i32x8::from(i16x8::from_slice_unaligned(&coefficients[24..24 + 8])) *
-            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[24..24 + 8])),
-        i32x8::from(i16x8::from_slice_unaligned(&coefficients[32..32 + 8])) *
-            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[32..32 + 8])),
-        i32x8::from(i16x8::from_slice_unaligned(&coefficients[40..40 + 8])) *
-            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[40..40 + 8])),
-        i32x8::from(i16x8::from_slice_unaligned(&coefficients[48..48 + 8])) *
-            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[48..48 + 8])),
-        i32x8::from(i16x8::from_slice_unaligned(&coefficients[56..56 + 8])) *
-            i32x8::from(u16x8::from_slice_unaligned(&quantization_table[56..56 + 8])),
+        coeff_vectors[0] * quant_vectors[0],
+        coeff_vectors[1] * quant_vectors[1],
+        coeff_vectors[2] * quant_vectors[2],
+        coeff_vectors[3] * quant_vectors[3],
+        coeff_vectors[4] * quant_vectors[4],
+        coeff_vectors[5] * quant_vectors[5],
+        coeff_vectors[6] * quant_vectors[6],
+        coeff_vectors[7] * quant_vectors[7],
     ];
 
     // constants scaled things up by 1<<12; let's bring them back
@@ -205,15 +219,25 @@ fn dequantize_and_idct_block_4x4(coefficients: &[i16], quantization_table: &[u16
     const PASS1_BITS: u32 = 2;
     const FINAL_BITS: u32 = CONST_BITS + PASS1_BITS + 3;
 
+    let coeff_vectors = [
+        i32x4::from(i16x4::from_slice_unaligned(&coefficients[0..0 + 4])),
+        i32x4::from(i16x4::from_slice_unaligned(&coefficients[8..8 + 4])),
+        i32x4::from(i16x4::from_slice_unaligned(&coefficients[16..16 + 4])),
+        i32x4::from(i16x4::from_slice_unaligned(&coefficients[24..24 + 4])),
+    ];
+
+    let quant_vectors = [
+        i32x4::from(u16x4::from_slice_unaligned(&quantization_table[0..0 + 4])),
+        i32x4::from(u16x4::from_slice_unaligned(&quantization_table[8..8 + 4])),
+        i32x4::from(u16x4::from_slice_unaligned(&quantization_table[16..16 + 4])),
+        i32x4::from(u16x4::from_slice_unaligned(&quantization_table[24..24 + 4])),
+    ];
+
     let mut s: [i32x4; 4] = [
-        i32x4::from(i16x4::from_slice_unaligned(&coefficients[0..0 + 8])) *
-            i32x4::from(u16x4::from_slice_unaligned(&quantization_table[0..0 + 4])),
-        i32x4::from(i16x4::from_slice_unaligned(&coefficients[8..8 + 4])) *
-            i32x4::from(u16x4::from_slice_unaligned(&quantization_table[8..8 + 4])),
-        i32x4::from(i16x4::from_slice_unaligned(&coefficients[16..16 + 4])) *
-            i32x4::from(u16x4::from_slice_unaligned(&quantization_table[16..16 + 4])),
-        i32x4::from(i16x4::from_slice_unaligned(&coefficients[24..24 + 4])) *
-            i32x4::from(u16x4::from_slice_unaligned(&quantization_table[24..24 + 4])),
+        coeff_vectors[0] * quant_vectors[0],
+        coeff_vectors[1] * quant_vectors[1],
+        coeff_vectors[2] * quant_vectors[2],
+        coeff_vectors[3] * quant_vectors[3],
     ];
 
     let x0 = (s[0] + s[2]) << PASS1_BITS;
