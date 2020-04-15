@@ -20,6 +20,9 @@ jobs:
           - rust: nightly
             features: packed_simd
             command: test
+          - rust: nightly
+            features: packed_simd
+            command: benchmark
     steps:
     - uses: actions/checkout@v2
     - run: rustup default ${{ matrix.rust }}
