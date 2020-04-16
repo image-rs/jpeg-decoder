@@ -11,10 +11,10 @@ extern crate packed_simd;
 use self::packed_simd as simd;
 
 #[cfg(not(feature = "packed_simd"))]
-extern crate ssimd;
+extern crate simulated_packed_simd;
 
 #[cfg(not(feature = "packed_simd"))]
-use self::ssimd as simd;
+use self::simulated_packed_simd as simd;
 
 use self::simd::{
     i32x8, i16x8, u16x8, u8x8,
@@ -185,7 +185,8 @@ fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16
     simd_transpose!(u8x8, results);
     
     for i in 0..8 {
-        results[i].write_to_slice_aligned(&mut output[i * output_linestride..]);
+        let n = i * output_linestride;
+        results[i].write_to_slice_unaligned(&mut output[n..n + 8]);
     }
 }
 
@@ -302,7 +303,8 @@ fn dequantize_and_idct_block_4x4(coefficients: &[i16], quantization_table: &[u16
     simd_transpose!(u8x4, results);
 
     for i in 0..4 {
-        results[i].write_to_slice_aligned(&mut output[i * output_linestride..]);
+        let n = i * output_linestride;
+        results[i].write_to_slice_unaligned(&mut output[n..n + 4]);
     }
 }
 
