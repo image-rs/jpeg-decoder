@@ -67,14 +67,36 @@ pub(crate) fn dequantize_and_idct_block(scale: usize, coefficients: &[i16], quan
 /// Transpose an 8x8 matrix represented by SIMD vectors
 /// This has to be a macro not to depend on const generics
 macro_rules! simd_transpose {
-    ($s:expr) => {
-        for i in 0..$s.len() {
-            for j in i + 1..$s.len() {
-                let tmp = $s[i].extract(j);
-                $s[i] = $s[i].replace(j, $s[j].extract(i));
-                $s[j] = $s[j].replace(i, tmp);
-            }
-        }
+    (i32x8, $s: expr) => {simd_transpose!(8, i32x8, $s)};
+    (u8x8, $s: expr) => {simd_transpose!(8, u8x8, $s)};
+    (i32x4, $s: expr) => {simd_transpose!(4, i32x4, $s)};
+    (u8x4, $s: expr) => {simd_transpose!(4, u8x4, $s)};
+    (4, $t:tt, $s: expr) => {
+        simd_transpose!([
+            0, 0,1,2,3;
+            1, 0,1,2,3;
+            2, 0,1,2,3;
+            3, 0,1,2,3
+        ], $t, $s)
+    };
+    (8, $t:tt, $s: expr) => {
+        simd_transpose!([
+            0, 0,1,2,3,4,5,6,7;
+            1, 0,1,2,3,4,5,6,7;
+            2, 0,1,2,3,4,5,6,7;
+            3, 0,1,2,3,4,5,6,7;
+            4, 0,1,2,3,4,5,6,7;
+            5, 0,1,2,3,4,5,6,7;
+            6, 0,1,2,3,4,5,6,7;
+            7, 0,1,2,3,4,5,6,7
+        ], $t, $s)
+    };
+    ([  $( $i:expr, $($j:expr),* );*  ], $t: tt, $s: expr) => {
+        $s = [
+            $(
+                $t::new( $( $s[$j].extract($i) ),* )
+            ),*
+        ];
     }
 }
 
@@ -138,7 +160,7 @@ fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16
     s[7] = (x[0] - t[3]) >> 10;
 
     // columns
-    simd_transpose!(s);
+    simd_transpose!(i32x8, s);
 
     // constants scaled things up by 1<<12, plus we had 1<<2 from first
     // loop, plus horizontal and vertical each scale by sqrt(8) so together
@@ -160,8 +182,8 @@ fn dequantize_and_idct_block_8x8(coefficients: &[i16], quantization_table: &[u16
         stbi_clamp_simd!(i32x8,u8x8, (x[0] - t[3]) >> 17),
     ];
 
-    simd_transpose!(results);
-
+    simd_transpose!(u8x8, results);
+    
     for i in 0..8 {
         results[i].write_to_slice_aligned(&mut output[i * output_linestride..]);
     }
@@ -258,7 +280,7 @@ fn dequantize_and_idct_block_4x4(coefficients: &[i16], quantization_table: &[u16
     s[3] = x0 - t2;
 
     // columns
-    simd_transpose!(s);
+    simd_transpose!(i32x4, s);
 
     let x0 = (s[0] + s[2]) << CONST_BITS;
     let x2 = (s[0] - s[2]) << CONST_BITS;
@@ -270,17 +292,17 @@ fn dequantize_and_idct_block_4x4(coefficients: &[i16], quantization_table: &[u16
     let x0 = x0 + i32x4::splat(1 << (FINAL_BITS - 1)) + i32x4::splat(128 << FINAL_BITS);
     let x2 = x2 + i32x4::splat(1 << (FINAL_BITS - 1)) + i32x4::splat(128 << FINAL_BITS);
 
-    let results = [
+    let mut results = [
         stbi_clamp_simd!(i32x4,u8x4, (x0 + t2) >> FINAL_BITS),
         stbi_clamp_simd!(i32x4,u8x4, (x2 + t0) >> FINAL_BITS),
         stbi_clamp_simd!(i32x4,u8x4, (x2 - t0) >> FINAL_BITS),
         stbi_clamp_simd!(i32x4,u8x4, (x0 - t2) >> FINAL_BITS),
     ];
 
-    for i in 0..results.len() {
-        for j in 0..results.len() {
-            output[i * output_linestride + j] = results[j].extract(i);
-        }
+    simd_transpose!(u8x4, results);
+
+    for i in 0..4 {
+        results[i].write_to_slice_aligned(&mut output[i * output_linestride..]);
     }
 }
 
