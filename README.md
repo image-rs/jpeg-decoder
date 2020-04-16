@@ -31,5 +31,14 @@ fn main() {
 }
 ```
 
+## Performance
+ This crate uses [rayon](https://github.com/rayon-rs/rayon) to decode images on all available cores by default.
+ This can be disabled by requiring the dependency with `default-features = false`.
+ 
+ This crate can optionally use [SIMD](https://en.wikipedia.org/wiki/SIMD) instructions
+ to decode images even faster.
+ This is not enabled by default because it requires a nightly compiler,
+ but can be activated with the `packed_simd` feature.
+ 
 ## Requirements
 This crate compiles only with rust >= 1.34.
