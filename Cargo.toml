@@ -13,7 +13,7 @@ exclude = ["tests/*"]
 [dependencies]
 byteorder = "1.0"
 rayon = { version = "1.0", optional = true }
-ssimd = { path = "../ssimd" }
+simulated_packed_simd = "0.0.1"
 packed_simd = { version = "0.3", optional = true }
 
 [dev-dependencies]
