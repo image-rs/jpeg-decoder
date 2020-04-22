@@ -362,7 +362,14 @@ impl<R: Read> Decoder<R> {
             // byte which is not equal to 0 or X’FF’ (see Table B.1). Any marker may
             // optionally be preceded by any number of fill bytes, which are bytes
             // assigned code X’FF’.
-            let byte = self.reader.read_u8()?;
+            let mut byte = self.reader.read_u8()?;
+
+            // Section B.1.1.2
+            // "Any marker may optionally be preceded by any number of fill bytes, which are bytes assigned code X’FF’."
+            while byte == 0xFF {
+                byte = self.reader.read_u8()?;
+            }
+            
             if byte != 0x00 && byte != 0xFF {
                 return Ok(Marker::from_u8(byte).unwrap());
             }
