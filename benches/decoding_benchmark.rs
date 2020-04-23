@@ -26,6 +26,10 @@ fn main() {
         read_image(include_bytes!("tower_progressive.jpg"))
     }));
 
+    c.bench_function("decode a 512x512 grayscale JPEG", |b| b.iter(|| {
+        read_image(include_bytes!("tower_grayscale.jpg"))
+    }));
+
     c.bench_function("extract metadata from an image", |b| b.iter(|| {
         read_metadata(include_bytes!("tower.jpg"))
     }));
