@@ -777,14 +777,15 @@ fn compute_image(components: &[Component],
     if components.len() == 1 {
         let component = &components[0];
 
-        if component.size.width % 8 == 0 && component.size.height % 8 == 0 {
-            return Ok(data[0].clone())
-        }
-
         let width = component.size.width as usize;
         let height = component.size.height as usize;
+        let size = width * height;
 
-        let mut buffer = vec![0u8; width * height];
+        if width % 8 == 0 && height % 8 == 0 {
+            return Ok(data[0][..size].to_vec())
+        }
+
+        let mut buffer = vec![0u8; size];
         let line_stride = component.block_size.width as usize * component.dct_scale;
 
         for y in 0 .. height {
