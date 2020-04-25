@@ -346,7 +346,7 @@ impl<R: Read> Decoder<R> {
         }
 
         let frame = self.frame.as_ref().unwrap();
-        compute_image(&frame.components, &planes, frame.output_size, self.is_jfif, self.color_transform)
+        compute_image(&frame.components, planes, frame.output_size, self.is_jfif, self.color_transform)
     }
 
     fn read_marker(&mut self) -> Result<Marker> {
@@ -766,7 +766,7 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
 }
 
 fn compute_image(components: &[Component],
-                 data: &[Vec<u8>],
+                 mut data: Vec<Vec<u8>>,
                  output_size: Dimensions,
                  is_jfif: bool,
                  color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
@@ -776,19 +776,23 @@ fn compute_image(components: &[Component],
 
     if components.len() == 1 {
         let component = &components[0];
-        let decoded = &data[0];
+        let mut decoded: Vec<u8> = data.remove(0);
 
         let width = component.size.width as usize;
         let height = component.size.height as usize;
         let size = width * height;
+        let line_stride = component.block_size.width as usize * component.dct_scale;
 
-        // if the image size is a multiple of the block size
-        if decoded.len() == size {
-            return Ok(decoded.to_vec())
+        // if the image width is a multiple of the block size,
+        // then we don't have to move bytes in the decoded data
+        if usize::from(output_size.width) == line_stride {
+            // If the height of the image is not a multiple of the block size,
+            // Then we have lines at the end that we don't need
+            decoded.resize(size, 0); // We are in greyscale, 1 byte per pixel
+            return Ok(decoded)
         }
 
         let mut buffer = vec![0u8; size];
-        let line_stride = component.block_size.width as usize * component.dct_scale;
 
         for y in 0..height {
             let destination_idx = y * width;
@@ -807,10 +811,10 @@ fn compute_image(components: &[Component],
 
 #[cfg(feature="rayon")]
 fn compute_image_parallel(components: &[Component],
-                 data: &[Vec<u8>],
-                 output_size: Dimensions,
-                 is_jfif: bool,
-                 color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
+                          data: Vec<Vec<u8>>,
+                          output_size: Dimensions,
+                          is_jfif: bool,
+                          color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
     use rayon::prelude::*;
 
     let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
@@ -822,7 +826,7 @@ fn compute_image_parallel(components: &[Component],
          .with_max_len(1)
          .enumerate()
          .for_each(|(row, line)| {
-             upsampler.upsample_and_interleave_row(data, row, output_size.width as usize, line);
+             upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
              color_convert_func(line, output_size.width as usize);
          });
 
@@ -831,10 +835,10 @@ fn compute_image_parallel(components: &[Component],
 
 #[cfg(not(feature="rayon"))]
 fn compute_image_parallel(components: &[Component],
-                 data: &[Vec<u8>],
-                 output_size: Dimensions,
-                 is_jfif: bool,
-                 color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
+                          data: Vec<Vec<u8>>,
+                          output_size: Dimensions,
+                          is_jfif: bool,
+                          color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
     let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
     let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
