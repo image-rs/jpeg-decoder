@@ -242,6 +242,7 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
 
 /// Returns ceil(x/y), requires x>0
 fn ceil_div(x: u32, y: u32) -> u16 {
+    assert!(x>0 && y>0, "invalid dimensions");
     (1 + ((x - 1) / y)) as u16
 }
 
