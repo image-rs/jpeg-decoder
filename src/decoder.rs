@@ -776,22 +776,25 @@ fn compute_image(components: &[Component],
 
     if components.len() == 1 {
         let component = &components[0];
-
-        if component.size.width % 8 == 0 && component.size.height % 8 == 0 {
-            return Ok(data[0].clone())
-        }
+        let decoded = &data[0];
 
         let width = component.size.width as usize;
         let height = component.size.height as usize;
+        let size = width * height;
 
-        let mut buffer = vec![0u8; width * height];
+        // if the image size is a multiple of the block size
+        if decoded.len() == size {
+            return Ok(decoded.to_vec())
+        }
+
+        let mut buffer = vec![0u8; size];
         let line_stride = component.block_size.width as usize * component.dct_scale;
 
-        for y in 0 .. height {
+        for y in 0..height {
             let destination_idx = y * width;
             let source_idx = y * line_stride;
             let destination = &mut buffer[destination_idx..][..width];
-            let source = &data[0][source_idx..][..width];
+            let source = &decoded[source_idx..][..width];
             destination.copy_from_slice(source);
         }
 
