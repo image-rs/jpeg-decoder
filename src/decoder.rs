@@ -785,24 +785,20 @@ fn compute_image(components: &[Component],
 
         // if the image width is a multiple of the block size,
         // then we don't have to move bytes in the decoded data
-        if usize::from(output_size.width) == line_stride {
-            // If the height of the image is not a multiple of the block size,
-            // Then we have lines at the end that we don't need
-            decoded.resize(size, 0); // We are in greyscale, 1 byte per pixel
-            return Ok(decoded)
+        if usize::from(output_size.width) != line_stride {
+            let mut buffer = vec![0u8; width];
+            // The first line already starts at index 0, so we need to move only lines 1..height
+            for y in 1..height {
+                let destination_idx = y * width;
+                let source_idx = y * line_stride;
+                // We could use copy_within, but we need to support old rust versions
+                buffer.copy_from_slice(&decoded[source_idx..][..width]);
+                let destination = &mut decoded[destination_idx..][..width];
+                destination.copy_from_slice(&buffer);
+            }
         }
-
-        let mut buffer = vec![0u8; size];
-
-        for y in 0..height {
-            let destination_idx = y * width;
-            let source_idx = y * line_stride;
-            let destination = &mut buffer[destination_idx..][..width];
-            let source = &decoded[source_idx..][..width];
-            destination.copy_from_slice(source);
-        }
-
-        Ok(buffer)
+        decoded.resize(size, 0);
+        Ok(decoded)
     }
     else {
         compute_image_parallel(components, data, output_size, is_jfif, color_transform)
