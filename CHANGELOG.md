@@ -4,6 +4,12 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
 
+## v0.1.19 (2020-04-27)
+- Fix decoding returning too much image data
+- Fix recognizing padding in marker segments
+- Several decode performance improvements
+- Remove use of deprecated `Error::description`
+
 ## v0.1.18 (2019-12-10)
 - Fix two bugs causing panics introduced in 0.1.17.
 
