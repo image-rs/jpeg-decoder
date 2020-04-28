@@ -240,24 +240,49 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
     })
 }
 
+/// Returns ceil(x/y), requires x>0
+fn ceil_div(x: u32, y: u32) -> u16 {
+    assert!(x>0 && y>0, "invalid dimensions");
+    (1 + ((x - 1) / y)) as u16
+}
+
 fn update_component_sizes(size: Dimensions, components: &mut [Component]) -> Dimensions {
-    let h_max = components.iter().map(|c| c.horizontal_sampling_factor).max().unwrap();
-    let v_max = components.iter().map(|c| c.vertical_sampling_factor).max().unwrap();
+    let h_max = components.iter().map(|c| c.horizontal_sampling_factor).max().unwrap() as u32;
+    let v_max = components.iter().map(|c| c.vertical_sampling_factor).max().unwrap() as u32;
 
     let mcu_size = Dimensions {
-        width: (size.width as f32 / (h_max as f32 * 8.0)).ceil() as u16,
-        height: (size.height as f32 / (v_max as f32 * 8.0)).ceil() as u16,
+        width: ceil_div(size.width as u32, h_max * 8),
+        height: ceil_div(size.height as u32, v_max * 8),
     };
 
     for component in components {
-        component.size.width = (size.width as f32 * component.horizontal_sampling_factor as f32 * component.dct_scale as f32 / (h_max as f32 * 8.0)).ceil() as u16;
-        component.size.height = (size.height as f32 * component.vertical_sampling_factor as f32 * component.dct_scale as f32 / (v_max as f32 * 8.0)).ceil() as u16;
+        component.size.width = ceil_div(size.width as u32 * component.horizontal_sampling_factor as u32 * component.dct_scale as u32, h_max * 8);
+        component.size.height = ceil_div(size.height as u32 * component.vertical_sampling_factor as u32 * component.dct_scale as u32, v_max * 8);
 
         component.block_size.width = mcu_size.width * component.horizontal_sampling_factor as u16;
         component.block_size.height = mcu_size.height * component.vertical_sampling_factor as u16;
     }
 
     mcu_size
+}
+
+#[test]
+fn test_update_component_sizes() {
+    let mut components = [Component {
+        identifier: 1,
+        horizontal_sampling_factor: 2,
+        vertical_sampling_factor: 2,
+        quantization_table_index: 0,
+        dct_scale: 8,
+        size: Dimensions { width: 0, height: 0 },
+        block_size: Dimensions { width: 0, height: 0 },
+    }];
+    let mcu = update_component_sizes(
+        Dimensions { width: 800, height: 280 },
+        &mut components);
+    assert_eq!(mcu, Dimensions { width: 50, height: 18 });
+    assert_eq!(components[0].block_size, Dimensions { width: 100, height: 36 });
+    assert_eq!(components[0].size, Dimensions { width: 800, height: 280 });
 }
 
 // Section B.2.3

@@ -346,7 +346,7 @@ impl<R: Read> Decoder<R> {
         }
 
         let frame = self.frame.as_ref().unwrap();
-        compute_image(&frame.components, &planes, frame.output_size, self.is_jfif, self.color_transform)
+        compute_image(&frame.components, planes, frame.output_size, self.is_jfif, self.color_transform)
     }
 
     fn read_marker(&mut self) -> Result<Marker> {
@@ -362,7 +362,14 @@ impl<R: Read> Decoder<R> {
             // byte which is not equal to 0 or X’FF’ (see Table B.1). Any marker may
             // optionally be preceded by any number of fill bytes, which are bytes
             // assigned code X’FF’.
-            let byte = self.reader.read_u8()?;
+            let mut byte = self.reader.read_u8()?;
+
+            // Section B.1.1.2
+            // "Any marker may optionally be preceded by any number of fill bytes, which are bytes assigned code X’FF’."
+            while byte == 0xFF {
+                byte = self.reader.read_u8()?;
+            }
+            
             if byte != 0x00 && byte != 0xFF {
                 return Ok(Marker::from_u8(byte).unwrap());
             }
@@ -766,7 +773,7 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
 }
 
 fn compute_image(components: &[Component],
-                 data: &[Vec<u8>],
+                 mut data: Vec<Vec<u8>>,
                  output_size: Dimensions,
                  is_jfif: bool,
                  color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
@@ -776,26 +783,29 @@ fn compute_image(components: &[Component],
 
     if components.len() == 1 {
         let component = &components[0];
-
-        if component.size.width % 8 == 0 && component.size.height % 8 == 0 {
-            return Ok(data[0].clone())
-        }
+        let mut decoded: Vec<u8> = data.remove(0);
 
         let width = component.size.width as usize;
         let height = component.size.height as usize;
-
-        let mut buffer = vec![0u8; width * height];
+        let size = width * height;
         let line_stride = component.block_size.width as usize * component.dct_scale;
 
-        for y in 0 .. height {
-            let destination_idx = y * width;
-            let source_idx = y * line_stride;
-            let destination = &mut buffer[destination_idx..][..width];
-            let source = &data[0][source_idx..][..width];
-            destination.copy_from_slice(source);
+        // if the image width is a multiple of the block size,
+        // then we don't have to move bytes in the decoded data
+        if usize::from(output_size.width) != line_stride {
+            let mut buffer = vec![0u8; width];
+            // The first line already starts at index 0, so we need to move only lines 1..height
+            for y in 1..height {
+                let destination_idx = y * width;
+                let source_idx = y * line_stride;
+                // We could use copy_within, but we need to support old rust versions
+                buffer.copy_from_slice(&decoded[source_idx..][..width]);
+                let destination = &mut decoded[destination_idx..][..width];
+                destination.copy_from_slice(&buffer);
+            }
         }
-
-        Ok(buffer)
+        decoded.resize(size, 0);
+        Ok(decoded)
     }
     else {
         compute_image_parallel(components, data, output_size, is_jfif, color_transform)
@@ -804,10 +814,10 @@ fn compute_image(components: &[Component],
 
 #[cfg(feature="rayon")]
 fn compute_image_parallel(components: &[Component],
-                 data: &[Vec<u8>],
-                 output_size: Dimensions,
-                 is_jfif: bool,
-                 color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
+                          data: Vec<Vec<u8>>,
+                          output_size: Dimensions,
+                          is_jfif: bool,
+                          color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
     use rayon::prelude::*;
 
     let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
@@ -819,7 +829,7 @@ fn compute_image_parallel(components: &[Component],
          .with_max_len(1)
          .enumerate()
          .for_each(|(row, line)| {
-             upsampler.upsample_and_interleave_row(data, row, output_size.width as usize, line);
+             upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
              color_convert_func(line, output_size.width as usize);
          });
 
@@ -828,10 +838,10 @@ fn compute_image_parallel(components: &[Component],
 
 #[cfg(not(feature="rayon"))]
 fn compute_image_parallel(components: &[Component],
-                 data: &[Vec<u8>],
-                 output_size: Dimensions,
-                 is_jfif: bool,
-                 color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
+                          data: Vec<Vec<u8>>,
+                          output_size: Dimensions,
+                          is_jfif: bool,
+                          color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
     let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
     let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
@@ -839,7 +849,7 @@ fn compute_image_parallel(components: &[Component],
 
     for (row, line) in image.chunks_mut(line_size)
          .enumerate() {
-             upsampler.upsample_and_interleave_row(data, row, output_size.width as usize, line);
+             upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
              color_convert_func(line, output_size.width as usize);
          }
 
