@@ -36,6 +36,17 @@ pub enum PixelFormat {
     CMYK32,
 }
 
+impl PixelFormat {
+    /// Determine the size in bytes of each pixel in this format
+    pub fn pixel_bytes(&self) -> usize {
+        match self {
+            PixelFormat::L8 => 1,
+            PixelFormat::RGB24 => 3,
+            PixelFormat::CMYK32 => 4,
+        }
+    }
+}
+
 /// Represents metadata of an image.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ImageInfo {
