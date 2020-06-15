@@ -1,10 +1,10 @@
+use super::{RowData, Worker};
 use decoder::MAX_COMPONENTS;
 use error::Result;
 use idct::dequantize_and_idct_block;
+use parser::Component;
 use std::mem;
 use std::sync::Arc;
-use parser::Component;
-use super::{RowData, Worker};
 
 pub struct ImmediateWorker {
     offsets: [usize; MAX_COMPONENTS],
@@ -26,7 +26,13 @@ impl ImmediateWorker {
         assert!(self.results[data.index].is_empty());
 
         self.offsets[data.index] = 0;
-        self.results[data.index].resize(data.component.block_size.width as usize * data.component.block_size.height as usize * data.component.dct_scale * data.component.dct_scale, 0u8);
+        self.results[data.index].resize(
+            data.component.block_size.width as usize
+                * data.component.block_size.height as usize
+                * data.component.dct_scale
+                * data.component.dct_scale,
+            0u8,
+        );
         self.components[data.index] = Some(data.component);
         self.quantization_tables[data.index] = Some(data.quantization_table);
     }
@@ -35,7 +41,8 @@ impl ImmediateWorker {
 
         let component = self.components[index].as_ref().unwrap();
         let quantization_table = self.quantization_tables[index].as_ref().unwrap();
-        let block_count = component.block_size.width as usize * component.vertical_sampling_factor as usize;
+        let block_count =
+            component.block_size.width as usize * component.vertical_sampling_factor as usize;
         let line_stride = component.block_size.width as usize * component.dct_scale;
 
         assert_eq!(data.len(), block_count * 64);
@@ -47,7 +54,13 @@ impl ImmediateWorker {
             let coefficients = &data[i * 64..(i + 1) * 64];
             let output = &mut self.results[index][self.offsets[index] + y * line_stride + x..];
 
-            dequantize_and_idct_block(component.dct_scale, coefficients, quantization_table, line_stride, output);
+            dequantize_and_idct_block(
+                component.dct_scale,
+                coefficients,
+                quantization_table,
+                line_stride,
+                output,
+            );
         }
 
         self.offsets[index] += block_count * component.dct_scale * component.dct_scale;

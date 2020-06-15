@@ -1,8 +1,8 @@
+use super::immediate::ImmediateWorker;
+use super::{RowData, Worker};
 use error::Result;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
-use super::{RowData, Worker};
-use super::immediate::ImmediateWorker;
 
 enum WorkerMsg {
     Start(RowData),
@@ -26,13 +26,13 @@ impl Worker for ThreadedWorker {
                 match message {
                     WorkerMsg::Start(data) => {
                         worker.start_immediate(data);
-                    },
+                    }
                     WorkerMsg::AppendRow(row) => {
                         worker.append_row_immediate(row);
-                    },
+                    }
                     WorkerMsg::GetResult((index, chan)) => {
                         let _ = chan.send(worker.get_result_immediate(index));
-                    },
+                    }
                 }
             }
         })?;
@@ -40,14 +40,22 @@ impl Worker for ThreadedWorker {
         Ok(ThreadedWorker { sender: tx })
     }
     fn start(&mut self, row_data: RowData) -> Result<()> {
-        Ok(self.sender.send(WorkerMsg::Start(row_data)).expect("jpeg-decoder worker thread error"))
+        Ok(self
+            .sender
+            .send(WorkerMsg::Start(row_data))
+            .expect("jpeg-decoder worker thread error"))
     }
     fn append_row(&mut self, row: (usize, Vec<i16>)) -> Result<()> {
-        Ok(self.sender.send(WorkerMsg::AppendRow(row)).expect("jpeg-decoder worker thread error"))
+        Ok(self
+            .sender
+            .send(WorkerMsg::AppendRow(row))
+            .expect("jpeg-decoder worker thread error"))
     }
     fn get_result(&mut self, index: usize) -> Result<Vec<u8>> {
         let (tx, rx) = mpsc::channel();
-        self.sender.send(WorkerMsg::GetResult((index, tx))).expect("jpeg-decoder worker thread error");
+        self.sender
+            .send(WorkerMsg::GetResult((index, tx)))
+            .expect("jpeg-decoder worker thread error");
         Ok(rx.recv().expect("jpeg-decoder worker thread error"))
     }
 }

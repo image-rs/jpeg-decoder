@@ -2,8 +2,8 @@ extern crate jpeg_decoder as jpeg;
 extern crate png;
 extern crate walkdir;
 
-use std::path::Path;
 use std::fs::File;
+use std::path::Path;
 
 mod common;
 mod crashtest;
@@ -11,7 +11,11 @@ mod reftest;
 
 #[test]
 fn read_info() {
-    let path = Path::new("tests").join("reftest").join("images").join("mozilla").join("jpg-progressive.jpg");
+    let path = Path::new("tests")
+        .join("reftest")
+        .join("images")
+        .join("mozilla")
+        .join("jpg-progressive.jpg");
 
     let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
     let ref_data = decoder.decode().unwrap();

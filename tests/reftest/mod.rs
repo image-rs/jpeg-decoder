@@ -19,9 +19,14 @@ fn reftest() {
 fn reftest_scaled() {
     let base = &Path::new("tests").join("reftest").join("images");
     reftest_scaled_file(&base.join("rgb.jpg"), 500, 333, &base.join("rgb.png"));
-    reftest_scaled_file(&base.join("rgb.jpg"), 250, 167, &base.join("rgb_250x167.png"));
-    reftest_scaled_file(&base.join("rgb.jpg"), 125, 84,  &base.join("rgb_125x84.png"));
-    reftest_scaled_file(&base.join("rgb.jpg"), 63,  42,  &base.join("rgb_63x42.png"));
+    reftest_scaled_file(
+        &base.join("rgb.jpg"),
+        250,
+        167,
+        &base.join("rgb_250x167.png"),
+    );
+    reftest_scaled_file(&base.join("rgb.jpg"), 125, 84, &base.join("rgb_125x84.png"));
+    reftest_scaled_file(&base.join("rgb.jpg"), 63, 42, &base.join("rgb_63x42.png"));
 }
 
 fn reftest_file(path: &Path) {
@@ -39,7 +44,9 @@ fn reftest_scaled_file(path: &Path, width: u16, height: u16, ref_path: &Path) {
 }
 
 fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path, ref_path: &Path) {
-    let mut data = decoder.decode().expect(&format!("failed to decode file: {:?}", path));
+    let mut data = decoder
+        .decode()
+        .expect(&format!("failed to decode file: {:?}", path));
     let info = decoder.info().unwrap();
     let mut pixel_format = info.pixel_format;
 
@@ -49,14 +56,18 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
     }
 
     let ref_file = File::open(ref_path).unwrap();
-    let (ref_info, mut ref_reader) = png::Decoder::new(ref_file).read_info().expect("png failed to read info");
+    let (ref_info, mut ref_reader) = png::Decoder::new(ref_file)
+        .read_info()
+        .expect("png failed to read info");
 
     assert_eq!(ref_info.width, info.width as u32);
     assert_eq!(ref_info.height, info.height as u32);
     assert_eq!(ref_info.bit_depth, png::BitDepth::Eight);
 
     let mut ref_data = vec![0; ref_info.buffer_size()];
-    ref_reader.next_frame(&mut ref_data).expect("png decode failed");
+    ref_reader
+        .next_frame(&mut ref_data)
+        .expect("png decode failed");
     let mut ref_pixel_format = ref_info.color_type;
 
     if ref_pixel_format == png::ColorType::RGBA {
@@ -73,32 +84,46 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
     assert_eq!(data.len(), ref_data.len());
 
     let mut max_diff = 0;
-    let pixels: Vec<u8> = data.iter().zip(ref_data.iter()).map(|(&a, &b)| {
-        let diff = (a as i16 - b as i16).abs();
-        max_diff = cmp::max(diff, max_diff);
+    let pixels: Vec<u8> = data
+        .iter()
+        .zip(ref_data.iter())
+        .map(|(&a, &b)| {
+            let diff = (a as i16 - b as i16).abs();
+            max_diff = cmp::max(diff, max_diff);
 
-        // FIXME: Only a diff of 1 should be allowed?
-        if diff <= 2 {
-            // White for correct
-            0xFF
-        } else {
-            // "1100" in the RGBA channel with an error for an incorrect value
-            // This results in some number of C0 and FFs, which is much more
-            // readable (and distinguishable) than the previous difference-wise
-            // scaling but does not require reconstructing the actual RGBA pixel.
-            0xC0
-        }
-    }).collect();
+            // FIXME: Only a diff of 1 should be allowed?
+            if diff <= 2 {
+                // White for correct
+                0xFF
+            } else {
+                // "1100" in the RGBA channel with an error for an incorrect value
+                // This results in some number of C0 and FFs, which is much more
+                // readable (and distinguishable) than the previous difference-wise
+                // scaling but does not require reconstructing the actual RGBA pixel.
+                0xC0
+            }
+        })
+        .collect();
 
     if pixels.iter().any(|&a| a < 255) {
-        let output_path = path.with_file_name(format!("{}-diff.png", path.file_stem().unwrap().to_str().unwrap()));
+        let output_path = path.with_file_name(format!(
+            "{}-diff.png",
+            path.file_stem().unwrap().to_str().unwrap()
+        ));
         let output = File::create(&output_path).unwrap();
         let mut encoder = png::Encoder::new(output, info.width as u32, info.height as u32);
         encoder.set_depth(png::BitDepth::Eight);
         encoder.set_color(ref_pixel_format);
-        encoder.write_header().expect("png failed to write header").write_image_data(&pixels).expect("png failed to write data");
+        encoder
+            .write_header()
+            .expect("png failed to write header")
+            .write_image_data(&pixels)
+            .expect("png failed to write data");
 
-        panic!("decoding difference: {:?}, maximum difference was {}", output_path, max_diff);
+        panic!(
+            "decoding difference: {:?}, maximum difference was {}",
+            output_path, max_diff
+        );
     }
 }
 

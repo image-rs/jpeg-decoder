@@ -1,10 +1,10 @@
-mod threaded;
 mod immediate;
+mod threaded;
 
-#[cfg(not(any(target_arch = "asmjs", target_arch = "wasm32")))]
-pub use self::threaded::ThreadedWorker as PlatformWorker;
 #[cfg(any(target_arch = "asmjs", target_arch = "wasm32"))]
 pub use self::immediate::ImmediateWorker as PlatformWorker;
+#[cfg(not(any(target_arch = "asmjs", target_arch = "wasm32")))]
+pub use self::threaded::ThreadedWorker as PlatformWorker;
 
 use error::Result;
 use parser::Component;
