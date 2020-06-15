@@ -31,10 +31,12 @@ jobs:
         cargo build --verbose --no-default-features --features "$FEATURES" &&
         cargo test --tests --benches --no-default-features --features "$FEATURES"
       if: ${{ matrix.command == 'test' }}
+      continue-on-error: ${{ matrix.rust == 'nightly' }}
       env:
         FEATURES: ${{ matrix.features }}
     - name: benchmark
       run: cargo bench --bench decoding_benchmark --no-default-features --features "$FEATURES" -- --warm-up-time 1 --measurement-time 1 --sample-size 25
       if: ${{ matrix.command == 'benchmark' }}
+      continue-on-error: ${{ matrix.rust == 'nightly' }}
       env:
         FEATURES: ${{ matrix.features }}
