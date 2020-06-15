@@ -1,0 +1,25 @@
+[package]
+name = "fuzz-target-jpeg-decoder"
+version = "0.1.0"
+authors = ["jpeg-decoder developers"]
+edition = "2018"
+
+[[bin]]
+name = "fuzz_decode"
+path = "src/fuzz_decode.rs"
+
+[[bin]]
+name = "reproduce_decode"
+path = "src/reproduce_decode.rs"
+
+[[bin]]
+name = "fuzz_info"
+path = "src/fuzz_info.rs"
+
+[[bin]]
+name = "reproduce_info"
+path = "src/reproduce_info.rs"
+
+[dependencies]
+afl = "0.8"
+jpeg-decoder = { path = "../" }
