@@ -45,10 +45,10 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Error::Format(ref desc)      => write!(f, "invalid JPEG format: {}", desc),
+            Error::Format(ref desc) => write!(f, "invalid JPEG format: {}", desc),
             Error::Unsupported(ref feat) => write!(f, "unsupported JPEG feature: {:?}", feat),
-            Error::Io(ref err)           => err.fmt(f),
-            Error::Internal(ref err)     => err.fmt(f),
+            Error::Io(ref err) => err.fmt(f),
+            Error::Internal(ref err) => err.fmt(f),
         }
     }
 }

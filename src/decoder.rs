@@ -2,27 +2,25 @@ use byteorder::ReadBytesExt;
 use error::{Error, Result, UnsupportedFeature};
 use huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
 use marker::Marker;
-use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
-             parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, ScanInfo};
-use upsampler::Upsampler;
+use parser::{
+    parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos,
+    AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
+    ScanInfo,
+};
 use std::cmp;
 use std::io::Read;
 use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
-use worker::{RowData, PlatformWorker, Worker};
+use upsampler::Upsampler;
+use worker::{PlatformWorker, RowData, Worker};
 
 pub const MAX_COMPONENTS: usize = 4;
 
 static UNZIGZAG: [u8; 64] = [
-     0,  1,  8, 16,  9,  2,  3, 10,
-    17, 24, 32, 25, 18, 11,  4,  5,
-    12, 19, 26, 33, 40, 48, 41, 34,
-    27, 20, 13,  6,  7, 14, 21, 28,
-    35, 42, 49, 56, 57, 50, 43, 36,
-    29, 22, 15, 23, 30, 37, 44, 51,
-    58, 59, 52, 45, 38, 31, 39, 46,
-    53, 60, 61, 54, 47, 55, 62, 63,
+    0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48, 41, 34, 27, 20,
+    13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51, 58, 59,
+    52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63,
 ];
 
 /// An enumeration over combinations of color spaces and bit depths a pixel can have.
@@ -104,7 +102,7 @@ impl<R: Read> Decoder<R> {
                     height: frame.output_size.height,
                     pixel_format: pixel_format,
                 })
-            },
+            }
             None => None,
         }
     }
@@ -117,18 +115,24 @@ impl<R: Read> Decoder<R> {
     }
 
     /// Configure the decoder to scale the image during decoding.
-    /// 
+    ///
     /// This efficiently scales the image by the smallest supported scale
     /// factor that produces an image larger than or equal to the requested
     /// size in at least one axis. The currently implemented scale factors
     /// are 1/8, 1/4, 1/2 and 1.
-    /// 
+    ///
     /// To generate a thumbnail of an exact size, pass the desired size and
     /// then scale to the final size using a traditional resampling algorithm.
     pub fn scale(&mut self, requested_width: u16, requested_height: u16) -> Result<(u16, u16)> {
         self.read_info()?;
         let frame = self.frame.as_mut().unwrap();
-        let idct_size = crate::idct::choose_idct_size(frame.image_size, Dimensions{ width: requested_width, height: requested_height });
+        let idct_size = crate::idct::choose_idct_size(
+            frame.image_size,
+            Dimensions {
+                width: requested_width,
+                height: requested_height,
+            },
+        );
         frame.update_idct_size(idct_size);
         Ok((frame.output_size.width, frame.output_size.height))
     }
@@ -142,16 +146,25 @@ impl<R: Read> Decoder<R> {
         if stop_after_metadata && self.frame.is_some() {
             // The metadata has already been read.
             return Ok(Vec::new());
-        }
-        else if self.frame.is_none() && (self.reader.read_u8()? != 0xFF || Marker::from_u8(self.reader.read_u8()?) != Some(Marker::SOI)) {
-            return Err(Error::Format("first two bytes is not a SOI marker".to_owned()));
+        } else if self.frame.is_none()
+            && (self.reader.read_u8()? != 0xFF
+                || Marker::from_u8(self.reader.read_u8()?) != Some(Marker::SOI))
+        {
+            return Err(Error::Format(
+                "first two bytes is not a SOI marker".to_owned(),
+            ));
         }
 
         let mut previous_marker = Marker::SOI;
         let mut pending_marker = None;
         let mut worker = None;
         let mut scans_processed = 0;
-        let mut planes = vec![Vec::new(); self.frame.as_ref().map_or(0, |frame| frame.components.len())];
+        let mut planes = vec![
+            Vec::new();
+            self.frame
+                .as_ref()
+                .map_or(0, |frame| frame.components.len())
+        ];
 
         loop {
             let marker = match pending_marker.take() {
@@ -180,20 +193,30 @@ impl<R: Read> Decoder<R> {
                         return Err(Error::Unsupported(UnsupportedFeature::Lossless));
                     }
                     if frame.entropy_coding == EntropyCoding::Arithmetic {
-                        return Err(Error::Unsupported(UnsupportedFeature::ArithmeticEntropyCoding));
+                        return Err(Error::Unsupported(
+                            UnsupportedFeature::ArithmeticEntropyCoding,
+                        ));
                     }
                     if frame.precision != 8 {
-                        return Err(Error::Unsupported(UnsupportedFeature::SamplePrecision(frame.precision)));
+                        return Err(Error::Unsupported(UnsupportedFeature::SamplePrecision(
+                            frame.precision,
+                        )));
                     }
                     if frame.image_size.height == 0 {
                         return Err(Error::Unsupported(UnsupportedFeature::DNL));
                     }
                     if component_count != 1 && component_count != 3 && component_count != 4 {
-                        return Err(Error::Unsupported(UnsupportedFeature::ComponentCount(component_count as u8)));
+                        return Err(Error::Unsupported(UnsupportedFeature::ComponentCount(
+                            component_count as u8,
+                        )));
                     }
 
                     // Make sure we support the subsampling ratios used.
-                    let _ = Upsampler::new(&frame.components, frame.image_size.width, frame.image_size.height)?;
+                    let _ = Upsampler::new(
+                        &frame.components,
+                        frame.image_size.width,
+                        frame.image_size.height,
+                    )?;
 
                     self.frame = Some(frame);
 
@@ -202,7 +225,7 @@ impl<R: Read> Decoder<R> {
                     }
 
                     planes = vec![Vec::new(); component_count];
-                },
+                }
 
                 // Scan header
                 Marker::SOS => {
@@ -216,11 +239,18 @@ impl<R: Read> Decoder<R> {
                     let frame = self.frame.clone().unwrap();
                     let scan = parse_sos(&mut self.reader, &frame)?;
 
-                    if frame.coding_process == CodingProcess::DctProgressive && self.coefficients.is_empty() {
-                        self.coefficients = frame.components.iter().map(|c| {
-                            let block_count = c.block_size.width as usize * c.block_size.height as usize;
-                            vec![0; block_count * 64]
-                        }).collect();
+                    if frame.coding_process == CodingProcess::DctProgressive
+                        && self.coefficients.is_empty()
+                    {
+                        self.coefficients = frame
+                            .components
+                            .iter()
+                            .map(|c| {
+                                let block_count =
+                                    c.block_size.width as usize * c.block_size.height as usize;
+                                vec![0; block_count * 64]
+                            })
+                            .collect();
                     }
 
                     if scan.successive_approximation_low == 0 {
@@ -231,18 +261,26 @@ impl<R: Read> Decoder<R> {
                         }
                     }
 
-                    let is_final_scan = scan.component_indices.iter().all(|&i| self.coefficients_finished[i] == !0);
-                    let (marker, data) = self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), is_final_scan)?;
+                    let is_final_scan = scan
+                        .component_indices
+                        .iter()
+                        .all(|&i| self.coefficients_finished[i] == !0);
+                    let (marker, data) =
+                        self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), is_final_scan)?;
 
                     if let Some(data) = data {
-                        for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
+                        for (i, plane) in data
+                            .into_iter()
+                            .enumerate()
+                            .filter(|&(_, ref plane)| !plane.is_empty())
+                        {
                             planes[i] = plane;
                         }
                     }
 
                     pending_marker = marker;
                     scans_processed += 1;
-                },
+                }
 
                 // Table-specification and miscellaneous markers
                 // Quantization table-specification
@@ -253,44 +291,52 @@ impl<R: Read> Decoder<R> {
                         if let Some(table) = table {
                             let mut unzigzagged_table = [0u16; 64];
 
-                            for j in 0 .. 64 {
+                            for j in 0..64 {
                                 unzigzagged_table[UNZIGZAG[j] as usize] = table[j];
                             }
 
                             self.quantization_tables[i] = Some(Arc::new(unzigzagged_table));
                         }
                     }
-                },
+                }
                 // Huffman table-specification
                 Marker::DHT => {
                     let is_baseline = self.frame.as_ref().map(|frame| frame.is_baseline);
                     let (dc_tables, ac_tables) = parse_dht(&mut self.reader, is_baseline)?;
 
                     let current_dc_tables = mem::replace(&mut self.dc_huffman_tables, vec![]);
-                    self.dc_huffman_tables = dc_tables.into_iter()
-                                                      .zip(current_dc_tables.into_iter())
-                                                      .map(|(a, b)| a.or(b))
-                                                      .collect();
+                    self.dc_huffman_tables = dc_tables
+                        .into_iter()
+                        .zip(current_dc_tables.into_iter())
+                        .map(|(a, b)| a.or(b))
+                        .collect();
 
                     let current_ac_tables = mem::replace(&mut self.ac_huffman_tables, vec![]);
-                    self.ac_huffman_tables = ac_tables.into_iter()
-                                                      .zip(current_ac_tables.into_iter())
-                                                      .map(|(a, b)| a.or(b))
-                                                      .collect();
-                },
+                    self.ac_huffman_tables = ac_tables
+                        .into_iter()
+                        .zip(current_ac_tables.into_iter())
+                        .map(|(a, b)| a.or(b))
+                        .collect();
+                }
                 // Arithmetic conditioning table-specification
-                Marker::DAC => return Err(Error::Unsupported(UnsupportedFeature::ArithmeticEntropyCoding)),
+                Marker::DAC => {
+                    return Err(Error::Unsupported(
+                        UnsupportedFeature::ArithmeticEntropyCoding,
+                    ))
+                }
                 // Restart interval definition
                 Marker::DRI => self.restart_interval = parse_dri(&mut self.reader)?,
                 // Comment
                 Marker::COM => {
                     let _comment = parse_com(&mut self.reader)?;
-                },
+                }
                 // Application data
                 Marker::APP(..) => {
                     if let Some(data) = parse_app(&mut self.reader, marker)? {
                         match data {
-                            AppData::Adobe(color_transform) => self.color_transform = Some(color_transform),
+                            AppData::Adobe(color_transform) => {
+                                self.color_transform = Some(color_transform)
+                            }
                             AppData::Jfif => {
                                 // From the JFIF spec:
                                 // "The APP0 marker is used to identify a JPEG FIF file.
@@ -304,38 +350,49 @@ impl<R: Read> Decoder<R> {
                                 */
 
                                 self.is_jfif = true;
-                            },
+                            }
                             AppData::Avi1 => self.is_mjpeg = true,
                         }
                     }
-                },
+                }
                 // Restart
                 Marker::RST(..) => {
                     // Some encoders emit a final RST marker after entropy-coded data, which
                     // decode_scan does not take care of. So if we encounter one, we ignore it.
                     if previous_marker != Marker::SOS {
-                        return Err(Error::Format("RST found outside of entropy-coded data".to_owned()));
+                        return Err(Error::Format(
+                            "RST found outside of entropy-coded data".to_owned(),
+                        ));
                     }
-                },
+                }
 
                 // Define number of lines
                 Marker::DNL => {
                     // Section B.2.1
                     // "If a DNL segment (see B.2.5) is present, it shall immediately follow the first scan."
                     if previous_marker != Marker::SOS || scans_processed != 1 {
-                        return Err(Error::Format("DNL is only allowed immediately after the first scan".to_owned()));
+                        return Err(Error::Format(
+                            "DNL is only allowed immediately after the first scan".to_owned(),
+                        ));
                     }
 
                     return Err(Error::Unsupported(UnsupportedFeature::DNL));
-                },
+                }
 
                 // Hierarchical mode markers
-                Marker::DHP | Marker::EXP => return Err(Error::Unsupported(UnsupportedFeature::Hierarchical)),
+                Marker::DHP | Marker::EXP => {
+                    return Err(Error::Unsupported(UnsupportedFeature::Hierarchical))
+                }
 
                 // End of image
                 Marker::EOI => break,
 
-                _ => return Err(Error::Format(format!("{:?} marker found where not allowed", marker))),
+                _ => {
+                    return Err(Error::Format(format!(
+                        "{:?} marker found where not allowed",
+                        marker
+                    )))
+                }
             }
 
             previous_marker = marker;
@@ -346,7 +403,13 @@ impl<R: Read> Decoder<R> {
         }
 
         let frame = self.frame.as_ref().unwrap();
-        compute_image(&frame.components, planes, frame.output_size, self.is_jfif, self.color_transform)
+        compute_image(
+            &frame.components,
+            planes,
+            frame.output_size,
+            self.is_jfif,
+            self.color_transform,
+        )
     }
 
     fn read_marker(&mut self) -> Result<Marker> {
@@ -369,42 +432,64 @@ impl<R: Read> Decoder<R> {
             while byte == 0xFF {
                 byte = self.reader.read_u8()?;
             }
-            
+
             if byte != 0x00 && byte != 0xFF {
                 return Ok(Marker::from_u8(byte).unwrap());
             }
         }
     }
 
-    fn decode_scan(&mut self,
-                   frame: &FrameInfo,
-                   scan: &ScanInfo,
-                   worker: &mut PlatformWorker,
-                   produce_data: bool)
-                   -> Result<(Option<Marker>, Option<Vec<Vec<u8>>>)> {
+    fn decode_scan(
+        &mut self,
+        frame: &FrameInfo,
+        scan: &ScanInfo,
+        worker: &mut PlatformWorker,
+        produce_data: bool,
+    ) -> Result<(Option<Marker>, Option<Vec<Vec<u8>>>)> {
         assert!(scan.component_indices.len() <= MAX_COMPONENTS);
 
-        let components: Vec<Component> = scan.component_indices.iter()
-                                                               .map(|&i| frame.components[i].clone())
-                                                               .collect();
+        let components: Vec<Component> = scan
+            .component_indices
+            .iter()
+            .map(|&i| frame.components[i].clone())
+            .collect();
 
         // Verify that all required quantization tables has been set.
-        if components.iter().any(|component| self.quantization_tables[component.quantization_table_index].is_none()) {
+        if components
+            .iter()
+            .any(|component| self.quantization_tables[component.quantization_table_index].is_none())
+        {
             return Err(Error::Format("use of unset quantization table".to_owned()));
         }
 
         if self.is_mjpeg {
-            fill_default_mjpeg_tables(scan, &mut self.dc_huffman_tables, &mut self.ac_huffman_tables);
+            fill_default_mjpeg_tables(
+                scan,
+                &mut self.dc_huffman_tables,
+                &mut self.ac_huffman_tables,
+            );
         }
 
         // Verify that all required huffman tables has been set.
-        if scan.spectral_selection.start == 0 &&
-                scan.dc_table_indices.iter().any(|&i| self.dc_huffman_tables[i].is_none()) {
-            return Err(Error::Format("scan makes use of unset dc huffman table".to_owned()));
+        if scan.spectral_selection.start == 0
+            && scan
+                .dc_table_indices
+                .iter()
+                .any(|&i| self.dc_huffman_tables[i].is_none())
+        {
+            return Err(Error::Format(
+                "scan makes use of unset dc huffman table".to_owned(),
+            ));
         }
-        if scan.spectral_selection.end > 1 &&
-                scan.ac_table_indices.iter().any(|&i| self.ac_huffman_tables[i].is_none()) {
-            return Err(Error::Format("scan makes use of unset ac huffman table".to_owned()));
+        if scan.spectral_selection.end > 1
+            && scan
+                .ac_table_indices
+                .iter()
+                .any(|&i| self.ac_huffman_tables[i].is_none())
+        {
+            return Err(Error::Format(
+                "scan makes use of unset ac huffman table".to_owned(),
+            ));
         }
 
         if produce_data {
@@ -413,16 +498,20 @@ impl<R: Read> Decoder<R> {
                 let row_data = RowData {
                     index: i,
                     component: component.clone(),
-                    quantization_table: self.quantization_tables[component.quantization_table_index].clone().unwrap(),
+                    quantization_table: self.quantization_tables
+                        [component.quantization_table_index]
+                        .clone()
+                        .unwrap(),
                 };
 
                 worker.start(row_data)?;
             }
         }
 
-        let blocks_per_mcu: Vec<u16> = components.iter()
-                                                 .map(|c| c.horizontal_sampling_factor as u16 * c.vertical_sampling_factor as u16)
-                                                 .collect();
+        let blocks_per_mcu: Vec<u16> = components
+            .iter()
+            .map(|c| c.horizontal_sampling_factor as u16 * c.vertical_sampling_factor as u16)
+            .collect();
         let is_progressive = frame.coding_process == CodingProcess::DctProgressive;
         let is_interleaved = components.len() > 1;
         let mut dummy_block = [0i16; 64];
@@ -435,79 +524,102 @@ impl<R: Read> Decoder<R> {
 
         if produce_data && !is_progressive {
             for component in &components {
-                let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
+                let coefficients_per_mcu_row = component.block_size.width as usize
+                    * component.vertical_sampling_factor as usize
+                    * 64;
                 mcu_row_coefficients.push(vec![0i16; coefficients_per_mcu_row]);
             }
         }
 
-        for mcu_y in 0 .. frame.mcu_size.height {
-            for mcu_x in 0 .. frame.mcu_size.width {
+        for mcu_y in 0..frame.mcu_size.height {
+            for mcu_x in 0..frame.mcu_size.width {
                 for (i, component) in components.iter().enumerate() {
-                    for j in 0 .. blocks_per_mcu[i] {
+                    for j in 0..blocks_per_mcu[i] {
                         let (block_x, block_y) = if is_interleaved {
                             // Section A.2.3
-                            (mcu_x * component.horizontal_sampling_factor as u16 + j % component.horizontal_sampling_factor as u16,
-                             mcu_y * component.vertical_sampling_factor as u16 + j / component.horizontal_sampling_factor as u16)
-                        }
-                        else {
+                            (
+                                mcu_x * component.horizontal_sampling_factor as u16
+                                    + j % component.horizontal_sampling_factor as u16,
+                                mcu_y * component.vertical_sampling_factor as u16
+                                    + j / component.horizontal_sampling_factor as u16,
+                            )
+                        } else {
                             // Section A.2.2
 
                             let blocks_per_row = component.block_size.width as usize;
-                            let block_num = (mcu_y as usize * frame.mcu_size.width as usize +
-                                mcu_x as usize) * blocks_per_mcu[i] as usize + j as usize;
+                            let block_num = (mcu_y as usize * frame.mcu_size.width as usize
+                                + mcu_x as usize)
+                                * blocks_per_mcu[i] as usize
+                                + j as usize;
 
                             let x = (block_num % blocks_per_row) as u16;
                             let y = (block_num / blocks_per_row) as u16;
 
-                            if x * component.dct_scale as u16 >= component.size.width || y * component.dct_scale as u16 >= component.size.height {
+                            if x * component.dct_scale as u16 >= component.size.width
+                                || y * component.dct_scale as u16 >= component.size.height
+                            {
                                 continue;
                             }
 
                             (x, y)
                         };
 
-                        let block_offset = (block_y as usize * component.block_size.width as usize + block_x as usize) * 64;
-                        let mcu_row_offset = mcu_y as usize * component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
+                        let block_offset = (block_y as usize * component.block_size.width as usize
+                            + block_x as usize)
+                            * 64;
+                        let mcu_row_offset = mcu_y as usize
+                            * component.block_size.width as usize
+                            * component.vertical_sampling_factor as usize
+                            * 64;
                         let coefficients = if is_progressive {
-                            &mut self.coefficients[scan.component_indices[i]][block_offset .. block_offset + 64]
+                            &mut self.coefficients[scan.component_indices[i]]
+                                [block_offset..block_offset + 64]
                         } else if produce_data {
-                            &mut mcu_row_coefficients[i][block_offset - mcu_row_offset .. block_offset - mcu_row_offset + 64]
+                            &mut mcu_row_coefficients[i]
+                                [block_offset - mcu_row_offset..block_offset - mcu_row_offset + 64]
                         } else {
                             &mut dummy_block[..]
                         };
 
                         if scan.successive_approximation_high == 0 {
-                            decode_block(&mut self.reader,
-                                         coefficients,
-                                         &mut huffman,
-                                         self.dc_huffman_tables[scan.dc_table_indices[i]].as_ref(),
-                                         self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
-                                         scan.spectral_selection.clone(),
-                                         scan.successive_approximation_low,
-                                         &mut eob_run,
-                                         &mut dc_predictors[i])?;
-                        }
-                        else {
-                            decode_block_successive_approximation(&mut self.reader,
-                                                                  coefficients,
-                                                                  &mut huffman,
-                                                                  self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
-                                                                  scan.spectral_selection.clone(),
-                                                                  scan.successive_approximation_low,
-                                                                  &mut eob_run)?;
+                            decode_block(
+                                &mut self.reader,
+                                coefficients,
+                                &mut huffman,
+                                self.dc_huffman_tables[scan.dc_table_indices[i]].as_ref(),
+                                self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
+                                scan.spectral_selection.clone(),
+                                scan.successive_approximation_low,
+                                &mut eob_run,
+                                &mut dc_predictors[i],
+                            )?;
+                        } else {
+                            decode_block_successive_approximation(
+                                &mut self.reader,
+                                coefficients,
+                                &mut huffman,
+                                self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
+                                scan.spectral_selection.clone(),
+                                scan.successive_approximation_low,
+                                &mut eob_run,
+                            )?;
                         }
                     }
                 }
 
                 if self.restart_interval > 0 {
-                    let is_last_mcu = mcu_x == frame.mcu_size.width - 1 && mcu_y == frame.mcu_size.height - 1;
+                    let is_last_mcu =
+                        mcu_x == frame.mcu_size.width - 1 && mcu_y == frame.mcu_size.height - 1;
                     mcus_left_until_restart -= 1;
 
                     if mcus_left_until_restart == 0 && !is_last_mcu {
                         match huffman.take_marker(&mut self.reader)? {
                             Some(Marker::RST(n)) => {
                                 if n != expected_rst_num {
-                                    return Err(Error::Format(format!("found RST{} where RST{} was expected", n, expected_rst_num)));
+                                    return Err(Error::Format(format!(
+                                        "found RST{} where RST{} was expected",
+                                        n, expected_rst_num
+                                    )));
                                 }
 
                                 huffman.reset();
@@ -518,9 +630,19 @@ impl<R: Read> Decoder<R> {
 
                                 expected_rst_num = (expected_rst_num + 1) % 8;
                                 mcus_left_until_restart = self.restart_interval;
-                            },
-                            Some(marker) => return Err(Error::Format(format!("found marker {:?} inside scan where RST{} was expected", marker, expected_rst_num))),
-                            None => return Err(Error::Format(format!("no marker found where RST{} was expected", expected_rst_num))),
+                            }
+                            Some(marker) => {
+                                return Err(Error::Format(format!(
+                                    "found marker {:?} inside scan where RST{} was expected",
+                                    marker, expected_rst_num
+                                )))
+                            }
+                            None => {
+                                return Err(Error::Format(format!(
+                                    "no marker found where RST{} was expected",
+                                    expected_rst_num
+                                )))
+                            }
                         }
                     }
                 }
@@ -529,13 +651,20 @@ impl<R: Read> Decoder<R> {
             if produce_data {
                 // Send the coefficients from this MCU row to the worker thread for dequantization and idct.
                 for (i, component) in components.iter().enumerate() {
-                    let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
+                    let coefficients_per_mcu_row = component.block_size.width as usize
+                        * component.vertical_sampling_factor as usize
+                        * 64;
 
                     let row_coefficients = if is_progressive {
                         let offset = mcu_y as usize * coefficients_per_mcu_row;
-                        self.coefficients[scan.component_indices[i]][offset .. offset + coefficients_per_mcu_row].to_vec()
+                        self.coefficients[scan.component_indices[i]]
+                            [offset..offset + coefficients_per_mcu_row]
+                            .to_vec()
                     } else {
-                        mem::replace(&mut mcu_row_coefficients[i], vec![0i16; coefficients_per_mcu_row])
+                        mem::replace(
+                            &mut mcu_row_coefficients[i],
+                            vec![0i16; coefficients_per_mcu_row],
+                        )
                     };
 
                     worker.append_row((i, row_coefficients))?;
@@ -557,22 +686,23 @@ impl<R: Read> Decoder<R> {
             }
 
             Ok((marker, Some(data)))
-        }
-        else {
+        } else {
             Ok((marker, None))
         }
     }
 }
 
-fn decode_block<R: Read>(reader: &mut R,
-                         coefficients: &mut [i16],
-                         huffman: &mut HuffmanDecoder,
-                         dc_table: Option<&HuffmanTable>,
-                         ac_table: Option<&HuffmanTable>,
-                         spectral_selection: Range<u8>,
-                         successive_approximation_low: u8,
-                         eob_run: &mut u16,
-                         dc_predictor: &mut i16) -> Result<()> {
+fn decode_block<R: Read>(
+    reader: &mut R,
+    coefficients: &mut [i16],
+    huffman: &mut HuffmanDecoder,
+    dc_table: Option<&HuffmanTable>,
+    ac_table: Option<&HuffmanTable>,
+    spectral_selection: Range<u8>,
+    successive_approximation_low: u8,
+    eob_run: &mut u16,
+    dc_predictor: &mut i16,
+) -> Result<()> {
     debug_assert_eq!(coefficients.len(), 64);
 
     if spectral_selection.start == 0 {
@@ -585,11 +715,13 @@ fn decode_block<R: Read>(reader: &mut R,
                 // Section F.1.2.1.1
                 // Table F.1
                 if value > 11 {
-                    return Err(Error::Format("invalid DC difference magnitude category".to_owned()));
+                    return Err(Error::Format(
+                        "invalid DC difference magnitude category".to_owned(),
+                    ));
                 }
 
                 huffman.receive_extend(reader, value)?
-            },
+            }
         };
 
         // Malicious JPEG files can cause this add to overflow, therefore we use wrapping_add.
@@ -616,8 +748,7 @@ fn decode_block<R: Read>(reader: &mut R,
 
             coefficients[UNZIGZAG[index as usize] as usize] = value << successive_approximation_low;
             index += 1;
-        }
-        else {
+        } else {
             let byte = huffman.decode(reader, ac_table.unwrap())?;
             let r = byte >> 4;
             let s = byte & 0x0f;
@@ -625,7 +756,7 @@ fn decode_block<R: Read>(reader: &mut R,
             if s == 0 {
                 match r {
                     15 => index += 16, // Run length of 16 zero coefficients.
-                    _  => {
+                    _ => {
                         *eob_run = (1 << r) - 1;
 
                         if r > 0 {
@@ -633,17 +764,17 @@ fn decode_block<R: Read>(reader: &mut R,
                         }
 
                         break;
-                    },
+                    }
                 }
-            }
-            else {
+            } else {
                 index += r;
 
                 if index >= spectral_selection.end {
                     break;
                 }
 
-                coefficients[UNZIGZAG[index as usize] as usize] = huffman.receive_extend(reader, s)? << successive_approximation_low;
+                coefficients[UNZIGZAG[index as usize] as usize] =
+                    huffman.receive_extend(reader, s)? << successive_approximation_low;
                 index += 1;
             }
         }
@@ -652,13 +783,15 @@ fn decode_block<R: Read>(reader: &mut R,
     Ok(())
 }
 
-fn decode_block_successive_approximation<R: Read>(reader: &mut R,
-                                                  coefficients: &mut [i16],
-                                                  huffman: &mut HuffmanDecoder,
-                                                  ac_table: Option<&HuffmanTable>,
-                                                  spectral_selection: Range<u8>,
-                                                  successive_approximation_low: u8,
-                                                  eob_run: &mut u16) -> Result<()> {
+fn decode_block_successive_approximation<R: Read>(
+    reader: &mut R,
+    coefficients: &mut [i16],
+    huffman: &mut HuffmanDecoder,
+    ac_table: Option<&HuffmanTable>,
+    spectral_selection: Range<u8>,
+    successive_approximation_low: u8,
+    eob_run: &mut u16,
+) -> Result<()> {
     debug_assert_eq!(coefficients.len(), 64);
 
     let bit = 1 << successive_approximation_low;
@@ -669,8 +802,7 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
         if huffman.get_bits(reader, 1)? == 1 {
             coefficients[0] |= bit;
         }
-    }
-    else {
+    } else {
         // Section G.1.2.3
 
         if *eob_run > 0 {
@@ -697,7 +829,7 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
                             // We don't need to do anything special here, zero_run_length is 15
                             // and then value (which is zero) gets written, resulting in 16
                             // zero coefficients.
-                        },
+                        }
                         _ => {
                             *eob_run = (1 << r) - 1;
 
@@ -707,17 +839,16 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
 
                             // Force end of block.
                             zero_run_length = 64;
-                        },
+                        }
                     }
-                },
+                }
                 1 => {
                     if huffman.get_bits(reader, 1)? == 1 {
                         value = bit;
-                    }
-                    else {
+                    } else {
                         value = -bit;
                     }
-                },
+                }
                 _ => return Err(Error::Format("unexpected huffman code".to_owned())),
             }
 
@@ -738,12 +869,14 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
     Ok(())
 }
 
-fn refine_non_zeroes<R: Read>(reader: &mut R,
-                              coefficients: &mut [i16],
-                              huffman: &mut HuffmanDecoder,
-                              range: Range<u8>,
-                              zrl: u8,
-                              bit: i16) -> Result<u8> {
+fn refine_non_zeroes<R: Read>(
+    reader: &mut R,
+    coefficients: &mut [i16],
+    huffman: &mut HuffmanDecoder,
+    range: Range<u8>,
+    zrl: u8,
+    bit: i16,
+) -> Result<u8> {
     debug_assert_eq!(coefficients.len(), 64);
 
     let last = range.end - 1;
@@ -758,12 +891,10 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
             }
 
             zero_run_length -= 1;
-        }
-        else if huffman.get_bits(reader, 1)? == 1 && coefficients[index] & bit == 0 {
+        } else if huffman.get_bits(reader, 1)? == 1 && coefficients[index] & bit == 0 {
             if coefficients[index] > 0 {
                 coefficients[index] += bit;
-            }
-            else {
+            } else {
                 coefficients[index] -= bit;
             }
         }
@@ -772,11 +903,13 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
     Ok(last)
 }
 
-fn compute_image(components: &[Component],
-                 mut data: Vec<Vec<u8>>,
-                 output_size: Dimensions,
-                 is_jfif: bool,
-                 color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
+fn compute_image(
+    components: &[Component],
+    mut data: Vec<Vec<u8>>,
+    output_size: Dimensions,
+    is_jfif: bool,
+    color_transform: Option<AdobeColorTransform>,
+) -> Result<Vec<u8>> {
     if data.iter().any(|data| data.is_empty()) {
         return Err(Error::Format("not all components has data".to_owned()));
     }
@@ -806,18 +939,19 @@ fn compute_image(components: &[Component],
         }
         decoded.resize(size, 0);
         Ok(decoded)
-    }
-    else {
+    } else {
         compute_image_parallel(components, data, output_size, is_jfif, color_transform)
     }
 }
 
-#[cfg(feature="rayon")]
-fn compute_image_parallel(components: &[Component],
-                          data: Vec<Vec<u8>>,
-                          output_size: Dimensions,
-                          is_jfif: bool,
-                          color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
+#[cfg(feature = "rayon")]
+fn compute_image_parallel(
+    components: &[Component],
+    data: Vec<Vec<u8>>,
+    output_size: Dimensions,
+    is_jfif: bool,
+    color_transform: Option<AdobeColorTransform>,
+) -> Result<Vec<u8>> {
     use rayon::prelude::*;
 
     let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
@@ -825,83 +959,86 @@ fn compute_image_parallel(components: &[Component],
     let line_size = output_size.width as usize * components.len();
     let mut image = vec![0u8; line_size * output_size.height as usize];
 
-    image.par_chunks_mut(line_size)
-         .with_max_len(1)
-         .enumerate()
-         .for_each(|(row, line)| {
-             upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
-             color_convert_func(line, output_size.width as usize);
-         });
+    image
+        .par_chunks_mut(line_size)
+        .with_max_len(1)
+        .enumerate()
+        .for_each(|(row, line)| {
+            upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
+            color_convert_func(line, output_size.width as usize);
+        });
 
     Ok(image)
- }
+}
 
-#[cfg(not(feature="rayon"))]
-fn compute_image_parallel(components: &[Component],
-                          data: Vec<Vec<u8>>,
-                          output_size: Dimensions,
-                          is_jfif: bool,
-                          color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
+#[cfg(not(feature = "rayon"))]
+fn compute_image_parallel(
+    components: &[Component],
+    data: Vec<Vec<u8>>,
+    output_size: Dimensions,
+    is_jfif: bool,
+    color_transform: Option<AdobeColorTransform>,
+) -> Result<Vec<u8>> {
     let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
     let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
     let mut image = vec![0u8; line_size * output_size.height as usize];
 
-    for (row, line) in image.chunks_mut(line_size)
-         .enumerate() {
-             upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
-             color_convert_func(line, output_size.width as usize);
-         }
+    for (row, line) in image.chunks_mut(line_size).enumerate() {
+        upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
+        color_convert_func(line, output_size.width as usize);
+    }
 
     Ok(image)
 }
 
-fn choose_color_convert_func(component_count: usize,
-                             _is_jfif: bool,
-                             color_transform: Option<AdobeColorTransform>)
-                             -> Result<fn(&mut [u8], usize)> {
+fn choose_color_convert_func(
+    component_count: usize,
+    _is_jfif: bool,
+    color_transform: Option<AdobeColorTransform>,
+) -> Result<fn(&mut [u8], usize)> {
     match component_count {
         3 => {
             // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
             // Unknown means the data is RGB, so we don't need to perform any color conversion on it.
             if color_transform == Some(AdobeColorTransform::Unknown) {
                 Ok(color_convert_line_null)
-            }
-            else {
+            } else {
                 Ok(color_convert_line_ycbcr)
             }
-        },
+        }
         4 => {
             // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
             match color_transform {
                 Some(AdobeColorTransform::Unknown) => Ok(color_convert_line_cmyk),
                 Some(_) => Ok(color_convert_line_ycck),
-                None => Err(Error::Format("4 components without Adobe APP14 metadata to tell color space".to_owned())),
+                None => Err(Error::Format(
+                    "4 components without Adobe APP14 metadata to tell color space".to_owned(),
+                )),
             }
-        },
+        }
         _ => panic!(),
     }
 }
 
-fn color_convert_line_null(_data: &mut [u8], _width: usize) {
-}
+fn color_convert_line_null(_data: &mut [u8], _width: usize) {}
 
 fn color_convert_line_ycbcr(data: &mut [u8], width: usize) {
-    for i in 0 .. width {
+    for i in 0..width {
         let (r, g, b) = ycbcr_to_rgb(data[i * 3], data[i * 3 + 1], data[i * 3 + 2]);
 
-        data[i * 3]     = r;
+        data[i * 3] = r;
         data[i * 3 + 1] = g;
         data[i * 3 + 2] = b;
     }
 }
 
 fn color_convert_line_ycck(data: &mut [u8], width: usize) {
-    for i in 0 .. width {
+    for i in 0..width {
         let (r, g, b) = ycbcr_to_rgb(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
         let k = data[i * 4 + 3];
 
-        data[i * 4]     = r;
+        data[i * 4] = r;
         data[i * 4 + 1] = g;
         data[i * 4 + 2] = b;
         data[i * 4 + 3] = 255 - k;
@@ -909,8 +1046,8 @@ fn color_convert_line_ycck(data: &mut [u8], width: usize) {
 }
 
 fn color_convert_line_cmyk(data: &mut [u8], width: usize) {
-    for i in 0 .. width {
-        data[i * 4]     = 255 - data[i * 4];
+    for i in 0..width {
+        data[i * 4] = 255 - data[i * 4];
         data[i * 4 + 1] = 255 - data[i * 4 + 1];
         data[i * 4 + 2] = 255 - data[i * 4 + 2];
         data[i * 4 + 3] = 255 - data[i * 4 + 3];
@@ -923,17 +1060,23 @@ fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8) -> (u8, u8, u8) {
     let cb = cb as f32 - 128.0;
     let cr = cr as f32 - 128.0;
 
-    let r = y                + 1.40200 * cr;
+    let r = y + 1.40200 * cr;
     let g = y - 0.34414 * cb - 0.71414 * cr;
     let b = y + 1.77200 * cb;
 
-    (clamp((r + 0.5) as i32, 0, 255) as u8,
-     clamp((g + 0.5) as i32, 0, 255) as u8,
-     clamp((b + 0.5) as i32, 0, 255) as u8)
+    (
+        clamp((r + 0.5) as i32, 0, 255) as u8,
+        clamp((g + 0.5) as i32, 0, 255) as u8,
+        clamp((b + 0.5) as i32, 0, 255) as u8,
+    )
 }
 
 fn clamp<T: PartialOrd>(value: T, min: T, max: T) -> T {
-    if value < min { return min; }
-    if value > max { return max; }
+    if value < min {
+        return min;
+    }
+    if value > max {
+        return max;
+    }
     value
 }
