@@ -38,7 +38,7 @@ pub enum PixelFormat {
 
 impl PixelFormat {
     /// Determine the size in bytes of each pixel in this format
-    pub fn pixel_size(&self) -> usize {
+    pub fn pixel_bytes(&self) -> usize {
         match self {
             PixelFormat::L8 => 1,
             PixelFormat::RGB24 => 3,
