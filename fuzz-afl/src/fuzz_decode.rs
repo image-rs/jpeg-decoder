@@ -9,7 +9,7 @@ fn decode(data: &[u8]) -> Result<Vec<u8>, Error> {
 }
 
 fn main() {
-    fuzz!(|data: &[u8]| {
+    fuzz(true, |data: &[u8]| {
         let _ = decode(data);
     });
 }

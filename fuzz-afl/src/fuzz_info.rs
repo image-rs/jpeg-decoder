@@ -9,7 +9,7 @@ fn get_info(data: &[u8]) -> Option<ImageInfo> {
 }
 
 fn main() {
-    fuzz!(|data: &[u8]| {
+    fuzz(true, |data: &[u8]| {
         let _ = get_info(data);
     });
 }
