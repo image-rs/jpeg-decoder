@@ -18,6 +18,3 @@ Run afl:
 To reproduce a crash:
 
     $ cargo run --bin reproduce_<target>
-
-Note: You should also try fuzzing in debug mode, since things like overflow
-checks don't happen in release mode. (Release mode is much faster though.)
