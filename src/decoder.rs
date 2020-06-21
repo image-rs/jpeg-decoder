@@ -6,7 +6,7 @@ use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions,
              parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, ScanInfo};
 use upsampler::Upsampler;
 use std::cmp;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
@@ -60,7 +60,7 @@ pub struct ImageInfo {
 
 /// JPEG decoder
 pub struct Decoder<R> {
-    reader: R,
+    reader: BufReader<R>,
 
     frame: Option<FrameInfo>,
     dc_huffman_tables: Vec<Option<HuffmanTable>>,
@@ -82,7 +82,7 @@ impl<R: Read> Decoder<R> {
     /// Creates a new `Decoder` using the reader `reader`.
     pub fn new(reader: R) -> Decoder<R> {
         Decoder {
-            reader: reader,
+            reader: BufReader::new(reader),
             frame: None,
             dc_huffman_tables: vec![None, None, None, None],
             ac_huffman_tables: vec![None, None, None, None],
@@ -362,24 +362,42 @@ impl<R: Read> Decoder<R> {
 
     fn read_marker(&mut self) -> Result<Marker> {
         loop {
+
             // This should be an error as the JPEG spec doesn't allow extraneous data between marker segments.
             // libjpeg allows this though and there are images in the wild utilising it, so we are
             // forced to support this behavior.
             // Sony Ericsson P990i is an example of a device which produce this sort of JPEGs.
-            while self.reader.read_u8()? != 0xFF {}
+            loop {
+                let buf = self.reader.fill_buf()?;
+
+                if let Some(pos) = buf.iter().position(|&b| b == 0xFF) {
+                    self.reader.consume(pos);
+                    break;
+                }
+
+                // Woah, a full page of not-0xFF. Let's try the next page.
+                let consumed = buf.len();
+                self.reader.consume(consumed);
+            };
 
             // Section B.1.1.2
             // All markers are assigned two-byte codes: an X’FF’ byte followed by a
             // byte which is not equal to 0 or X’FF’ (see Table B.1). Any marker may
             // optionally be preceded by any number of fill bytes, which are bytes
             // assigned code X’FF’.
-            let mut byte = self.reader.read_u8()?;
+            // So, let's find the byte after 0xFF.
+            let byte = loop {
+                let buf = self.reader.fill_buf()?;
 
-            // Section B.1.1.2
-            // "Any marker may optionally be preceded by any number of fill bytes, which are bytes assigned code X’FF’."
-            while byte == 0xFF {
-                byte = self.reader.read_u8()?;
-            }
+                if let Some(pos) = buf.iter().position(|&b| b != 0xFF) {
+                    let byte = buf[pos];
+                    self.reader.consume(pos + 1);
+                    break byte;
+                }
+
+                let consumed = buf.len();
+                self.reader.consume(consumed);
+            };
             
             if byte != 0x00 && byte != 0xFF {
                 return Ok(Marker::from_u8(byte).unwrap());
