@@ -861,7 +861,7 @@ fn compute_image_parallel(components: &[Component],
     for (row, line) in image.chunks_mut(line_size)
          .enumerate() {
              upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
-             color_convert_func(line, output_size.width as usize);
+             color_convert_func(line);
          }
 
     Ok(image)
