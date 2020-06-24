@@ -897,34 +897,33 @@ fn choose_color_convert_func(component_count: usize,
 fn color_convert_line_null(_data: &mut [u8], _width: usize) {
 }
 
-fn color_convert_line_ycbcr(data: &mut [u8], width: usize) {
-    for i in 0 .. width {
-        let (r, g, b) = ycbcr_to_rgb(data[i * 3], data[i * 3 + 1], data[i * 3 + 2]);
-
-        data[i * 3]     = r;
-        data[i * 3 + 1] = g;
-        data[i * 3 + 2] = b;
+fn color_convert_line_ycbcr(data: &mut [u8], _width: usize) {
+    for chunk in data.chunks_exact_mut(3) {
+        let (r, g, b) = ycbcr_to_rgb(chunk[0], chunk[1], chunk[2]);
+        chunk[0] = r;
+        chunk[1] = g;
+        chunk[2] = b;
     }
 }
 
-fn color_convert_line_ycck(data: &mut [u8], width: usize) {
-    for i in 0 .. width {
-        let (r, g, b) = ycbcr_to_rgb(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
-        let k = data[i * 4 + 3];
+fn color_convert_line_ycck(data: &mut [u8], _width: usize) {
+    for chunk in data.chunks_exact_mut(4) {
+        let (r, g, b) = ycbcr_to_rgb(chunk[0], chunk[1], chunk[2]);
+        let k = chunk[3];
+        chunk[0] = r;
+        chunk[1] = g;
+        chunk[2] = b;
+        chunk[3] = 255 - k;
 
-        data[i * 4]     = r;
-        data[i * 4 + 1] = g;
-        data[i * 4 + 2] = b;
-        data[i * 4 + 3] = 255 - k;
     }
 }
 
-fn color_convert_line_cmyk(data: &mut [u8], width: usize) {
-    for i in 0 .. width {
-        data[i * 4]     = 255 - data[i * 4];
-        data[i * 4 + 1] = 255 - data[i * 4 + 1];
-        data[i * 4 + 2] = 255 - data[i * 4 + 2];
-        data[i * 4 + 3] = 255 - data[i * 4 + 3];
+fn color_convert_line_cmyk(data: &mut [u8], _width: usize) {
+    for chunk in data.chunks_exact_mut(4) {
+        chunk[0] = 255 - chunk[0];
+        chunk[1] = 255 - chunk[1];
+        chunk[2] = 255 - chunk[2];
+        chunk[3] = 255 - chunk[3];
     }
 }
 
