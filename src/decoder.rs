@@ -937,13 +937,19 @@ fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8) -> (u8, u8, u8) {
     let g = y - 0.34414 * cb - 0.71414 * cr;
     let b = y + 1.77200 * cb;
 
-    (clamp((r + 0.5) as i32, 0, 255) as u8,
-     clamp((g + 0.5) as i32, 0, 255) as u8,
-     clamp((b + 0.5) as i32, 0, 255) as u8)
+    // TODO: Rust has defined float-to-int conversion as saturating,
+    // which is exactly what we need here. However, as of this writing
+    // it still hasn't reached the stable channel.
+    // This can be simplified to `(r + 0.5) as u8` without any clamping
+    // as soon as our MSRV reaches the version that has saturating casts.
+    // The version without explicit clamping is also noticeably faster.
+    (clamp_to_u8((r + 0.5) as i32) as u8,
+     clamp_to_u8((g + 0.5) as i32) as u8,
+     clamp_to_u8((b + 0.5) as i32) as u8)
 }
 
-fn clamp<T: PartialOrd>(value: T, min: T, max: T) -> T {
-    if value < min { return min; }
-    if value > max { return max; }
+fn clamp_to_u8(value: i32) -> i32 {
+    let value = std::cmp::max(value, 0);
+    let value = std::cmp::min(value, 255);
     value
 }
