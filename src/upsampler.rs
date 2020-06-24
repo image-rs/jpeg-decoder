@@ -1,10 +1,15 @@
 use error::{Error, Result, UnsupportedFeature};
 use parser::Component;
+use std::cell::Cell;
 
 pub struct Upsampler {
     components: Vec<UpsamplerComponent>,
     line_buffer_size: usize
 }
+
+// We allocate the line buffer once per thread and reuse it instead of allocating every time.
+// This puts less stress on the memory allocator and allows for a slight performance boost.
+thread_local! {static REUSABLE_LINE_BUFFER: Cell<Vec<u8>> = Cell::new(Vec::new());}
 
 struct UpsamplerComponent {
     upsampler: Box<dyn Upsample + Sync>,
@@ -43,7 +48,17 @@ impl Upsampler {
 
     pub fn upsample_and_interleave_row(&self, component_data: &[Vec<u8>], row: usize, output_width: usize, output: &mut [u8]) {
         let component_count = component_data.len();
-        let mut line_buffer = vec![0u8; self.line_buffer_size];
+        let line_buffer_size = self.line_buffer_size;
+        let mut line_buffer = get_reusable_line_buffer();
+        match line_buffer.len() {
+            // allocating a new zeroed vector is cheaper than calling resize()
+            // because the OS may have some already zeroed memory on hand
+            // and we won't have to spend time zeroing the buffer ourselves
+            0 => line_buffer = vec![0; line_buffer_size],
+            n if n == line_buffer_size => (),
+            // TODO: this branch is not necessary if `self.line_buffer_size` is immutable
+            _ => line_buffer.resize(line_buffer_size, 0)
+        };
 
         debug_assert_eq!(component_count, self.components.len());
 
@@ -59,7 +74,25 @@ impl Upsampler {
                 output[x * component_count + i] = line_buffer[x];
             }
         }
+
+        store_line_buffer_for_reuse(line_buffer);
     }
+}
+
+/// Stores the provided buffer for later reuse in the same thread.
+/// The stored buffer can be retrieved via `get_reusable_line_buffer()`
+fn store_line_buffer_for_reuse(buffer: Vec<u8>) {
+    REUSABLE_LINE_BUFFER.with(|reusable_buffer| {
+        reusable_buffer.set(buffer)
+    });
+}
+
+/// Returns either a Vec previously passed to `store_line_buffer_for_reuse()`
+/// or a new Vec with size and capacity of 0.
+fn get_reusable_line_buffer() -> Vec<u8> {
+    REUSABLE_LINE_BUFFER.with(|reusable_buffer| {
+        reusable_buffer.replace(Vec::new())
+    })
 }
 
 struct UpsamplerH1V1;
