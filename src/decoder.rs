@@ -841,7 +841,7 @@ fn compute_image_parallel(components: &[Component],
          .enumerate()
          .for_each(|(row, line)| {
              upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
-             color_convert_func(line, output_size.width as usize);
+             color_convert_func(line);
          });
 
     Ok(image)
@@ -870,7 +870,7 @@ fn compute_image_parallel(components: &[Component],
 fn choose_color_convert_func(component_count: usize,
                              _is_jfif: bool,
                              color_transform: Option<AdobeColorTransform>)
-                             -> Result<fn(&mut [u8], usize)> {
+                             -> Result<fn(&mut [u8])> {
     match component_count {
         3 => {
             // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
@@ -894,10 +894,10 @@ fn choose_color_convert_func(component_count: usize,
     }
 }
 
-fn color_convert_line_null(_data: &mut [u8], _width: usize) {
+fn color_convert_line_null(_data: &mut [u8]) {
 }
 
-fn color_convert_line_ycbcr(data: &mut [u8], _width: usize) {
+fn color_convert_line_ycbcr(data: &mut [u8]) {
     for chunk in data.chunks_exact_mut(3) {
         let (r, g, b) = ycbcr_to_rgb(chunk[0], chunk[1], chunk[2]);
         chunk[0] = r;
@@ -906,7 +906,7 @@ fn color_convert_line_ycbcr(data: &mut [u8], _width: usize) {
     }
 }
 
-fn color_convert_line_ycck(data: &mut [u8], _width: usize) {
+fn color_convert_line_ycck(data: &mut [u8]) {
     for chunk in data.chunks_exact_mut(4) {
         let (r, g, b) = ycbcr_to_rgb(chunk[0], chunk[1], chunk[2]);
         let k = chunk[3];
@@ -918,7 +918,7 @@ fn color_convert_line_ycck(data: &mut [u8], _width: usize) {
     }
 }
 
-fn color_convert_line_cmyk(data: &mut [u8], _width: usize) {
+fn color_convert_line_cmyk(data: &mut [u8]) {
     for chunk in data.chunks_exact_mut(4) {
         chunk[0] = 255 - chunk[0];
         chunk[1] = 255 - chunk[1];
