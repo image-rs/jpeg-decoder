@@ -234,20 +234,29 @@ impl<R: Read> Decoder<R> {
                         }).collect();
                     }
 
+                    let mut finished = [false; MAX_COMPONENTS];
+
                     if scan.successive_approximation_low == 0 {
-                        for &i in scan.component_indices.iter() {
+                        for (&i, component_finished) in scan.component_indices.iter().zip(&mut finished) {
+                            if self.coefficients_finished[i] == !0 {
+                                continue;
+                            }
                             for j in scan.spectral_selection.clone() {
                                 self.coefficients_finished[i] |= 1 << j;
+                            }
+                            if self.coefficients_finished[i] == !0 {
+                                *component_finished = true;
                             }
                         }
                     }
 
-                    let is_final_scan = scan.component_indices.iter().all(|&i| self.coefficients_finished[i] == !0);
-                    let (marker, data) = self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), is_final_scan)?;
+                    let (marker, data) = self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), &finished)?;
 
                     if let Some(data) = data {
                         for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
-                            planes[i] = plane;
+                            if self.coefficients_finished[i] == !0 {
+                                planes[i] = plane;
+                            }
                         }
                     }
 
@@ -391,7 +400,7 @@ impl<R: Read> Decoder<R> {
                    frame: &FrameInfo,
                    scan: &ScanInfo,
                    worker: &mut PlatformWorker,
-                   produce_data: bool)
+                   finished: &[bool; MAX_COMPONENTS])
                    -> Result<(Option<Marker>, Option<Vec<Vec<u8>>>)> {
         assert!(scan.component_indices.len() <= MAX_COMPONENTS);
 
@@ -418,9 +427,9 @@ impl<R: Read> Decoder<R> {
             return Err(Error::Format("scan makes use of unset ac huffman table".to_owned()));
         }
 
-        if produce_data {
-            // Prepare the worker thread for the work to come.
-            for (i, component) in components.iter().enumerate() {
+        // Prepare the worker thread for the work to come.
+        for (i, component) in components.iter().enumerate() {
+            if finished[i] {
                 let row_data = RowData {
                     index: i,
                     component: component.clone(),
@@ -444,8 +453,8 @@ impl<R: Read> Decoder<R> {
         let mut eob_run = 0;
         let mut mcu_row_coefficients = Vec::with_capacity(components.len());
 
-        if produce_data && !is_progressive {
-            for component in &components {
+        if !is_progressive {
+            for (_, component) in components.iter().enumerate().filter(|&(i, _)| finished[i]) {
                 let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
                 mcu_row_coefficients.push(vec![0i16; coefficients_per_mcu_row]);
             }
@@ -481,7 +490,7 @@ impl<R: Read> Decoder<R> {
                         let mcu_row_offset = mcu_y as usize * component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
                         let coefficients = if is_progressive {
                             &mut self.coefficients[scan.component_indices[i]][block_offset .. block_offset + 64]
-                        } else if produce_data {
+                        } else if finished[i] {
                             &mut mcu_row_coefficients[i][block_offset - mcu_row_offset .. block_offset - mcu_row_offset + 64]
                         } else {
                             &mut dummy_block[..]
@@ -537,9 +546,9 @@ impl<R: Read> Decoder<R> {
                 }
             }
 
-            if produce_data {
-                // Send the coefficients from this MCU row to the worker thread for dequantization and idct.
-                for (i, component) in components.iter().enumerate() {
+            // Send the coefficients from this MCU row to the worker thread for dequantization and idct.
+            for (i, component) in components.iter().enumerate() {
+                if finished[i] {
                     let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
 
                     let row_coefficients = if is_progressive {
@@ -559,12 +568,14 @@ impl<R: Read> Decoder<R> {
             marker = self.read_marker().ok();
         }
 
-        if produce_data {
+        if finished.iter().any(|&c| c) {
             // Retrieve all the data from the worker thread.
             let mut data = vec![Vec::new(); frame.components.len()];
 
             for (i, &component_index) in scan.component_indices.iter().enumerate() {
-                data[component_index] = worker.get_result(i)?;
+                if finished[i] {
+                    data[component_index] = worker.get_result(i)?;
+                }
             }
 
             Ok((marker, Some(data)))
