@@ -841,7 +841,7 @@ fn compute_image_parallel(components: &[Component],
          .enumerate()
          .for_each(|(row, line)| {
              upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
-             color_convert_func(line, output_size.width as usize);
+             color_convert_func(line);
          });
 
     Ok(image)
@@ -861,7 +861,7 @@ fn compute_image_parallel(components: &[Component],
     for (row, line) in image.chunks_mut(line_size)
          .enumerate() {
              upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
-             color_convert_func(line, output_size.width as usize);
+             color_convert_func(line);
          }
 
     Ok(image)
@@ -870,7 +870,7 @@ fn compute_image_parallel(components: &[Component],
 fn choose_color_convert_func(component_count: usize,
                              _is_jfif: bool,
                              color_transform: Option<AdobeColorTransform>)
-                             -> Result<fn(&mut [u8], usize)> {
+                             -> Result<fn(&mut [u8])> {
     match component_count {
         3 => {
             // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
@@ -894,37 +894,36 @@ fn choose_color_convert_func(component_count: usize,
     }
 }
 
-fn color_convert_line_null(_data: &mut [u8], _width: usize) {
+fn color_convert_line_null(_data: &mut [u8]) {
 }
 
-fn color_convert_line_ycbcr(data: &mut [u8], width: usize) {
-    for i in 0 .. width {
-        let (r, g, b) = ycbcr_to_rgb(data[i * 3], data[i * 3 + 1], data[i * 3 + 2]);
-
-        data[i * 3]     = r;
-        data[i * 3 + 1] = g;
-        data[i * 3 + 2] = b;
+fn color_convert_line_ycbcr(data: &mut [u8]) {
+    for chunk in data.chunks_exact_mut(3) {
+        let (r, g, b) = ycbcr_to_rgb(chunk[0], chunk[1], chunk[2]);
+        chunk[0] = r;
+        chunk[1] = g;
+        chunk[2] = b;
     }
 }
 
-fn color_convert_line_ycck(data: &mut [u8], width: usize) {
-    for i in 0 .. width {
-        let (r, g, b) = ycbcr_to_rgb(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
-        let k = data[i * 4 + 3];
+fn color_convert_line_ycck(data: &mut [u8]) {
+    for chunk in data.chunks_exact_mut(4) {
+        let (r, g, b) = ycbcr_to_rgb(chunk[0], chunk[1], chunk[2]);
+        let k = chunk[3];
+        chunk[0] = r;
+        chunk[1] = g;
+        chunk[2] = b;
+        chunk[3] = 255 - k;
 
-        data[i * 4]     = r;
-        data[i * 4 + 1] = g;
-        data[i * 4 + 2] = b;
-        data[i * 4 + 3] = 255 - k;
     }
 }
 
-fn color_convert_line_cmyk(data: &mut [u8], width: usize) {
-    for i in 0 .. width {
-        data[i * 4]     = 255 - data[i * 4];
-        data[i * 4 + 1] = 255 - data[i * 4 + 1];
-        data[i * 4 + 2] = 255 - data[i * 4 + 2];
-        data[i * 4 + 3] = 255 - data[i * 4 + 3];
+fn color_convert_line_cmyk(data: &mut [u8]) {
+    for chunk in data.chunks_exact_mut(4) {
+        chunk[0] = 255 - chunk[0];
+        chunk[1] = 255 - chunk[1];
+        chunk[2] = 255 - chunk[2];
+        chunk[3] = 255 - chunk[3];
     }
 }
 
@@ -938,13 +937,19 @@ fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8) -> (u8, u8, u8) {
     let g = y - 0.34414 * cb - 0.71414 * cr;
     let b = y + 1.77200 * cb;
 
-    (clamp((r + 0.5) as i32, 0, 255) as u8,
-     clamp((g + 0.5) as i32, 0, 255) as u8,
-     clamp((b + 0.5) as i32, 0, 255) as u8)
+    // TODO: Rust has defined float-to-int conversion as saturating,
+    // which is exactly what we need here. However, as of this writing
+    // it still hasn't reached the stable channel.
+    // This can be simplified to `(r + 0.5) as u8` without any clamping
+    // as soon as our MSRV reaches the version that has saturating casts.
+    // The version without explicit clamping is also noticeably faster.
+    (clamp_to_u8((r + 0.5) as i32) as u8,
+     clamp_to_u8((g + 0.5) as i32) as u8,
+     clamp_to_u8((b + 0.5) as i32) as u8)
 }
 
-fn clamp<T: PartialOrd>(value: T, min: T, max: T) -> T {
-    if value < min { return min; }
-    if value > max { return max; }
+fn clamp_to_u8(value: i32) -> i32 {
+    let value = std::cmp::max(value, 0);
+    let value = std::cmp::min(value, 255);
     value
 }
