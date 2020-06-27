@@ -242,8 +242,8 @@ impl<R: Read> Decoder<R> {
                         }
                     }
 
-                    let is_final_scan = scan.component_indices.iter().all(|&i| self.coefficients_finished[i] == !0);
-                    let (marker, data) = self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), is_final_scan)?;
+                    let produce_data = true;
+                    let (marker, data) = self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), produce_data)?;
 
                     if let Some(data) = data {
                         for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
