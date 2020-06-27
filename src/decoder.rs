@@ -242,7 +242,7 @@ impl<R: Read> Decoder<R> {
                         }
                     }
 
-                    let produce_data = true;
+                    let produce_data = !stop_after_metadata;
                     let (marker, data) = self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), produce_data)?;
 
                     if let Some(data) = data {
