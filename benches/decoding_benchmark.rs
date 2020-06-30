@@ -1,17 +1,19 @@
 extern crate criterion;
 extern crate jpeg_decoder;
 
+use std::io::Cursor;
+
 use criterion::{black_box, Criterion};
 
 use jpeg_decoder as jpeg;
 use jpeg_decoder::ImageInfo;
 
 fn read_image(image: &[u8]) -> Vec<u8> {
-    jpeg::Decoder::new(black_box(image)).decode().unwrap()
+    jpeg::Decoder::new(Cursor::new(black_box(image))).decode().unwrap()
 }
 
 fn read_metadata(image: &[u8]) -> ImageInfo {
-    let mut decoder = jpeg::Decoder::new(black_box(image));
+    let mut decoder = jpeg::Decoder::new(Cursor::new(black_box(image)));
     decoder.read_info().unwrap();
     decoder.info().unwrap()
 }

@@ -3,6 +3,7 @@ use png;
 use std::cmp;
 use std::fs::File;
 use std::path::Path;
+use std::io::{Read, Seek};
 
 use super::common;
 
@@ -38,7 +39,7 @@ fn reftest_scaled_file(path: &Path, width: u16, height: u16, ref_path: &Path) {
     reftest_decoder(decoder, path, &ref_path);
 }
 
-fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path, ref_path: &Path) {
+fn reftest_decoder<T: Read + Seek>(mut decoder: jpeg::Decoder<T>, path: &Path, ref_path: &Path) {
     let mut data = decoder.decode().expect(&format!("failed to decode file: {:?}", path));
     let info = decoder.info().unwrap();
     let mut pixel_format = info.pixel_format;

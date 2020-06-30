@@ -6,7 +6,7 @@ use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions,
              parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, ScanInfo};
 use upsampler::Upsampler;
 use std::cmp;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
@@ -78,7 +78,7 @@ pub struct Decoder<R> {
     coefficients_finished: [u64; MAX_COMPONENTS],
 }
 
-impl<R: Read> Decoder<R> {
+impl<R: Read + Seek> Decoder<R> {
     /// Creates a new `Decoder` using the reader `reader`.
     pub fn new(reader: R) -> Decoder<R> {
         Decoder {
@@ -124,7 +124,7 @@ impl<R: Read> Decoder<R> {
     ///
     /// If successful, the metadata can be obtained using the `info` method.
     pub fn read_info(&mut self) -> Result<()> {
-        self.decode_internal(true).map(|_| ())
+        self.decode_internal(true, false).map(|_| ())
     }
 
     /// Configure the decoder to scale the image during decoding.
@@ -146,10 +146,10 @@ impl<R: Read> Decoder<R> {
 
     /// Decodes the image and returns the decoded pixels if successful.
     pub fn decode(&mut self) -> Result<Vec<u8>> {
-        self.decode_internal(false)
+        self.decode_internal(false, false)
     }
 
-    fn decode_internal(&mut self, stop_after_metadata: bool) -> Result<Vec<u8>> {
+    fn decode_internal(&mut self, stop_after_metadata: bool, partial_progressive_scan: bool) -> Result<Vec<u8>> {
         if stop_after_metadata && self.frame.is_some() {
             // The metadata has already been read.
             return Ok(Vec::new());
@@ -242,7 +242,10 @@ impl<R: Read> Decoder<R> {
                         }
                     }
 
-                    let produce_data = !stop_after_metadata;
+                    // Using extra variable when the last plane exists before the
+                    // coefficients_finished are all non-zero for some rare images
+                    // (https://github.com/image-rs/jpeg-decoder/issues/96)
+                    let produce_data = !stop_after_metadata && (scan.component_indices.iter().all(|&i| self.coefficients_finished[i] == !0) || partial_progressive_scan);
                     let (marker, data) = self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), produce_data)?;
 
                     if let Some(data) = data {
@@ -353,11 +356,32 @@ impl<R: Read> Decoder<R> {
         }
 
         if planes.is_empty() || planes.iter().any(|plane| plane.is_empty()) {
-            return Err(Error::Format("no data found".to_owned()));
+            if partial_progressive_scan {
+                return Err(Error::Format("no data found".to_owned()));
+            } else {
+                self.reset_decoder()?;
+                return self.decode_internal(stop_after_metadata, true);
+            }
         }
 
         let frame = self.frame.as_ref().unwrap();
         compute_image(&frame.components, planes, frame.output_size, self.is_jfif, self.color_transform)
+    }
+
+    fn reset_decoder(&mut self) -> Result<()> {
+        self.reader.seek(SeekFrom::Start(0))?;
+        self.frame = None;
+        self.dc_huffman_tables = vec![None, None, None, None];
+        self.ac_huffman_tables = vec![None, None, None, None];
+        self.quantization_tables = [None, None, None, None];
+        self.restart_interval = 0;
+        self.color_transform = None;
+        self.is_jfif = false;
+        self.is_mjpeg = false;
+        self.coefficients = Vec::new();
+        self.coefficients_finished = [0; MAX_COMPONENTS];
+
+        Ok(())
     }
 
     fn read_marker(&mut self) -> Result<Marker> {
