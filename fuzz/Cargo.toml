@@ -15,6 +15,10 @@ libfuzzer-sys = "0.3"
 [dependencies.jpeg-decoder]
 path = ".."
 
+[dependencies.previous]
+package = "jpeg-decoder"
+git = "https://github.com/image-rs/jpeg-decoder"
+
 # Prevent this from interfering with workspaces
 [workspace]
 members = ["."]
@@ -23,5 +27,12 @@ members = ["."]
 # A target with which we can minimize decoding failures.
 name = "fail_tmin"
 path = "fuzz_targets/fail_tmin.rs"
+test = false
+doc = false
+
+[[bin]]
+# A target to find regression test
+name = "regression"
+path = "fuzz_targets/regression.rs"
 test = false
 doc = false
