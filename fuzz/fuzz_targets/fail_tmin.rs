@@ -57,6 +57,9 @@ fn roughly(data: &[u8], reference: &[u8]) -> bool {
 }
 
 fuzz_target!(|data: &[u8]| {
+    let mut decoder = previous::Decoder::new(data);
+    let wrong = decoder.decode().ok();
+
     // The case should now be fixed.
     let ours = match Decoder::new(data).decode() {
         Err(_) => return,
@@ -69,14 +72,16 @@ fuzz_target!(|data: &[u8]| {
         Ok(reference) => reference,
     };
 
-    if roughly(&ours, &reference) {
+    // It must now pass the reftest
+    if !roughly(&ours, &reference) {
         return;
     }
 
-    let mut decoder = previous::Decoder::new(data);
-    match decoder.decode() {
-        // Oh no, it already decode previously
-        Ok(data) if roughly(&data, &reference) => return,
-        _ => panic!("Success"),
+    // The case must have previously failed to decode, or failed reftest
+    match wrong {
+        Some(data) if roughly(&data, &reference) => return,
+        _ => {},
     }
+
+    panic!("Success")
 });
