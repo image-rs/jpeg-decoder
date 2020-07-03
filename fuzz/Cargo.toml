@@ -24,6 +24,9 @@ version = "0.23.4"
 default-features = false
 features = ["pnm"]
 
+[dependencies.mozjpeg]
+version = "0.8.17"
+
 # Prevent this from interfering with workspaces
 [workspace]
 members = ["."]
