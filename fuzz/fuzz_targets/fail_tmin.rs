@@ -7,10 +7,8 @@ use jpeg_decoder::Decoder;
 
 // Try to check the image, never panic.
 fn soft_check(data: &[u8]) -> Result<(), Error> {
-    let mut check = Command::new("convert")
-        .arg("-verbose")
-        .arg("-")
-        .arg("/tmp/fail.png")
+    let mut check = Command::new("djpeg")
+        .arg("-fast")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -29,30 +27,6 @@ fn soft_check(data: &[u8]) -> Result<(), Error> {
     let output = check.wait_with_output()?;
     if !output.status.success() {
         return Err(Error::from(std::io::ErrorKind::Other));
-    }
-
-    let mut iter = output.stdout.iter();
-    // Should still contain JPEG somewhere.
-    loop {
-        if iter.as_slice().starts_with(b"JPEG") {
-            break;
-        }
-        match iter.next() {
-            None => return Err(Error::from(std::io::ErrorKind::Other)),
-            Some(_) => {},
-        }
-    }
-
-    let mut iter = output.stderr.iter();
-    // But should not be marked corrupt.
-    loop {
-        if iter.as_slice().starts_with(b"Corrupt") {
-            return Err(Error::from(std::io::ErrorKind::Other));
-        }
-        match iter.next() {
-            None => break,
-            Some(_) => {},
-        }
     }
 
     Ok(())
