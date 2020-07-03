@@ -1,14 +1,14 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use std::io::{Error, Write};
+use std::io::{Error, Read, Write};
 use std::process::{Command, Stdio};
 
 use jpeg_decoder::Decoder;
+use image::ImageDecoder;
 
 // Try to check the image, never panic.
-fn soft_check(data: &[u8]) -> Result<(), Error> {
+fn soft_check(data: &[u8]) -> Result<Vec<u8>, Error> {
     let mut check = Command::new("djpeg")
-        .arg("-fast")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -29,15 +29,54 @@ fn soft_check(data: &[u8]) -> Result<(), Error> {
         return Err(Error::from(std::io::ErrorKind::Other));
     }
 
-    Ok(())
+    let decoder = match image::pnm::PnmDecoder::new(output.stdout.as_slice()) {
+        Err(_) => return Err(Error::from(std::io::ErrorKind::Other)),
+        Ok(decoder) => decoder,
+    };
+
+    let mut image = vec![];
+    match decoder.into_reader() {
+        Err(_) => return Err(Error::from(std::io::ErrorKind::Other)),
+        Ok(mut reader) => match reader.read_to_end(&mut image) {
+            Err(_) => return Err(Error::from(std::io::ErrorKind::Other)),
+            Ok(_) => {},
+        }
+    }
+
+    Ok(image)
+}
+
+fn roughly(data: &[u8], reference: &[u8]) -> bool {
+    data.len() == reference.len() && data
+        .iter()
+        .zip(reference)
+        .all(|(&o, &r)| {
+            // Same criterion as in ref test
+            (o as i16 - r as i16).abs() <= 2
+        })
 }
 
 fuzz_target!(|data: &[u8]| {
-    match soft_check(data) {
-        Ok(_) => {}, // Now crash.
+    // The case should now be fixed.
+    let ours = match Decoder::new(data).decode() {
+        Err(_) => return,
+        Ok(ours) => ours,
+    };
+
+    // It should decode correctly.
+    let reference = match soft_check(data) {
         Err(_) => return, // Don't crash if it's not a jpeg.
+        Ok(reference) => reference,
+    };
+
+    if roughly(&ours, &reference) {
+        return;
     }
 
-    let mut decoder = Decoder::new(data);
-    let _ = decoder.decode().expect("");
+    let mut decoder = previous::Decoder::new(data);
+    match decoder.decode() {
+        // Oh no, it already decode previously
+        Ok(data) if roughly(&data, &reference) => return,
+        _ => panic!("Success"),
+    }
 });
