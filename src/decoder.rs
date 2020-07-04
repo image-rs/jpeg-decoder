@@ -234,6 +234,19 @@ impl<R: Read> Decoder<R> {
                         }).collect();
                     }
 
+                    // This was previously buggy, so let's explain the log here a bit. When a
+                    // progressive frame is encoded then the coefficients (DC, AC) of each
+                    // component (=color plane) can be split amongst scans. In particular it can
+                    // happen or at least occurs in the wild that a scan contains coefficient 0 of
+                    // all components. If now one but not all components had all other coefficients
+                    // delivered in previous scans then such a scan contains all components but
+                    // completes only some of them! (This is technically NOT permitted for all
+                    // other coefficients as the standard dictates that scans with coefficients
+                    // other than the 0th must only contain ONE component so we would either
+                    // complete it or not. We may want to detect and error in case more component
+                    // are part of a scan than allowed.) What a weird edge case.
+                    //
+                    // But this means we track precisely which components get completed here.
                     let mut finished = [false; MAX_COMPONENTS];
 
                     if scan.successive_approximation_low == 0 {
