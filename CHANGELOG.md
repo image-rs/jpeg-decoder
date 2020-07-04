@@ -4,6 +4,14 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
 
+## v0.1.20 (2020-07-04)
+
+- Fix decoding of some progressive images failing
+- Several more performance improvements
+- Add `PixelFormat::pixel_bytes` to determine the size of pixels
+- Cleanup and clarification of the 8x8 idct implementation
+- Updated fuzzing harnesses and helpers
+
 ## v0.1.19 (2020-04-27)
 - Fix decoding returning too much image data
 - Fix recognizing padding in marker segments
