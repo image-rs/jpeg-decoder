@@ -140,7 +140,7 @@ impl<R: Read> Decoder<R> {
         self.read_info()?;
         let frame = self.frame.as_mut().unwrap();
         let idct_size = crate::idct::choose_idct_size(frame.image_size, Dimensions{ width: requested_width, height: requested_height });
-        frame.update_idct_size(idct_size);
+        frame.update_idct_size(idct_size)?;
         Ok((frame.output_size.width, frame.output_size.height))
     }
 
