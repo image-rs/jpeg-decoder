@@ -128,12 +128,12 @@ impl<R: Read> Decoder<R> {
     }
 
     /// Configure the decoder to scale the image during decoding.
-    /// 
+    ///
     /// This efficiently scales the image by the smallest supported scale
     /// factor that produces an image larger than or equal to the requested
     /// size in at least one axis. The currently implemented scale factors
     /// are 1/8, 1/4, 1/2 and 1.
-    /// 
+    ///
     /// To generate a thumbnail of an exact size, pass the desired size and
     /// then scale to the final size using a traditional resampling algorithm.
     pub fn scale(&mut self, requested_width: u16, requested_height: u16) -> Result<(u16, u16)> {
@@ -155,7 +155,7 @@ impl<R: Read> Decoder<R> {
             return Ok(Vec::new());
         }
         else if self.frame.is_none() && (self.reader.read_u8()? != 0xFF || Marker::from_u8(self.reader.read_u8()?) != Some(Marker::SOI)) {
-            return Err(Error::Format("first two bytes is not a SOI marker".to_owned()));
+            return Err(Error::Format("first two bytes are not an SOI marker".to_owned()));
         }
 
         let mut previous_marker = Marker::SOI;
@@ -402,7 +402,7 @@ impl<R: Read> Decoder<R> {
             while byte == 0xFF {
                 byte = self.reader.read_u8()?;
             }
-            
+
             if byte != 0x00 && byte != 0xFF {
                 return Ok(Marker::from_u8(byte).unwrap());
             }
@@ -616,14 +616,11 @@ fn decode_block<R: Read>(reader: &mut R,
         let value = huffman.decode(reader, dc_table.unwrap())?;
         let diff = match value {
             0 => 0,
+            1..=11 => huffman.receive_extend(reader, value)?,
             _ => {
                 // Section F.1.2.1.1
                 // Table F.1
-                if value > 11 {
-                    return Err(Error::Format("invalid DC difference magnitude category".to_owned()));
-                }
-
-                huffman.receive_extend(reader, value)?
+                return Err(Error::Format("invalid DC difference magnitude category".to_owned()));
             },
         };
 
@@ -812,8 +809,8 @@ fn compute_image(components: &[Component],
                  output_size: Dimensions,
                  is_jfif: bool,
                  color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
-    if data.iter().any(|data| data.is_empty()) {
-        return Err(Error::Format("not all components has data".to_owned()));
+    if data.iter().any(Vec::is_empty) {
+        return Err(Error::Format("not all components have data".to_owned()));
     }
 
     if components.len() == 1 {
@@ -911,7 +908,7 @@ fn choose_color_convert_func(component_count: usize,
             match color_transform {
                 Some(AdobeColorTransform::Unknown) => Ok(color_convert_line_cmyk),
                 Some(_) => Ok(color_convert_line_ycck),
-                None => Err(Error::Format("4 components without Adobe APP14 metadata to tell color space".to_owned())),
+                None => Err(Error::Format("4 components without Adobe APP14 metadata to indicate color space".to_owned())),
             }
         },
         _ => panic!(),
@@ -974,6 +971,5 @@ fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8) -> (u8, u8, u8) {
 
 fn clamp_to_u8(value: i32) -> i32 {
     let value = std::cmp::max(value, 0);
-    let value = std::cmp::min(value, 255);
-    value
+    std::cmp::min(value, 255)
 }
