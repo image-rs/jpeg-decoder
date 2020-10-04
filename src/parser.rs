@@ -1,5 +1,5 @@
 use byteorder::{BigEndian, ReadBytesExt};
-use error::{Error, Result};
+use error::{Error, Result, UnsupportedFeature};
 use huffman::{HuffmanTable, HuffmanTableClass};
 use marker::Marker;
 use marker::Marker::*;
@@ -171,6 +171,9 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
     // height:
     // "Value 0 indicates that the number of lines shall be defined by the DNL marker and
     //     parameters at the end of the first scan (see B.2.5)."
+    if height == 0 {
+        return Err(Error::Unsupported(UnsupportedFeature::DNL));
+    }
 
     if width == 0 {
         return Err(Error::Format("zero width in frame header".to_owned()));
