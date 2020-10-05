@@ -16,7 +16,7 @@ pub(crate) fn choose_idct_size(full_size: Dimensions, requested_size: Dimensions
         }
     }
 
-    return 8;
+    8
 }
 
 #[test]

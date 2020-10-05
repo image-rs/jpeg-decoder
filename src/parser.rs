@@ -437,8 +437,8 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
 
         let mut table = [0u16; 64];
 
-        for i in 0 .. 64 {
-            table[i] = match precision {
+        for item in table.iter_mut() {
+            *item = match precision {
                 0 => reader.read_u8()? as u16,
                 1 => reader.read_u16::<BigEndian>()?,
                 _ => unreachable!(),

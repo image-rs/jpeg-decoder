@@ -3,7 +3,6 @@ use error::{Error, Result};
 use marker::Marker;
 use parser::ScanInfo;
 use std::io::Read;
-use std::iter::repeat;
 
 const LUT_BITS: u8 = 8;
 
@@ -254,8 +253,7 @@ fn derive_huffman_codes(bits: &[u8; 16]) -> Result<(Vec<u16>, Vec<u8>)> {
     let huffsize = bits.iter()
                        .enumerate()
                        .fold(Vec::new(), |mut acc, (i, &value)| {
-                           let mut repeated_size: Vec<u8> = repeat((i + 1) as u8).take(value as usize).collect();
-                           acc.append(&mut repeated_size);
+                           acc.extend(std::iter::repeat((i + 1) as u8).take(value as usize));
                            acc
                        });
 
