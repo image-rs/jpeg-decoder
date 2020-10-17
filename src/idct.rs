@@ -2,7 +2,7 @@
 // One example is tests/crashtest/images/imagetestsuite/b0b8914cc5f7a6eff409f16d8cc236c5.jpg
 // That's why wrapping operators are needed.
 use crate::parser::Dimensions;
-use std::{convert::TryFrom, convert::TryInto, num::Wrapping};
+use std::{convert::TryFrom, num::Wrapping};
 
 pub(crate) fn choose_idct_size(full_size: Dimensions, requested_size: Dimensions) -> usize {
     fn scaled(len: u16, scale: usize) -> u16 { ((len as u32 * scale as u32 - 1) / 8 + 1) as u16 }
@@ -73,7 +73,7 @@ fn dequantize_and_idct_block_8x8_inner<'a, I>(
     );
 
     // optimizer hint to eliminate bounds checks within loops
-    let coefficients: &[i16; 64] = coefficients.try_into().unwrap();
+    assert!(coefficients.len() == 64);
 
     let mut temp = [Wrapping(0); 64];
 
