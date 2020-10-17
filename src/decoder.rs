@@ -371,10 +371,6 @@ impl<R: Read> Decoder<R> {
             previous_marker = marker;
         }
 
-        if planes.is_empty() || planes.iter().any(|plane| plane.is_empty()) {
-            return Err(Error::Format("no data found".to_owned()));
-        }
-
         let frame = self.frame.as_ref().unwrap();
         compute_image(&frame.components, planes, frame.output_size, self.is_jfif, self.color_transform)
     }
@@ -806,7 +802,7 @@ fn compute_image(components: &[Component],
                  output_size: Dimensions,
                  is_jfif: bool,
                  color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
-    if data.iter().any(Vec::is_empty) {
+    if data.is_empty() || data.iter().any(Vec::is_empty) {
         return Err(Error::Format("not all components have data".to_owned()));
     }
 
