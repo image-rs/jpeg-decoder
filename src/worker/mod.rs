@@ -1,4 +1,3 @@
-mod threaded;
 mod immediate;
 mod multithreaded;
 
