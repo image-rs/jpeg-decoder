@@ -53,7 +53,6 @@ impl Worker for MultiThreadedWorker {
         let sender = mem::replace(&mut self.senders[index], None).unwrap();
         sender.send(WorkerMsg::GetResult(tx)).expect("jpeg-decoder worker thread error");
         Ok(rx.recv().expect("jpeg-decoder worker thread error"))
-        //TODO: join thread here
     }
 }
 
@@ -78,6 +77,7 @@ fn spawn_worker_thread(component: usize) -> Result<Sender<WorkerMsg>> {
                 },
                 WorkerMsg::GetResult(chan) => {
                     let _ = chan.send(worker.get_result_immediate(0));
+                    break;
                 },
             }
         }
