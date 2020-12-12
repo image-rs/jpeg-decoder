@@ -70,6 +70,7 @@ pub enum AppData {
     Adobe(AdobeColorTransform),
     Jfif,
     Avi1,
+    Icc(IccChunk),
 }
 
 // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
@@ -80,6 +81,12 @@ pub enum AdobeColorTransform {
     YCbCr,
     // YCbCrK
     YCCK,
+}
+#[derive(Debug)]
+pub struct IccChunk {
+    pub num_markers: u8,
+    pub seq_no: u8,
+    pub data: Vec<u8>,
 }
 
 impl FrameInfo {
@@ -554,7 +561,27 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
                     result = Some(AppData::Avi1);
                 }
             }
-        },
+        }
+        APP(2) => {
+            if length > 14 {
+                let mut buffer = [0u8; 14];
+                reader.read_exact(&mut buffer)?;
+                bytes_read = buffer.len();
+
+                // http://www.color.org/ICC_Minor_Revision_for_Web.pdf
+                // B.4 Embedding ICC profiles in JFIF files
+                if &buffer[0..12] == b"ICC_PROFILE\0" {
+                    let mut data = vec![0; length - bytes_read];
+                    reader.read_exact(&mut data)?;
+                    bytes_read += data.len();
+                    result = Some(AppData::Icc(IccChunk {
+                        seq_no: buffer[12],
+                        num_markers: buffer[13],
+                        data,
+                    }));
+                }
+            }
+        }
         APP(14) => {
             if length >= 12 {
                 let mut buffer = [0u8; 12];
