@@ -1,4 +1,4 @@
-use byteorder::{BigEndian, ReadBytesExt};
+use crate::{read_u16_from_be, read_u8};
 use error::{Error, Result, UnsupportedFeature};
 use huffman::{HuffmanTable, HuffmanTableClass};
 use marker::Marker;
@@ -103,7 +103,7 @@ fn read_length<R: Read>(reader: &mut R, marker: Marker) -> Result<usize> {
     assert!(marker.has_length());
 
     // length is including itself.
-    let length = reader.read_u16::<BigEndian>()? as usize;
+    let length = usize::from(read_u16_from_be(reader)?);
 
     if length < 2 {
         return Err(Error::Format(format!("encountered {:?} with invalid length {}", marker, length)));
@@ -149,7 +149,7 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
         _ => panic!(),
     };
 
-    let precision = reader.read_u8()?;
+    let precision = read_u8(reader)?;
 
     match precision {
         8 => {},
@@ -165,8 +165,8 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
         },
     }
 
-    let height = reader.read_u16::<BigEndian>()?;
-    let width = reader.read_u16::<BigEndian>()?;
+    let height = read_u16_from_be(reader)?;
+    let width = read_u16_from_be(reader)?;
 
     // height:
     // "Value 0 indicates that the number of lines shall be defined by the DNL marker and
@@ -179,7 +179,7 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
         return Err(Error::Format("zero width in frame header".to_owned()));
     }
 
-    let component_count = reader.read_u8()?;
+    let component_count = read_u8(reader)?;
 
     if component_count == 0 {
         return Err(Error::Format("zero component count in frame header".to_owned()));
@@ -195,14 +195,14 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
     let mut components: Vec<Component> = Vec::with_capacity(component_count as usize);
 
     for _ in 0 .. component_count {
-        let identifier = reader.read_u8()?;
+        let identifier = read_u8(reader)?;
 
         // Each component's identifier must be unique.
         if components.iter().any(|c| c.identifier == identifier) {
             return Err(Error::Format(format!("duplicate frame component identifier {}", identifier)));
         }
 
-        let byte = reader.read_u8()?;
+        let byte = read_u8(reader)?;
         let horizontal_sampling_factor = byte >> 4;
         let vertical_sampling_factor = byte & 0x0f;
 
@@ -213,7 +213,7 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
             return Err(Error::Format(format!("invalid vertical sampling factor {}", vertical_sampling_factor)));
         }
 
-        let quantization_table_index = reader.read_u8()?;
+        let quantization_table_index = read_u8(reader)?;
 
         if quantization_table_index > 3 || (coding_process == CodingProcess::Lossless && quantization_table_index != 0) {
             return Err(Error::Format(format!("invalid quantization table index {}", quantization_table_index)));
@@ -301,7 +301,7 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
         return Err(Error::Format("zero length in SOS".to_owned()));
     }
 
-    let component_count = reader.read_u8()?;
+    let component_count = read_u8(reader)?;
 
     if component_count == 0 || component_count > 4 {
         return Err(Error::Format(format!("invalid component count {} in scan header", component_count)));
@@ -316,7 +316,7 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
     let mut ac_table_indices = Vec::with_capacity(component_count as usize);
 
     for _ in 0 .. component_count {
-        let identifier = reader.read_u8()?;
+        let identifier = read_u8(reader)?;
 
         let component_index = match frame.components.iter().position(|c| c.identifier == identifier) {
             Some(value) => value,
@@ -333,7 +333,7 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
             return Err(Error::Format("the scan component order does not follow the order in the frame header".to_owned()));
         }
 
-        let byte = reader.read_u8()?;
+        let byte = read_u8(reader)?;
         let dc_table_index = byte >> 4;
         let ac_table_index = byte & 0x0f;
 
@@ -357,10 +357,10 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
         return Err(Error::Format("scan with more than one component and more than 10 blocks per MCU".to_owned()));
     }
 
-    let spectral_selection_start = reader.read_u8()?;
-    let spectral_selection_end = reader.read_u8()?;
+    let spectral_selection_start = read_u8(reader)?;
+    let spectral_selection_end = read_u8(reader)?;
 
-    let byte = reader.read_u8()?;
+    let byte = read_u8(reader)?;
     let successive_approximation_high = byte >> 4;
     let successive_approximation_low = byte & 0x0f;
 
@@ -413,7 +413,7 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
 
     // Each DQT segment may contain multiple quantization tables.
     while length > 0 {
-        let byte = reader.read_u8()?;
+        let byte = read_u8(reader)?;
         let precision = (byte >> 4) as usize;
         let index = (byte & 0x0f) as usize;
 
@@ -439,8 +439,8 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
 
         for item in table.iter_mut() {
             *item = match precision {
-                0 => reader.read_u8()? as u16,
-                1 => reader.read_u16::<BigEndian>()?,
+                0 => u16::from(read_u8(reader)?),
+                1 => read_u16_from_be(reader)?,
                 _ => unreachable!(),
             };
         }
@@ -464,7 +464,7 @@ pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<(
 
     // Each DHT segment may contain multiple huffman tables.
     while length > 17 {
-        let byte = reader.read_u8()?;
+        let byte = read_u8(reader)?;
         let class = byte >> 4;
         let index = (byte & 0x0f) as usize;
 
@@ -520,7 +520,7 @@ pub fn parse_dri<R: Read>(reader: &mut R) -> Result<u16> {
         return Err(Error::Format("DRI with invalid length".to_owned()));
     }
 
-    Ok(reader.read_u16::<BigEndian>()?)
+    Ok(read_u16_from_be(reader)?)
 }
 
 // Section B.2.4.5

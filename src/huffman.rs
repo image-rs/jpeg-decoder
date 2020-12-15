@@ -1,4 +1,4 @@
-use byteorder::ReadBytesExt;
+use crate::read_u8;
 use error::{Error, Result};
 use marker::Marker;
 use parser::ScanInfo;
@@ -121,11 +121,11 @@ impl HuffmanDecoder {
             // Fill with zero bits if we have reached the end.
             let byte = match self.marker {
                 Some(_) => 0,
-                None => reader.read_u8()?,
+                None => read_u8(reader)?,
             };
 
             if byte == 0xFF {
-                let mut next_byte = reader.read_u8()?;
+                let mut next_byte = read_u8(reader)?;
 
                 // Check for byte stuffing.
                 if next_byte != 0x00 {
@@ -136,7 +136,7 @@ impl HuffmanDecoder {
                     // Section B.1.1.2
                     // "Any marker may optionally be preceded by any number of fill bytes, which are bytes assigned code X’FF’."
                     while next_byte == 0xFF {
-                        next_byte = reader.read_u8()?;
+                        next_byte = read_u8(reader)?;
                     }
 
                     match next_byte {
