@@ -3,7 +3,8 @@ use error::{Error, Result, UnsupportedFeature};
 use huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
 use marker::Marker;
 use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
-             parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, ScanInfo};
+             parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, IccChunk,
+             ScanInfo};
 use upsampler::Upsampler;
 use std::cmp;
 use std::io::Read;
@@ -72,6 +73,8 @@ pub struct Decoder<R> {
     is_jfif: bool,
     is_mjpeg: bool,
 
+    icc_markers: Vec<IccChunk>,
+
     // Used for progressive JPEGs.
     coefficients: Vec<Vec<i16>>,
     // Bitmask of which coefficients has been completely decoded.
@@ -91,6 +94,7 @@ impl<R: Read> Decoder<R> {
             color_transform: None,
             is_jfif: false,
             is_mjpeg: false,
+            icc_markers: Vec::new(),
             coefficients: Vec::new(),
             coefficients_finished: [0; MAX_COMPONENTS],
         }
@@ -118,6 +122,39 @@ impl<R: Read> Decoder<R> {
             },
             None => None,
         }
+    }
+
+    /// Returns the embeded icc profile if the image contains one.
+    pub fn icc_profile(&self) -> Option<Vec<u8>> {
+        let mut marker_present: [Option<&IccChunk>; 256] = [None; 256];
+        let num_markers = self.icc_markers.len();
+        if num_markers == 0 && num_markers < 256 {
+            return None;
+        }
+        // check the validity of the markers
+        for chunk in &self.icc_markers {
+            if usize::from(chunk.num_markers) != num_markers {
+                // all the lengths must match
+                return None;
+            }
+            if chunk.seq_no == 0 {
+                return None;
+            }
+            if marker_present[usize::from(chunk.seq_no)].is_some() {
+                // duplicate seq_no
+                return None;
+            } else {
+                marker_present[usize::from(chunk.seq_no)] = Some(chunk);
+            }
+        }
+
+        // assemble them together by seq_no failing if any are missing
+        let mut data = Vec::new();
+        // seq_no's start at 1
+        for &chunk in marker_present.get(1..=num_markers)? {
+            data.extend_from_slice(&chunk?.data);
+        }
+        Some(data)
     }
 
     /// Tries to read metadata from the image without decoding it.
@@ -336,6 +373,7 @@ impl<R: Read> Decoder<R> {
                                 self.is_jfif = true;
                             },
                             AppData::Avi1 => self.is_mjpeg = true,
+                            AppData::Icc(icc) => self.icc_markers.push(icc),
                         }
                     }
                 },

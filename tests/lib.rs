@@ -26,3 +26,19 @@ fn read_info() {
     assert_eq!(info, ref_info);
     assert_eq!(data, ref_data);
 }
+
+#[test]
+fn read_icc_profile() {
+    let path = Path::new("tests")
+        .join("reftest")
+        .join("images")
+        .join("mozilla")
+        .join("jpg-srgb-icc.jpg");
+
+    let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
+    decoder.decode().unwrap();
+
+    let profile = decoder.icc_profile().unwrap();
+    // "acsp" is a mandatory string in ICC profile headers.
+    assert_eq!(&profile[36..40], b"acsp");
+}
