@@ -1,4 +1,4 @@
-use byteorder::ReadBytesExt;
+use crate::read_u8;
 use error::{Error, Result, UnsupportedFeature};
 use huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
 use marker::Marker;
@@ -191,7 +191,7 @@ impl<R: Read> Decoder<R> {
             // The metadata has already been read.
             return Ok(Vec::new());
         }
-        else if self.frame.is_none() && (self.reader.read_u8()? != 0xFF || Marker::from_u8(self.reader.read_u8()?) != Some(Marker::SOI)) {
+        else if self.frame.is_none() && (read_u8(&mut self.reader)? != 0xFF || Marker::from_u8(read_u8(&mut self.reader)?) != Some(Marker::SOI)) {
             return Err(Error::Format("first two bytes are not an SOI marker".to_owned()));
         }
 
@@ -419,19 +419,19 @@ impl<R: Read> Decoder<R> {
             // libjpeg allows this though and there are images in the wild utilising it, so we are
             // forced to support this behavior.
             // Sony Ericsson P990i is an example of a device which produce this sort of JPEGs.
-            while self.reader.read_u8()? != 0xFF {}
+            while read_u8(&mut self.reader)? != 0xFF {}
 
             // Section B.1.1.2
             // All markers are assigned two-byte codes: an X’FF’ byte followed by a
             // byte which is not equal to 0 or X’FF’ (see Table B.1). Any marker may
             // optionally be preceded by any number of fill bytes, which are bytes
             // assigned code X’FF’.
-            let mut byte = self.reader.read_u8()?;
+            let mut byte = read_u8(&mut self.reader)?;
 
             // Section B.1.1.2
             // "Any marker may optionally be preceded by any number of fill bytes, which are bytes assigned code X’FF’."
             while byte == 0xFF {
-                byte = self.reader.read_u8()?;
+                byte = read_u8(&mut self.reader)?;
             }
 
             if byte != 0x00 && byte != 0xFF {
