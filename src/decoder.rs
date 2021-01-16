@@ -410,6 +410,46 @@ impl<R: Read> Decoder<R> {
         }
 
         let frame = self.frame.as_ref().unwrap();
+
+        // If we're decoding a progressive jpeg and a component is unfinished, render what we've got
+        if frame.coding_process == CodingProcess::DctProgressive && self.coefficients.len() == frame.components.len() {
+            for (i, component) in frame.components.iter().enumerate() {
+                // Only dealing with unfinished components
+                if self.coefficients_finished[i] == !0 {
+                    continue;
+                }
+
+                let quantization_table = match self.quantization_tables[component.quantization_table_index].clone() {
+                    Some(quantization_table) => quantization_table,
+                    None => continue,
+                };
+
+                // Get the worker prepared
+                if worker.is_none() {
+                    worker = Some(PlatformWorker::new()?);
+                }
+                let worker = worker.as_mut().unwrap();
+                let row_data = RowData {
+                    index: i,
+                    component: component.clone(),
+                    quantization_table,
+                };
+                worker.start(row_data)?;
+
+                // Send the rows over to the worker and collect the result
+                let coefficients_per_mcu_row = usize::from(component.block_size.width) * usize::from(component.vertical_sampling_factor) * 64;
+                for mcu_y in 0..frame.mcu_size.height {
+                    let row_coefficients = {
+                        let offset = usize::from(mcu_y) * coefficients_per_mcu_row;
+                        self.coefficients[i][offset .. offset + coefficients_per_mcu_row].to_vec()
+                    };
+
+                    worker.append_row((i, row_coefficients))?;
+                }
+                planes[i] = worker.get_result(i)?;
+            }
+        }
+
         compute_image(&frame.components, planes, frame.output_size, self.is_jfif, self.color_transform)
     }
 
