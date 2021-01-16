@@ -484,9 +484,6 @@ impl<R: Read> Decoder<R> {
             }
         }
 
-        let blocks_per_mcu: Vec<u16> = components.iter()
-                                                 .map(|c| c.horizontal_sampling_factor as u16 * c.vertical_sampling_factor as u16)
-                                                 .collect();
         let is_progressive = frame.coding_process == CodingProcess::DctProgressive;
         let is_interleaved = components.len() > 1;
         let mut dummy_block = [0i16; 64];
@@ -504,70 +501,37 @@ impl<R: Read> Decoder<R> {
             }
         }
 
-        for mcu_y in 0 .. frame.mcu_size.height {
-            for mcu_x in 0 .. frame.mcu_size.width {
-                for (i, component) in components.iter().enumerate() {
-                    for j in 0 .. blocks_per_mcu[i] {
-                        let (block_x, block_y) = if is_interleaved {
-                            // Section A.2.3
-                            (mcu_x * component.horizontal_sampling_factor as u16 + j % component.horizontal_sampling_factor as u16,
-                             mcu_y * component.vertical_sampling_factor as u16 + j / component.horizontal_sampling_factor as u16)
-                        }
-                        else {
-                            // Section A.2.2
+        // 4.8.2
+        // When reading from the stream, if the data is non-interleaved then an MCU consists of
+        // exactly one block (effectively a 1x1 sample).
+        let (mcu_horizontal_samples, mcu_vertical_samples) = if is_interleaved {
+            let horizontal = components.iter().map(|component| component.horizontal_sampling_factor as u16).collect::<Vec<_>>();
+            let vertical = components.iter().map(|component| component.vertical_sampling_factor as u16).collect::<Vec<_>>();
+            (horizontal, vertical)
+        } else {
+            (vec![1], vec![1])
+        };
 
-                            let blocks_per_row = component.block_size.width as usize;
-                            let block_num = (mcu_y as usize * frame.mcu_size.width as usize +
-                                mcu_x as usize) * blocks_per_mcu[i] as usize + j as usize;
+        // This also affects how many MCU values we read from stream. If it's a non-interleaved stream,
+        // the MCUs will be exactly the block count.
+        let (max_mcu_x, max_mcu_y) = if is_interleaved {
+            (frame.mcu_size.width, frame.mcu_size.height)
+        } else {
+            (components[0].block_size.width, components[0].block_size.height)
+        };
 
-                            let x = (block_num % blocks_per_row) as u16;
-                            let y = (block_num / blocks_per_row) as u16;
+        for mcu_y in 0..max_mcu_y {
+            if mcu_y * 8 >= frame.image_size.height {
+                break;
+            }
 
-                            if x * component.dct_scale as u16 >= component.size.width || y * component.dct_scale as u16 >= component.size.height {
-                                continue;
-                            }
-
-                            (x, y)
-                        };
-
-                        let block_offset = (block_y as usize * component.block_size.width as usize + block_x as usize) * 64;
-                        let mcu_row_offset = mcu_y as usize * component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
-                        let coefficients = if is_progressive {
-                            &mut self.coefficients[scan.component_indices[i]][block_offset .. block_offset + 64]
-                        } else if finished[i] {
-                            &mut mcu_row_coefficients[i][block_offset - mcu_row_offset .. block_offset - mcu_row_offset + 64]
-                        } else {
-                            &mut dummy_block[..]
-                        };
-
-                        if scan.successive_approximation_high == 0 {
-                            decode_block(&mut self.reader,
-                                         coefficients,
-                                         &mut huffman,
-                                         self.dc_huffman_tables[scan.dc_table_indices[i]].as_ref(),
-                                         self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
-                                         scan.spectral_selection.clone(),
-                                         scan.successive_approximation_low,
-                                         &mut eob_run,
-                                         &mut dc_predictors[i])?;
-                        }
-                        else {
-                            decode_block_successive_approximation(&mut self.reader,
-                                                                  coefficients,
-                                                                  &mut huffman,
-                                                                  self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
-                                                                  scan.spectral_selection.clone(),
-                                                                  scan.successive_approximation_low,
-                                                                  &mut eob_run)?;
-                        }
-                    }
+            for mcu_x in 0..max_mcu_x {
+                if mcu_x * 8 >= frame.image_size.width {
+                    break;
                 }
 
                 if self.restart_interval > 0 {
-                    let is_last_mcu = mcu_x == frame.mcu_size.width - 1 && mcu_y == frame.mcu_size.height - 1;
-                    mcus_left_until_restart -= 1;
-
-                    if mcus_left_until_restart == 0 && !is_last_mcu {
+                    if mcus_left_until_restart == 0 {
                         match huffman.take_marker(&mut self.reader)? {
                             Some(Marker::RST(n)) => {
                                 if n != expected_rst_num {
@@ -587,16 +551,86 @@ impl<R: Read> Decoder<R> {
                             None => return Err(Error::Format(format!("no marker found where RST{} was expected", expected_rst_num))),
                         }
                     }
+
+                    mcus_left_until_restart -= 1;
+                }
+
+                for (i, component) in components.iter().enumerate() {
+                    for v_pos in 0..mcu_vertical_samples[i] {
+                        for h_pos in 0..mcu_horizontal_samples[i] {
+                            let coefficients = if is_progressive {
+                                let block_y = (mcu_y * mcu_vertical_samples[i] + v_pos) as usize;
+                                let block_x = (mcu_x * mcu_horizontal_samples[i] + h_pos) as usize;
+                                let block_offset = (block_y * component.block_size.width as usize + block_x) * 64;
+                                &mut self.coefficients[scan.component_indices[i]][block_offset..block_offset + 64]
+                            } else if finished[i] {
+                                // Because the worker thread operates in batches as if we were always interleaved, we
+                                // need to distinguish between a single-shot buffer and one that's currently in process
+                                // (for a non-interleaved) stream
+                                let mcu_batch_current_row = if is_interleaved {
+                                    0
+                                } else {
+                                    mcu_y % component.vertical_sampling_factor as u16
+                                };
+
+                                let block_y = (mcu_batch_current_row * mcu_vertical_samples[i] + v_pos) as usize;
+                                let block_x = (mcu_x * mcu_horizontal_samples[i] + h_pos) as usize;
+                                let block_offset = (block_y * component.block_size.width as usize + block_x) * 64;
+                                &mut mcu_row_coefficients[i][block_offset..block_offset + 64]
+                            } else {
+                                &mut dummy_block[..]
+                            };
+
+                            if scan.successive_approximation_high == 0 {
+                                decode_block(&mut self.reader,
+                                            coefficients,
+                                            &mut huffman,
+                                            self.dc_huffman_tables[scan.dc_table_indices[i]].as_ref(),
+                                            self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
+                                            scan.spectral_selection.clone(),
+                                            scan.successive_approximation_low,
+                                            &mut eob_run,
+                                            &mut dc_predictors[i])?;
+                            }
+                            else {
+                                decode_block_successive_approximation(&mut self.reader,
+                                                                    coefficients,
+                                                                    &mut huffman,
+                                                                    self.ac_huffman_tables[scan.ac_table_indices[i]].as_ref(),
+                                                                    scan.spectral_selection.clone(),
+                                                                    scan.successive_approximation_low,
+                                                                    &mut eob_run)?;
+                            }
+                        }
+                    }
                 }
             }
 
             // Send the coefficients from this MCU row to the worker thread for dequantization and idct.
             for (i, component) in components.iter().enumerate() {
                 if finished[i] {
+                    // In the event of non-interleaved streams, if we're still building the buffer out,
+                    // keep going; don't send it yet. We also need to ensure we don't skip over the last
+                    // row(s) of the image.
+                    if !is_interleaved && (mcu_y + 1) * 8 < frame.image_size.height {
+                        if (mcu_y + 1) % component.vertical_sampling_factor as u16 > 0 {
+                            continue;
+                        }
+                    }
+
                     let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
 
                     let row_coefficients = if is_progressive {
-                        let offset = mcu_y as usize * coefficients_per_mcu_row;
+                        // Because non-interleaved streams will have multiple MCU rows concatenated together,
+                        // the row for calculating the offset is different.
+                        let worker_mcu_y = if is_interleaved {
+                            mcu_y
+                        } else {
+                            // Explicitly doing floor-division here
+                            mcu_y / component.vertical_sampling_factor as u16
+                        };
+
+                        let offset = worker_mcu_y as usize * coefficients_per_mcu_row;
                         self.coefficients[scan.component_indices[i]][offset .. offset + coefficients_per_mcu_row].to_vec()
                     } else {
                         mem::replace(&mut mcu_row_coefficients[i], vec![0i16; coefficients_per_mcu_row])
