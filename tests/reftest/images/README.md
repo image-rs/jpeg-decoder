@@ -10,3 +10,6 @@ mjpeg.jpg         | https://bugzilla.mozilla.org/show_bug.cgi?id=963907
 restarts.jpg      | `mozilla/jpg-size-33x33.jpg` with added restart markers.
 rgb.jpg           | Created from `ycck.jpg` using <code>convert ycck.jpg tga:- &#124; cjpeg -rgb -outfile rgb.jpg</code>
 ycck.jpg          | https://en.wikipedia.org/wiki/File:Channel_digital_image_CMYK_color.jpg
+non-interleaved-mcu.jpg | Generated in GIMP by John Reynolds (@quilan1)
+progressive-missing-ac.jpg | Generated in GIMP and manually edited by John Reynolds (@quilan1)
+progressive-missing-dc.jpg | Generated in GIMP and manually edited by John Reynolds (@quilan1)
