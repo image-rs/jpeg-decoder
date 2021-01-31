@@ -130,8 +130,8 @@ impl<R: Read> Decoder<R> {
     /// Returns raw exif data, starting at the TIFF header, if the image contains any.
     ///
     /// The returned value will be `None` until a call to `decode` has returned `Ok`.    
-    pub fn exif_data(&self) -> Option<Vec<u8>> {
-        self.exif_data.as_ref().map(|v| v.clone())
+    pub fn exif_data(&self) -> Option<&[u8]> {
+        self.exif_data.as_ref().map(|v| v.as_slice())
     }
 
     /// Returns the embeded icc profile if the image contains one.
