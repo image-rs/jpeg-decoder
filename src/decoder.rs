@@ -75,6 +75,8 @@ pub struct Decoder<R> {
 
     icc_markers: Vec<IccChunk>,
 
+    exif_data: Option<Vec<u8>>,
+
     // Used for progressive JPEGs.
     coefficients: Vec<Vec<i16>>,
     // Bitmask of which coefficients has been completely decoded.
@@ -95,6 +97,7 @@ impl<R: Read> Decoder<R> {
             is_jfif: false,
             is_mjpeg: false,
             icc_markers: Vec::new(),
+            exif_data: None,
             coefficients: Vec::new(),
             coefficients_finished: [0; MAX_COMPONENTS],
         }
@@ -122,6 +125,13 @@ impl<R: Read> Decoder<R> {
             },
             None => None,
         }
+    }
+
+    /// Returns raw exif data, starting at the TIFF header, if the image contains any.
+    ///
+    /// The returned value will be `None` until a call to `decode` has returned `Ok`.    
+    pub fn exif_data(&self) -> Option<&[u8]> {
+        self.exif_data.as_ref().map(|v| v.as_slice())
     }
 
     /// Returns the embeded icc profile if the image contains one.
@@ -374,6 +384,7 @@ impl<R: Read> Decoder<R> {
                             },
                             AppData::Avi1 => self.is_mjpeg = true,
                             AppData::Icc(icc) => self.icc_markers.push(icc),
+                            AppData::Exif(data) => self.exif_data = Some(data),
                         }
                     }
                 },
