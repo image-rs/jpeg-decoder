@@ -366,7 +366,7 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
     }
 
     let spectral_selection_start = read_u8(reader)?;
-    let spectral_selection_end = read_u8(reader)?;
+    let mut spectral_selection_end = read_u8(reader)?;
 
     let byte = read_u8(reader)?;
     let successive_approximation_high = byte >> 4;
@@ -393,6 +393,9 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
         }
     }
     else {
+        if spectral_selection_end == 0 {
+            spectral_selection_end = 63;
+        }
         if spectral_selection_start != 0 || spectral_selection_end != 63 {
             return Err(Error::Format("spectral selection is not allowed in non-progressive scan".to_owned()));
         }
@@ -568,12 +571,12 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
             if length >= 6 {
                 let mut buffer = [0u8; 6];
                 reader.read_exact(&mut buffer)?;
-                bytes_read = buffer.len();            
-            
+                bytes_read = buffer.len();
+
             // https://web.archive.org/web/20190624045241if_/http://www.cipa.jp:80/std/documents/e/DC-008-Translation-2019-E.pdf
             // 4.5.4 Basic Structure of JPEG Compressed Data
             if &buffer == b"Exif\x00\x00" {
-                let mut data = vec![0; length - bytes_read];                
+                let mut data = vec![0; length - bytes_read];
                 reader.read_exact(&mut data)?;
                 bytes_read += data.len();
                 result = Some(AppData::Exif(data));
