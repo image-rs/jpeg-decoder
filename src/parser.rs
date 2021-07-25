@@ -183,7 +183,7 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
             }
         },
         _ => {
-            if coding_process != CodingProcess::Lossless {
+            if coding_process != CodingProcess::Lossless || precision > 16 {
                 return Err(Error::Format(format!("invalid precision {} in frame header", precision)))
             }
         },
