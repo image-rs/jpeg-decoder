@@ -15,6 +15,8 @@ use worker::{RowData, PlatformWorker, Worker};
 
 pub const MAX_COMPONENTS: usize = 4;
 
+mod lossless;
+
 static UNZIGZAG: [u8; 64] = [
      0,  1,  8, 16,  9,  2,  3, 10,
     17, 24, 32, 25, 18, 11,  4,  5,
@@ -234,13 +236,10 @@ impl<R: Read> Decoder<R> {
                     if frame.is_differential {
                         return Err(Error::Unsupported(UnsupportedFeature::Hierarchical));
                     }
-                    if frame.coding_process == CodingProcess::Lossless {
-                        return Err(Error::Unsupported(UnsupportedFeature::Lossless));
-                    }
                     if frame.entropy_coding == EntropyCoding::Arithmetic {
                         return Err(Error::Unsupported(UnsupportedFeature::ArithmeticEntropyCoding));
                     }
-                    if frame.precision != 8 {
+                    if frame.precision != 8 && frame.coding_process != CodingProcess::Lossless {
                         return Err(Error::Unsupported(UnsupportedFeature::SamplePrecision(frame.precision)));
                     }
                     if component_count != 1 && component_count != 3 && component_count != 4 {
@@ -278,46 +277,59 @@ impl<R: Read> Decoder<R> {
                         }).collect();
                     }
 
-                    // This was previously buggy, so let's explain the log here a bit. When a
-                    // progressive frame is encoded then the coefficients (DC, AC) of each
-                    // component (=color plane) can be split amongst scans. In particular it can
-                    // happen or at least occurs in the wild that a scan contains coefficient 0 of
-                    // all components. If now one but not all components had all other coefficients
-                    // delivered in previous scans then such a scan contains all components but
-                    // completes only some of them! (This is technically NOT permitted for all
-                    // other coefficients as the standard dictates that scans with coefficients
-                    // other than the 0th must only contain ONE component so we would either
-                    // complete it or not. We may want to detect and error in case more component
-                    // are part of a scan than allowed.) What a weird edge case.
-                    //
-                    // But this means we track precisely which components get completed here.
-                    let mut finished = [false; MAX_COMPONENTS];
+                    
+                    if frame.coding_process == CodingProcess::Lossless {
+                        let (marker, data) = self.decode_scan_lossless(&frame, &scan)?;
 
-                    if scan.successive_approximation_low == 0 {
-                        for (&i, component_finished) in scan.component_indices.iter().zip(&mut finished) {
-                            if self.coefficients_finished[i] == !0 {
-                                continue;
-                            }
-                            for j in scan.spectral_selection.clone() {
-                                self.coefficients_finished[i] |= 1 << j;
-                            }
-                            if self.coefficients_finished[i] == !0 {
-                                *component_finished = true;
-                            }
-                        }
-                    }
-
-                    let (marker, data) = self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), &finished)?;
-
-                    if let Some(data) = data {
-                        for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
-                            if self.coefficients_finished[i] == !0 {
+                        if let Some(data) = data {
+                            for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
                                 planes[i] = plane;
                             }
                         }
+                        pending_marker = marker;
+                    }
+                    else {
+                        // This was previously buggy, so let's explain the log here a bit. When a
+                        // progressive frame is encoded then the coefficients (DC, AC) of each
+                        // component (=color plane) can be split amongst scans. In particular it can
+                        // happen or at least occurs in the wild that a scan contains coefficient 0 of
+                        // all components. If now one but not all components had all other coefficients
+                        // delivered in previous scans then such a scan contains all components but
+                        // completes only some of them! (This is technically NOT permitted for all
+                        // other coefficients as the standard dictates that scans with coefficients
+                        // other than the 0th must only contain ONE component so we would either
+                        // complete it or not. We may want to detect and error in case more component
+                        // are part of a scan than allowed.) What a weird edge case.
+                        //
+                        // But this means we track precisely which components get completed here.
+                        let mut finished = [false; MAX_COMPONENTS];
+
+                        if scan.successive_approximation_low == 0 {
+                            for (&i, component_finished) in scan.component_indices.iter().zip(&mut finished) {
+                                if self.coefficients_finished[i] == !0 {
+                                    continue;
+                                }
+                                for j in scan.spectral_selection.clone() {
+                                    self.coefficients_finished[i] |= 1 << j;
+                                }
+                                if self.coefficients_finished[i] == !0 {
+                                    *component_finished = true;
+                                }
+                            }
+                        }
+
+                        let (marker, data) = self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), &finished)?;
+
+                        if let Some(data) = data {
+                            for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
+                                if self.coefficients_finished[i] == !0 {
+                                    planes[i] = plane;
+                                }
+                            }
+                        }
+                        pending_marker = marker;
                     }
 
-                    pending_marker = marker;
                     scans_processed += 1;
                 },
 
@@ -716,7 +728,7 @@ impl<R: Read> Decoder<R> {
         else {
             Ok((marker, None))
         }
-    }
+    }    
 }
 
 fn decode_block<R: Read>(reader: &mut R,

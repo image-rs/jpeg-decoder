@@ -32,4 +32,4 @@ fn main() {
 ```
 
 ## Requirements
-This crate compiles only with rust >= 1.34.
+This crate compiles only with rust >= 1.40.
