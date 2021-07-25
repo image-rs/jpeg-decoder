@@ -397,7 +397,9 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
         5 => Predictor::RaRbRc2,
         6 => Predictor::RaRbRc3,
         7 => Predictor::RaRb,
-        _ => panic!()
+        _ => {
+            return Err(Error::Format(format!("invalid predictor selection value: {}", spectral_selection_start)));
+        }
     };
     let point_transform = successive_approximation_low;
 
