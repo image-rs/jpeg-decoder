@@ -53,20 +53,32 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
 
     assert_eq!(ref_info.width, info.width as u32);
     assert_eq!(ref_info.height, info.height as u32);
-    assert_eq!(ref_info.bit_depth, png::BitDepth::Eight);
 
     let mut ref_data = vec![0; ref_info.buffer_size()];
     ref_reader.next_frame(&mut ref_data).expect("png decode failed");
     let mut ref_pixel_format = ref_info.color_type;
 
     if ref_pixel_format == png::ColorType::RGBA {
-        ref_data = rgba_to_rgb(&ref_data);
+        let refdatai : Vec<isize> = ref_data.iter().map(|x| *x as isize).collect();
+        ref_data = rgba_to_rgb(&refdatai).iter().map(|x| *x as u8).collect();
         ref_pixel_format = png::ColorType::RGB;
     }
 
     match pixel_format {
-        jpeg::PixelFormat::L8 => assert_eq!(ref_pixel_format, png::ColorType::Grayscale),
-        jpeg::PixelFormat::RGB24 => assert_eq!(ref_pixel_format, png::ColorType::RGB),
+        jpeg::PixelFormat::L8 => {
+            assert_eq!(ref_pixel_format, png::ColorType::Grayscale);
+            assert_eq!(ref_info.bit_depth, png::BitDepth::Eight);
+        },
+        jpeg::PixelFormat::L16 => {
+            assert_eq!(ref_pixel_format, png::ColorType::Grayscale);
+            assert_eq!(ref_info.bit_depth, png::BitDepth::Sixteen);
+
+            let ref_data16 = 
+        },
+        jpeg::PixelFormat::RGB24 => {
+            assert_eq!(ref_pixel_format, png::ColorType::RGB);
+            assert_eq!(ref_info.bit_depth, png::BitDepth::Eight);
+        },
         _ => panic!(),
     }
 
@@ -74,7 +86,7 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
 
     let mut max_diff = 0;
     let pixels: Vec<u8> = data.iter().zip(ref_data.iter()).map(|(&a, &b)| {
-        let diff = (a as i16 - b as i16).abs();
+        let diff = (a as isize - b as isize).abs();
         max_diff = cmp::max(diff, max_diff);
 
         // FIXME: Only a diff of 1 should be allowed?
@@ -102,7 +114,7 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
     }
 }
 
-fn rgba_to_rgb(input: &[u8]) -> Vec<u8> {
+fn rgba_to_rgb(input: &[isize]) -> Vec<isize> {
     let size = input.len() - input.len() / 4;
     let mut output = Vec::with_capacity(size);
 
@@ -117,7 +129,7 @@ fn rgba_to_rgb(input: &[u8]) -> Vec<u8> {
     output
 }
 
-fn cmyk_to_rgb(input: &[u8]) -> Vec<u8> {
+fn cmyk_to_rgb(input: &[isize]) -> Vec<isize> {
     let size = input.len() - input.len() / 4;
     let mut output = Vec::with_capacity(size);
 
@@ -137,9 +149,9 @@ fn cmyk_to_rgb(input: &[u8]) -> Vec<u8> {
         let g = (1.0 - m) * 255.0;
         let b = (1.0 - y) * 255.0;
 
-        output.push(r as u8);
-        output.push(g as u8);
-        output.push(b as u8);
+        output.push(r as isize);
+        output.push(g as isize);
+        output.push(b as isize);
     }
 
     output
