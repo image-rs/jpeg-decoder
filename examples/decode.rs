@@ -1,5 +1,9 @@
 extern crate jpeg_decoder as jpeg;
 extern crate png;
+extern crate core;
+
+use core::mem::size_of;
+use core::mem::forget;
 
 use std::env;
 use std::fs::File;
@@ -19,28 +23,40 @@ fn main() {
     let input_file = File::open(input_path).expect("The specified input file could not be opened");
     let mut decoder = jpeg::Decoder::new(BufReader::new(input_file));
     let mut data = decoder.decode().expect("Decoding failed. If other software can successfully decode the specified JPEG image, then it's likely that there is a bug in jpeg-decoder");
+
     let info = decoder.info().unwrap();
 
     let output_file = File::create(output_path).unwrap();
     let mut encoder = png::Encoder::new(output_file, info.width as u32, info.height as u32);
-    encoder.set_depth(png::BitDepth::Eight);
 
     match info.pixel_format {
-        jpeg::PixelFormat::L8     => encoder.set_color(png::ColorType::Grayscale),
-        jpeg::PixelFormat::RGB24  => encoder.set_color(png::ColorType::RGB),
+        jpeg::PixelFormat::L16 => {
+            encoder.set_depth(png::BitDepth::Sixteen);
+            encoder.set_color(png::ColorType::Grayscale);
+        },
+        jpeg::PixelFormat::RGB24  => {
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder.set_color(png::ColorType::RGB);
+        },
         jpeg::PixelFormat::CMYK32 => {
             data = cmyk_to_rgb(&mut data);
+            encoder.set_depth(png::BitDepth::Eight);
             encoder.set_color(png::ColorType::RGB)
         },
-    };
-
+        jpeg::PixelFormat::L8 => {
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder.set_color(png::ColorType::Grayscale);
+        },
+    }
+    
+    let mut data = transmute_to_bytes_vec(data);
     encoder.write_header()
            .expect("writing png header failed")
            .write_image_data(&data)
            .expect("png encoding failed");
 }
 
-fn cmyk_to_rgb(input: &[u8]) -> Vec<u8> {
+fn cmyk_to_rgb(input: &[isize]) -> Vec<isize> {
     let size = input.len() - input.len() / 4;
     let mut output = Vec::with_capacity(size);
 
@@ -60,10 +76,20 @@ fn cmyk_to_rgb(input: &[u8]) -> Vec<u8> {
         let g = (1.0 - m) * 255.0;
         let b = (1.0 - y) * 255.0;
 
-        output.push(r as u8);
-        output.push(g as u8);
-        output.push(b as u8);
+        output.push(r as isize);
+        output.push(g as isize);
+        output.push(b as isize);
     }
 
     output
+}
+
+pub fn transmute_to_bytes_vec<T>(mut from: Vec<T>) -> Vec<u8> {
+    unsafe {
+        let capacity = from.capacity() * size_of::<T>();
+        let len = from.len() * size_of::<T>();
+        let ptr = from.as_mut_ptr();
+        forget(from);
+        Vec::from_raw_parts(ptr as *mut u8, len, capacity)
+    }
 }

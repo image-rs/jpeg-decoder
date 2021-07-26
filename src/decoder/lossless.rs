@@ -13,9 +13,9 @@ impl<R: Read> Decoder<R> {
     pub fn decode_scan_lossless(&mut self,
                 frame: &FrameInfo,
                 scan: &ScanInfo)
-                -> Result<(Option<Marker>, Option<Vec<Vec<u8>>>)> {
+                -> Result<(Option<Marker>, Option<Vec<Vec<isize>>>)> {
         assert!(scan.component_indices.len() <= MAX_COMPONENTS);
-        let mut results: Vec<Vec<u8>> = vec![Vec::new(); MAX_COMPONENTS];
+        let mut results = vec![Vec::new(); MAX_COMPONENTS];
 
         let components: Vec<Component> = scan.component_indices.iter()
                                                             .map(|&i| frame.components[i].clone())
@@ -38,14 +38,15 @@ impl<R: Read> Decoder<R> {
                     let value = huffman.decode(reader, dc_table)?;
                     let diff = match value {
                         0 => 0,
-                        1..=16 => huffman.receive_extend(reader, value)?,
+                        1..=15 => huffman.receive_extend(reader, value)? as isize,
+                        16 => 32768,
                         _ => {
                             // Section F.1.2.1.1
                             // Table F.1
                             return Err(Error::Format("invalid DC difference magnitude category".to_owned()));
                         },
                     };
-                    results[i].push(0);
+                    results[i].push(diff);
                 }
 
             }
@@ -56,7 +57,9 @@ impl<R: Read> Decoder<R> {
             marker = self.read_marker().ok();
         }
 
-        
+        println!("image size : {:?}", frame.image_size);
+        println!("results size : {:?}", results[0].len());
+        println!("ouput size : {:?}", frame.output_size);
         Ok((marker, Some(results)))
     }
 }

@@ -72,8 +72,6 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
         jpeg::PixelFormat::L16 => {
             assert_eq!(ref_pixel_format, png::ColorType::Grayscale);
             assert_eq!(ref_info.bit_depth, png::BitDepth::Sixteen);
-
-            let ref_data16 = 
         },
         jpeg::PixelFormat::RGB24 => {
             assert_eq!(ref_pixel_format, png::ColorType::RGB);
