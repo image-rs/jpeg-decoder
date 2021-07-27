@@ -49,7 +49,10 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
     }
 
     let ref_file = File::open(ref_path).unwrap();
-    let (ref_info, mut ref_reader) = png::Decoder::new(ref_file).read_info().expect("png failed to read info");
+    let mut decoder = png::Decoder::new(ref_file);
+    decoder.set_transformations(png::Transformations::EXPAND);
+    let (ref_info, mut ref_reader) = decoder.read_info().expect("png failed to read info");
+    println!("ref_info {:?}", ref_info);
 
     assert_eq!(ref_info.width, info.width as u32);
     assert_eq!(ref_info.height, info.height as u32);
@@ -81,7 +84,6 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
     }
 
     assert_eq!(data.len(), ref_data.len());
-
     let mut max_diff = 0;
     let pixels: Vec<u8> = data.iter().zip(ref_data.iter()).map(|(&a, &b)| {
         let diff = (a as isize - b as isize).abs();
@@ -92,6 +94,7 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
             // White for correct
             0xFF
         } else {
+            println!("data: {}, ref: {}", a, b);
             // "1100" in the RGBA channel with an error for an incorrect value
             // This results in some number of C0 and FFs, which is much more
             // readable (and distinguishable) than the previous difference-wise

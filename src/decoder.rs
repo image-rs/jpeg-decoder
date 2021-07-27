@@ -116,7 +116,11 @@ impl<R: Read> Decoder<R> {
         match self.frame {
             Some(ref frame) => {
                 let pixel_format = match frame.components.len() {
-                    1 => PixelFormat::L8,
+                    1 => match frame.precision {
+                        8 => PixelFormat::L8,
+                        16 => PixelFormat::L16,
+                        _ => panic!()
+                    },
                     3 => PixelFormat::RGB24,
                     4 => PixelFormat::CMYK32,
                     _ => panic!(),
