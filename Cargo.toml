@@ -14,7 +14,7 @@ exclude = ["tests/*"]
 rayon = { version = "1.0", optional = true }
 
 [dev-dependencies]
-png = { path = "../image-png" } #"0.16"
+png = "0.16"
 walkdir = "2.0"
 criterion = "0.3"
 
