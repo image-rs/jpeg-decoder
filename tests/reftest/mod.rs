@@ -51,8 +51,8 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
     let ref_file = File::open(ref_path).unwrap();
     let mut decoder = png::Decoder::new(ref_file);
 
-    if ref_path.ends_with("lossless16bit.png") {
-        // disable the default 8bit output of png v0.16.8 (changed in master branch of png)
+    if pixel_format == jpeg::PixelFormat::L16 {
+        // disable the default 8bit output of png v0.16.8 (fixed in master branch of png)
         decoder.set_transformations(png::Transformations::EXPAND);
     }
     
