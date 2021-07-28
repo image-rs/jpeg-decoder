@@ -66,7 +66,7 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
     ref_reader.next_frame(&mut ref_data).expect("png decode failed");
     let mut ref_pixel_format = ref_info.color_type;
 
-    let mut refdatai : Vec<isize> = ref_data.iter().map(|x| *x as isize).collect();
+    let mut refdatai : Vec<usize> = ref_data.iter().map(|x| *x as usize).collect();
 
     if ref_pixel_format == png::ColorType::RGBA { 
         refdatai = rgba_to_rgb(&refdatai);
@@ -81,7 +81,8 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
         jpeg::PixelFormat::L16 => {
             assert_eq!(ref_pixel_format, png::ColorType::Grayscale);
             assert_eq!(ref_info.bit_depth, png::BitDepth::Sixteen);
-            refdatai = ref_data.chunks_exact(2).into_iter().map(|a| u16::from_be_bytes([a[0],a[1]])).map(|x| x as isize).collect();
+            refdatai = ref_data.chunks_exact(2).into_iter().map(|a| u16::from_be_bytes([a[0],a[1]])).map(|x| x as usize
+    ).collect();
         },
         jpeg::PixelFormat::RGB24 => {
             assert_eq!(ref_pixel_format, png::ColorType::RGB);
@@ -97,11 +98,10 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
         max_diff = cmp::max(diff, max_diff);
 
         // FIXME: Only a diff of 1 should be allowed?
-        if diff <= 2 {
+        if diff <= 2 && (pixel_format != jpeg::PixelFormat::L16 || diff == 0) {
             // White for correct
             0xFF
         } else {
-            println!("data: {}, ref: {}", a, b);
             // "1100" in the RGBA channel with an error for an incorrect value
             // This results in some number of C0 and FFs, which is much more
             // readable (and distinguishable) than the previous difference-wise
@@ -122,7 +122,7 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
     }
 }
 
-fn rgba_to_rgb(input: &[isize]) -> Vec<isize> {
+fn rgba_to_rgb(input: &[usize]) -> Vec<usize> {
     let size = input.len() - input.len() / 4;
     let mut output = Vec::with_capacity(size);
 
@@ -137,7 +137,7 @@ fn rgba_to_rgb(input: &[isize]) -> Vec<isize> {
     output
 }
 
-fn cmyk_to_rgb(input: &[isize]) -> Vec<isize> {
+fn cmyk_to_rgb(input: &[usize]) -> Vec<usize> {
     let size = input.len() - input.len() / 4;
     let mut output = Vec::with_capacity(size);
 
@@ -157,9 +157,9 @@ fn cmyk_to_rgb(input: &[isize]) -> Vec<isize> {
         let g = (1.0 - m) * 255.0;
         let b = (1.0 - y) * 255.0;
 
-        output.push(r as isize);
-        output.push(g as isize);
-        output.push(b as isize);
+        output.push(r as usize);
+        output.push(g as usize);
+        output.push(b as usize);
     }
 
     output
