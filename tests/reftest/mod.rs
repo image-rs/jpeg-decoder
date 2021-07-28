@@ -50,7 +50,12 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
 
     let ref_file = File::open(ref_path).unwrap();
     let mut decoder = png::Decoder::new(ref_file);
-    decoder.set_transformations(png::Transformations::EXPAND);
+
+    if ref_path.ends_with("lossless16bit.png") {
+        // disable the default 8bit output of png v0.16.8 (changed in master branch of png)
+        decoder.set_transformations(png::Transformations::EXPAND);
+    }
+    
     let (ref_info, mut ref_reader) = decoder.read_info().expect("png failed to read info");
     println!("ref_info {:?}", ref_info);
 
@@ -61,9 +66,10 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
     ref_reader.next_frame(&mut ref_data).expect("png decode failed");
     let mut ref_pixel_format = ref_info.color_type;
 
-    if ref_pixel_format == png::ColorType::RGBA {
-        let refdatai : Vec<isize> = ref_data.iter().map(|x| *x as isize).collect();
-        ref_data = rgba_to_rgb(&refdatai).iter().map(|x| *x as u8).collect();
+    let mut refdatai : Vec<isize> = ref_data.iter().map(|x| *x as isize).collect();
+
+    if ref_pixel_format == png::ColorType::RGBA { 
+        refdatai = rgba_to_rgb(&refdatai);
         ref_pixel_format = png::ColorType::RGB;
     }
 
@@ -75,6 +81,7 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
         jpeg::PixelFormat::L16 => {
             assert_eq!(ref_pixel_format, png::ColorType::Grayscale);
             assert_eq!(ref_info.bit_depth, png::BitDepth::Sixteen);
+            refdatai = ref_data.chunks_exact(2).into_iter().map(|a| u16::from_be_bytes([a[0],a[1]])).map(|x| x as isize).collect();
         },
         jpeg::PixelFormat::RGB24 => {
             assert_eq!(ref_pixel_format, png::ColorType::RGB);
@@ -83,9 +90,9 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
         _ => panic!(),
     }
 
-    assert_eq!(data.len(), ref_data.len());
+    assert_eq!(data.len(), refdatai.len());
     let mut max_diff = 0;
-    let pixels: Vec<u8> = data.iter().zip(ref_data.iter()).map(|(&a, &b)| {
+    let pixels: Vec<u8> = data.iter().zip(refdatai.iter()).map(|(&a, &b)| {
         let diff = (a as isize - b as isize).abs();
         max_diff = cmp::max(diff, max_diff);
 
