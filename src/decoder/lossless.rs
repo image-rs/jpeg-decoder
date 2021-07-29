@@ -51,8 +51,8 @@ impl<R: Read> Decoder<R> {
                     let value = huffman.decode(reader, dc_table)?;
                     let diff = match value {
                         0 => 0,
-                        1..=15 => huffman.receive_extend(reader, value)? as usize,
-                        16 => 32768,
+                        1..=15 => huffman.receive_extend(reader, value)?,
+                        // 16 => 32768,
                         _ => {
                             // Section F.1.2.1.1
                             // Table F.1
@@ -80,7 +80,7 @@ impl<R: Read> Decoder<R> {
                         mcu_y,
                         false,
                     );
-                    results[i].push(prediction * 2usize.pow(scan.point_transform as u32));
+                    results[i].push(prediction << scan.point_transform);
                     ra = prediction;
                 }
             }
@@ -102,7 +102,7 @@ impl<R: Read> Decoder<R> {
 
 /// H.1.2.1
 fn reverse_predict(
-    diff: usize,
+    diff: i16,
     ra: usize,
     rb: usize,
     rc: usize,
@@ -115,7 +115,7 @@ fn reverse_predict(
 ) -> usize {
     let prediction = if (ix == 0 && iy == 0) || restart {
         // start of first line or restart
-        2usize.pow(input_precision as u32 - point_transform as u32 - 1) - 1 //why need to subtract 1?
+        0 //1 << (input_precision - point_transform - 1)
     } else if iy == 0 {
         // rest of first line
         ra
@@ -135,6 +135,5 @@ fn reverse_predict(
             Predictor::RaRb => (ra + rb) / 2,
         }
     };
-    let maxu16 = std::u16::MAX as isize;
-    (((diff as isize + prediction as isize) % maxu16 + maxu16) % maxu16 ) as usize
+    diff.wrapping_add(prediction as i16) as usize
 }
