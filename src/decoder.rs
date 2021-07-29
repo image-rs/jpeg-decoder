@@ -201,11 +201,11 @@ impl<R: Read> Decoder<R> {
     }
 
     /// Decodes the image and returns the decoded pixels if successful.
-    pub fn decode(&mut self) -> Result<Vec<usize>> {
+    pub fn decode(&mut self) -> Result<Vec<u16>> {
         self.decode_internal(false)
     }
 
-    fn decode_internal(&mut self, stop_after_metadata: bool) -> Result<Vec<usize>> {
+    fn decode_internal(&mut self, stop_after_metadata: bool) -> Result<Vec<u16>> {
         if stop_after_metadata && self.frame.is_some() {
             // The metadata has already been read.
             return Ok(Vec::new());
@@ -218,7 +218,7 @@ impl<R: Read> Decoder<R> {
         let mut pending_marker = None;
         let mut worker = None;
         let mut scans_processed = 0;
-        let mut planes = vec![Vec::<usize>::new(); self.frame.as_ref().map_or(0, |frame| frame.components.len())];
+        let mut planes = vec![Vec::<u16>::new(); self.frame.as_ref().map_or(0, |frame| frame.components.len())];
 
         loop {
             let marker = match pending_marker.take() {
@@ -330,7 +330,7 @@ impl<R: Read> Decoder<R> {
                         if let Some(data) = data {
                             for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
                                 if self.coefficients_finished[i] == !0 {
-                                    planes[i] = plane.iter().map(|x| *x as usize).collect();
+                                    planes[i] = plane.iter().map(|x| *x as u16).collect();
                                 }
                             }
                         }
@@ -480,7 +480,7 @@ impl<R: Read> Decoder<R> {
 
                     worker.append_row((i, row_coefficients))?;
                 }
-                planes[i] = worker.get_result(i)?.iter().map(|x| *x as usize).collect();
+                planes[i] = worker.get_result(i)?.iter().map(|x| *x as u16).collect();
             }
         }
 
@@ -944,9 +944,9 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
 }
 
 fn compute_image(frame: &FrameInfo,
-                 mut data: Vec<Vec<usize>>,
+                 mut data: Vec<Vec<u16>>,
                  is_jfif: bool,
-                 color_transform: Option<AdobeColorTransform>) -> Result<Vec<usize>> {
+                 color_transform: Option<AdobeColorTransform>) -> Result<Vec<u16>> {
     if data.is_empty() || data.iter().any(Vec::is_empty) {
         return Err(Error::Format("not all components have data".to_owned()));
     }
@@ -955,7 +955,7 @@ fn compute_image(frame: &FrameInfo,
 
     if components.len() == 1 {
         let component = &components[0];
-        let mut decoded: Vec<usize> = data.remove(0);
+        let mut decoded: Vec<u16> = data.remove(0);
 
         let width = component.size.width as usize;
         let height = component.size.height as usize;
@@ -965,7 +965,7 @@ fn compute_image(frame: &FrameInfo,
         // if the image width is a multiple of the block size,
         // then we don't have to move bytes in the decoded data
         if frame.coding_process != CodingProcess::Lossless && usize::from(output_size.width) != line_stride {
-            let mut buffer = vec![0usize; width];
+            let mut buffer = vec![0u16; width];
             // The first line already starts at index 0, so we need to move only lines 1..height
             for y in 1..height {
                 let destination_idx = y * width;
@@ -986,9 +986,9 @@ fn compute_image(frame: &FrameInfo,
 
 #[cfg(feature="rayon")]
 fn compute_image_parallel(frame: &FrameInfo,
-                          data: Vec<Vec<usize>>,
+                          data: Vec<Vec<u16>>,
                           is_jfif: bool,
-                          color_transform: Option<AdobeColorTransform>) -> Result<Vec<usize>> {
+                          color_transform: Option<AdobeColorTransform>) -> Result<Vec<u16>> {
     use rayon::prelude::*;
     let output_size = frame.output_size;
     let components = &frame.components;
@@ -996,7 +996,7 @@ fn compute_image_parallel(frame: &FrameInfo,
     let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
     let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
-    let mut image = vec![0usize; line_size * output_size.height as usize];
+    let mut image = vec![0u16; line_size * output_size.height as usize];
 
     image.par_chunks_mut(line_size)
          .with_max_len(1)
@@ -1032,7 +1032,7 @@ fn compute_image_parallel(components: &[Component],
 fn choose_color_convert_func(component_count: usize,
                              _is_jfif: bool,
                              color_transform: Option<AdobeColorTransform>)
-                             -> Result<fn(&mut [usize])> {
+                             -> Result<fn(&mut [u16])> {
     match component_count {
         3 => {
             // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
@@ -1056,10 +1056,10 @@ fn choose_color_convert_func(component_count: usize,
     }
 }
 
-fn color_convert_line_null(_data: &mut [usize]) {
+fn color_convert_line_null(_data: &mut [u16]) {
 }
 
-fn color_convert_line_ycbcr(data: &mut [usize]) {
+fn color_convert_line_ycbcr(data: &mut [u16]) {
     for chunk in data.chunks_exact_mut(3) {
         let (r, g, b) = ycbcr_to_rgb(chunk[0], chunk[1], chunk[2]);
         chunk[0] = r;
@@ -1068,7 +1068,7 @@ fn color_convert_line_ycbcr(data: &mut [usize]) {
     }
 }
 
-fn color_convert_line_ycck(data: &mut [usize]) {
+fn color_convert_line_ycck(data: &mut [u16]) {
     for chunk in data.chunks_exact_mut(4) {
         let (r, g, b) = ycbcr_to_rgb(chunk[0], chunk[1], chunk[2]);
         let k = chunk[3];
@@ -1080,7 +1080,7 @@ fn color_convert_line_ycck(data: &mut [usize]) {
     }
 }
 
-fn color_convert_line_cmyk(data: &mut [usize]) {
+fn color_convert_line_cmyk(data: &mut [u16]) {
     for chunk in data.chunks_exact_mut(4) {
         chunk[0] = 255 - chunk[0];
         chunk[1] = 255 - chunk[1];
@@ -1090,7 +1090,7 @@ fn color_convert_line_cmyk(data: &mut [usize]) {
 }
 
 // ITU-R BT.601
-fn ycbcr_to_rgb(y: usize, cb: usize, cr: usize) -> (usize, usize, usize) {
+fn ycbcr_to_rgb(y: u16, cb: u16, cr: u16) -> (u16, u16, u16) {
     let y = y as f32;
     let cb = cb as f32 - 128.0;
     let cr = cr as f32 - 128.0;
@@ -1105,9 +1105,9 @@ fn ycbcr_to_rgb(y: usize, cb: usize, cr: usize) -> (usize, usize, usize) {
     // This can be simplified to `(r + 0.5) as u8` without any clamping
     // as soon as our MSRV reaches the version that has saturating casts.
     // The version without explicit clamping is also noticeably faster.
-    (clamp_to_u8((r + 0.5) as i32) as usize,
-     clamp_to_u8((g + 0.5) as i32) as usize,
-     clamp_to_u8((b + 0.5) as i32) as usize)
+    (clamp_to_u8((r + 0.5) as i32) as u16,
+     clamp_to_u8((g + 0.5) as i32) as u16,
+     clamp_to_u8((b + 0.5) as i32) as u16)
 }
 
 fn clamp_to_u8(value: i32) -> i32 {

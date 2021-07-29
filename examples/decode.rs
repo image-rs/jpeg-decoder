@@ -56,7 +56,7 @@ fn main() {
            .expect("png encoding failed");
 }
 
-fn cmyk_to_rgb(input: &[usize]) -> Vec<usize> {
+fn cmyk_to_rgb(input: &[u16]) -> Vec<u16> {
     let size = input.len() - input.len() / 4;
     let mut output = Vec::with_capacity(size);
 
@@ -76,9 +76,9 @@ fn cmyk_to_rgb(input: &[usize]) -> Vec<usize> {
         let g = (1.0 - m) * 255.0;
         let b = (1.0 - y) * 255.0;
 
-        output.push(r as usize);
-        output.push(g as usize);
-        output.push(b as usize);
+        output.push(r as u16);
+        output.push(g as u16);
+        output.push(b as u16);
     }
 
     output

@@ -16,7 +16,7 @@ impl<R: Read> Decoder<R> {
         &mut self,
         frame: &FrameInfo,
         scan: &ScanInfo,
-    ) -> Result<(Option<Marker>, Option<Vec<Vec<usize>>>)> {
+    ) -> Result<(Option<Marker>, Option<Vec<Vec<u16>>>)> {
         assert!(scan.component_indices.len() <= MAX_COMPONENTS);
         let mut results = vec![Vec::new(); MAX_COMPONENTS];
 
@@ -103,16 +103,16 @@ impl<R: Read> Decoder<R> {
 /// H.1.2.1
 fn reverse_predict(
     diff: i16,
-    ra: usize,
-    rb: usize,
-    rc: usize,
+    ra: u16,
+    rb: u16,
+    rc: u16,
     predictor: Predictor,
     point_transform: u8,
     input_precision: u8,
     ix: usize,
     iy: usize,
     restart: bool,
-) -> usize {
+) -> u16 {
     let prediction = if (ix == 0 && iy == 0) || restart {
         // start of first line or restart
         0 //1 << (input_precision - point_transform - 1)
@@ -135,5 +135,5 @@ fn reverse_predict(
             Predictor::RaRb => (ra + rb) / 2,
         }
     };
-    diff.wrapping_add(prediction as i16) as usize
+    diff.wrapping_add(prediction as i16) as u16
 }
