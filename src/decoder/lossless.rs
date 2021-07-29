@@ -39,9 +39,9 @@ impl<R: Read> Decoder<R> {
 
         let mut huffman = HuffmanDecoder::new();
         let reader = &mut self.reader;
-        let mut ra = 0;
-        let mut rb = 0;
-        let mut rc = 0;
+        let mut ra: u16 = 0;
+        let mut rb: u16 = 0;
+        let mut rc: u16 = 0;
         for mcu_y in 0..frame.image_size.height as usize {
             for mcu_x in 0..frame.image_size.width as usize {
                 for (i, component) in components.iter().enumerate() {
@@ -51,8 +51,8 @@ impl<R: Read> Decoder<R> {
                     let value = huffman.decode(reader, dc_table)?;
                     let diff = match value {
                         0 => 0,
-                        1..=15 => huffman.receive_extend(reader, value)?,
-                        16 => -32768,
+                        1..=15 => huffman.receive_extend(reader, value)? as i32,
+                        16 => 32768,
                         _ => {
                             // Section F.1.2.1.1
                             // Table F.1
@@ -68,11 +68,10 @@ impl<R: Read> Decoder<R> {
                                 [(mcu_y - 1) * frame.image_size.width as usize + (mcu_x - 1)];
                         }
                     }
-                    let prediction = reverse_predict(
-                        diff,
-                        ra,
-                        rb,
-                        rc,
+                    let prediction = predict(
+                        ra as i32,
+                        rb as i32,
+                        rc as i32,
                         scan.predictor_selection,
                         scan.point_transform,
                         frame.precision,
@@ -80,8 +79,16 @@ impl<R: Read> Decoder<R> {
                         mcu_y,
                         false,
                     );
-                    results[i].push(prediction << scan.point_transform);
-                    ra = prediction;
+                    // let result = diff.wrapping_add(prediction) as u16;
+                    let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
+                    if mcu_x == 0 && mcu_y == 0 {
+                        println!(
+                            "value: {} diff: {} prediction: {} result: {}",
+                            value, diff, prediction, result
+                        );
+                    }
+                    results[i].push(result << scan.point_transform);
+                    ra = result;
                 }
             }
         }
@@ -101,19 +108,18 @@ impl<R: Read> Decoder<R> {
 }
 
 /// H.1.2.1
-fn reverse_predict(
-    diff: i16,
-    ra: u16,
-    rb: u16,
-    rc: u16,
+fn predict(
+    ra: i32,
+    rb: i32,
+    rc: i32,
     predictor: Predictor,
     point_transform: u8,
     input_precision: u8,
     ix: usize,
     iy: usize,
     restart: bool,
-) -> u16 {
-    let prediction = if ix == 0 && iy == 0 {
+) -> i32 {
+    let result = if ix == 0 && iy == 0 {
         // start of first line
         1 << (input_precision - point_transform - 1)
     } else if restart {
@@ -137,5 +143,5 @@ fn reverse_predict(
             Predictor::RaRb => (ra + rb) / 2,
         }
     };
-    diff.wrapping_add(prediction as i16) as u16
+    result
 }
