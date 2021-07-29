@@ -52,7 +52,7 @@ impl<R: Read> Decoder<R> {
                     let diff = match value {
                         0 => 0,
                         1..=15 => huffman.receive_extend(reader, value)?,
-                        // 16 => 32768,
+                        16 => -32768,
                         _ => {
                             // Section F.1.2.1.1
                             // Table F.1
@@ -113,9 +113,11 @@ fn reverse_predict(
     iy: usize,
     restart: bool,
 ) -> u16 {
-    let prediction = if (ix == 0 && iy == 0) || restart {
-        // start of first line or restart
-        0 //1 << (input_precision - point_transform - 1)
+    let prediction = if ix == 0 && iy == 0 {
+        // start of first line
+        1 << (input_precision - point_transform - 1)
+    } else if restart {
+        1 << (input_precision - point_transform - 1)
     } else if iy == 0 {
         // rest of first line
         ra
