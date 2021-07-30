@@ -17,7 +17,8 @@ impl<R: Read> Decoder<R> {
         frame: &FrameInfo,
         scan: &ScanInfo,
     ) -> Result<(Option<Marker>, Option<Vec<Vec<u16>>>)> {
-        assert!(scan.component_indices.len() <= MAX_COMPONENTS);
+        let ncomp = scan.component_indices.len();
+        assert!(ncomp <= MAX_COMPONENTS);
         let mut results = vec![Vec::new(); MAX_COMPONENTS];
 
         let components: Vec<Component> = scan
@@ -39,9 +40,9 @@ impl<R: Read> Decoder<R> {
 
         let mut huffman = HuffmanDecoder::new();
         let reader = &mut self.reader;
-        let mut ra: u16 = 0;
-        let mut rb: u16 = 0;
-        let mut rc: u16 = 0;
+        let mut ra = [0u16; MAX_COMPONENTS];
+        let mut rb = [0u16; MAX_COMPONENTS];
+        let mut rc = [0u16; MAX_COMPONENTS];
         for mcu_y in 0..frame.image_size.height as usize {
             for mcu_x in 0..frame.image_size.width as usize {
                 for (i, component) in components.iter().enumerate() {
@@ -62,16 +63,16 @@ impl<R: Read> Decoder<R> {
                         }
                     };
                     if mcu_y > 0 {
-                        rb = results[i][(mcu_y - 1) * frame.image_size.width as usize + mcu_x];
+                        rb[i] = results[i][(mcu_y - 1) * frame.image_size.width as usize + mcu_x];
                         if mcu_x > 0 {
-                            rc = results[i]
+                            rc[i] = results[i]
                                 [(mcu_y - 1) * frame.image_size.width as usize + (mcu_x - 1)];
                         }
                     }
                     let prediction = predict(
-                        ra as i32,
-                        rb as i32,
-                        rc as i32,
+                        ra[i] as i32,
+                        rb[i] as i32,
+                        rc[i] as i32,
                         scan.predictor_selection,
                         scan.point_transform,
                         frame.precision,
@@ -79,16 +80,9 @@ impl<R: Read> Decoder<R> {
                         mcu_y,
                         false,
                     );
-                    // let result = diff.wrapping_add(prediction) as u16;
                     let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
-                    if mcu_x == 0 && mcu_y == 0 {
-                        println!(
-                            "value: {} diff: {} prediction: {} result: {}",
-                            value, diff, prediction, result
-                        );
-                    }
                     results[i].push(result << scan.point_transform);
-                    ra = result;
+                    ra[i] = result;
                 }
             }
         }
@@ -138,8 +132,8 @@ fn predict(
             Predictor::Rb => rb,
             Predictor::Rc => rc,
             Predictor::RaRbRc1 => ra + rb - rc,
-            Predictor::RaRbRc2 => ra + (rb - rc) >> 1,
-            Predictor::RaRbRc3 => ra + (rc - rb) >> 1,
+            Predictor::RaRbRc2 => ra + ((rb - rc) >> 1),
+            Predictor::RaRbRc3 => rb + ((ra - rc) >> 1),
             Predictor::RaRb => (ra + rb) / 2,
         }
     };
