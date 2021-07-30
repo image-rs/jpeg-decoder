@@ -4,6 +4,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
 
+## v0.1.23 (2021-08-01)
+
+- Added support for Lossless JPEG by @vsaase
+- Minimum supported rust version changed to 1.40
+
 ## v0.1.22 (2021-01-27)
 
 - Fix panic on jpeg without frames.

@@ -33,8 +33,8 @@ pub enum Predictor {
     Rb,
     Rc,
     RaRbRc1, // Ra + Rb - Rc
-    RaRbRc2, // Ra + (Rb - Rc)/2
-    RaRbRc3, // Ra + (Rc - Rb)/2
+    RaRbRc2, // Ra + ((Rb - Rc) >> 1)
+    RaRbRc3, // Rb + ((Ra - Rb) >> 1)
     RaRb,    // (Ra + Rb)/2
 }
 

@@ -993,7 +993,7 @@ fn compute_image_parallel(frame: &FrameInfo,
     let output_size = frame.output_size;
     let components = &frame.components;
 
-    let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
+    let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform, frame)?;
     let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
     let mut image = vec![0u16; line_size * output_size.height as usize];
@@ -1030,9 +1030,14 @@ fn compute_image_parallel(components: &[Component],
 }
 
 fn choose_color_convert_func(component_count: usize,
-                             _is_jfif: bool,
-                             color_transform: Option<AdobeColorTransform>)
+                             is_jfif: bool,
+                             color_transform: Option<AdobeColorTransform>,
+                             frame: &FrameInfo)
                              -> Result<fn(&mut [u16])> {
+    if frame.coding_process == CodingProcess::Lossless{
+        // Lossless JPEG has no color transformations
+        return Ok(color_convert_line_null);
+    }
     match component_count {
         3 => {
             // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe

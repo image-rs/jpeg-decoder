@@ -57,7 +57,6 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
     }
     
     let (ref_info, mut ref_reader) = decoder.read_info().expect("png failed to read info");
-    println!("ref_info {:?}", ref_info);
 
     assert_eq!(ref_info.width, info.width as u32);
     assert_eq!(ref_info.height, info.height as u32);
@@ -66,7 +65,7 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
     ref_reader.next_frame(&mut ref_data).expect("png decode failed");
     let mut ref_pixel_format = ref_info.color_type;
 
-    let mut refdatai : Vec<usize> = ref_data.iter().map(|x| *x as usize).collect();
+    let mut refdatai : Vec<u16> = ref_data.iter().map(|x| *x as u16).collect();
 
     if ref_pixel_format == png::ColorType::RGBA { 
         refdatai = rgba_to_rgb(&refdatai);
@@ -81,7 +80,7 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
         jpeg::PixelFormat::L16 => {
             assert_eq!(ref_pixel_format, png::ColorType::Grayscale);
             assert_eq!(ref_info.bit_depth, png::BitDepth::Sixteen);
-            refdatai = ref_data.chunks_exact(2).into_iter().map(|a| u16::from_be_bytes([a[0],a[1]])).map(|x| x as usize).collect();
+            refdatai = ref_data.chunks_exact(2).into_iter().map(|a| u16::from_be_bytes([a[0],a[1]])).collect();
         },
         jpeg::PixelFormat::RGB24 => {
             assert_eq!(ref_pixel_format, png::ColorType::RGB);
@@ -97,8 +96,7 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
         max_diff = cmp::max(diff, max_diff);
 
         // FIXME: Only a diff of 1 should be allowed?
-        // how to handle lossless? not like this!
-        if diff <= 2 && (pixel_format != jpeg::PixelFormat::L16 || diff == 0) {
+        if diff <= 2  {
             // White for correct
             0xFF
         } else {
@@ -122,7 +120,7 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
     }
 }
 
-fn rgba_to_rgb(input: &[usize]) -> Vec<usize> {
+fn rgba_to_rgb(input: &[u16]) -> Vec<u16> {
     let size = input.len() - input.len() / 4;
     let mut output = Vec::with_capacity(size);
 

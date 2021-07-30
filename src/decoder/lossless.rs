@@ -40,11 +40,36 @@ impl<R: Read> Decoder<R> {
 
         let mut huffman = HuffmanDecoder::new();
         let reader = &mut self.reader;
+        let mut mcus_left_until_restart = self.restart_interval;
+        let mut expected_rst_num = 0;
         let mut ra = [0u16; MAX_COMPONENTS];
         let mut rb = [0u16; MAX_COMPONENTS];
         let mut rc = [0u16; MAX_COMPONENTS];
+
         for mcu_y in 0..frame.image_size.height as usize {
             for mcu_x in 0..frame.image_size.width as usize {
+                
+                if self.restart_interval > 0 {
+                    if mcus_left_until_restart == 0 {
+                        match huffman.take_marker(reader)? {
+                            Some(Marker::RST(n)) => {
+                                if n != expected_rst_num {
+                                    return Err(Error::Format(format!("found RST{} where RST{} was expected", n, expected_rst_num)));
+                                }
+
+                                huffman.reset();
+
+                                expected_rst_num = (expected_rst_num + 1) % 8;
+                                mcus_left_until_restart = self.restart_interval;
+                            },
+                            Some(marker) => return Err(Error::Format(format!("found marker {:?} inside scan where RST{} was expected", marker, expected_rst_num))),
+                            None => return Err(Error::Format(format!("no marker found where RST{} was expected", expected_rst_num))),
+                        }
+                    }
+
+                    mcus_left_until_restart -= 1;
+                }
+
                 for (i, component) in components.iter().enumerate() {
                     let dc_table = self.dc_huffman_tables[scan.dc_table_indices[i]]
                         .as_ref()
@@ -62,6 +87,10 @@ impl<R: Read> Decoder<R> {
                             ));
                         }
                     };
+                    
+                    if mcu_x > 0 {
+                        ra[i] = results[i][mcu_y * frame.image_size.width as usize + mcu_x - 1];
+                    }
                     if mcu_y > 0 {
                         rb[i] = results[i][(mcu_y - 1) * frame.image_size.width as usize + mcu_x];
                         if mcu_x > 0 {
@@ -78,11 +107,10 @@ impl<R: Read> Decoder<R> {
                         frame.precision,
                         mcu_x,
                         mcu_y,
-                        false,
+                        self.restart_interval > 0 && mcus_left_until_restart == self.restart_interval - 1,
                     );
                     let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
                     results[i].push(result << scan.point_transform);
-                    ra[i] = result;
                 }
             }
         }
@@ -93,9 +121,10 @@ impl<R: Read> Decoder<R> {
         }
 
         println!("image size : {:?}", frame.image_size);
-        println!("results size : {:?}", results[0].len());
+        println!("results size : {:?} {:?} {:?}", results[0].len(), results[1].len(), results[2].len());
         println!("ouput size : {:?}", frame.output_size);
         println!("point transform : {:?}", scan.point_transform);
+        println!("dc table indices : {:?}", scan.dc_table_indices);
         println!("predictor : {:?}", scan.predictor_selection);
         Ok((marker, Some(results)))
     }
@@ -113,10 +142,8 @@ fn predict(
     iy: usize,
     restart: bool,
 ) -> i32 {
-    let result = if ix == 0 && iy == 0 {
-        // start of first line
-        1 << (input_precision - point_transform - 1)
-    } else if restart {
+    let result = if (ix == 0 && iy == 0) || restart {
+        // start of first line or restart
         1 << (input_precision - point_transform - 1)
     } else if iy == 0 {
         // rest of first line
