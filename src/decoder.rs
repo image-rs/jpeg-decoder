@@ -33,7 +33,7 @@ static UNZIGZAG: [u8; 64] = [
 pub enum PixelFormat {
     /// Luminance (grayscale), 8 bits
     L8,
-    /// Luminance (grayscale), 8 bits
+    /// Luminance (grayscale), 16 bits
     L16,
     /// RGB, 8 bits per channel
     RGB24,

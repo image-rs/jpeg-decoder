@@ -119,13 +119,7 @@ impl<R: Read> Decoder<R> {
         while let Some(Marker::RST(_)) = marker {
             marker = self.read_marker().ok();
         }
-
-        println!("image size : {:?}", frame.image_size);
-        println!("results size : {:?} {:?} {:?}", results[0].len(), results[1].len(), results[2].len());
-        println!("ouput size : {:?}", frame.output_size);
-        println!("point transform : {:?}", scan.point_transform);
-        println!("dc table indices : {:?}", scan.dc_table_indices);
-        println!("predictor : {:?}", scan.predictor_selection);
+        
         Ok((marker, Some(results)))
     }
 }
