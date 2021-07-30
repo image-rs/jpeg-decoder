@@ -96,7 +96,7 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
         max_diff = cmp::max(diff, max_diff);
 
         // FIXME: Only a diff of 1 should be allowed?
-        if diff <= 2  {
+        if (info.coding_process != jpeg::CodingProcess::Lossless && diff <= 2) || diff == 0  {
             // White for correct
             0xFF
         } else {

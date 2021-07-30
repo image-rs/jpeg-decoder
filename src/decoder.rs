@@ -62,6 +62,8 @@ pub struct ImageInfo {
     pub height: u16,
     /// The pixel format of the image.
     pub pixel_format: PixelFormat,
+    /// The coding process of the image.
+    pub coding_process: CodingProcess,
 }
 
 /// JPEG decoder
@@ -130,6 +132,7 @@ impl<R: Read> Decoder<R> {
                     width: frame.output_size.width,
                     height: frame.output_size.height,
                     pixel_format: pixel_format,
+                    coding_process: frame.coding_process,
                 })
             },
             None => None,

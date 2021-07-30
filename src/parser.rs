@@ -18,10 +18,14 @@ pub enum EntropyCoding {
     Arithmetic,
 }
 
+/// Represents the coding process of an image.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CodingProcess {
+    /// Sequential Discrete Cosine Transform
     DctSequential,
+    /// Progressive Discrete Cosine Transform
     DctProgressive,
+    /// Lossless
     Lossless,
 }
 
