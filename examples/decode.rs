@@ -23,7 +23,6 @@ fn main() {
     let input_file = File::open(input_path).expect("The specified input file could not be opened");
     let mut decoder = jpeg::Decoder::new(BufReader::new(input_file));
     let mut data = decoder.decode().expect("Decoding failed. If other software can successfully decode the specified JPEG image, then it's likely that there is a bug in jpeg-decoder");
-
     let info = decoder.info().unwrap();
 
     let output_file = File::create(output_path).unwrap();

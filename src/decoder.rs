@@ -749,7 +749,7 @@ impl<R: Read> Decoder<R> {
         else {
             Ok((marker, None))
         }
-    }    
+    }
 }
 
 fn decode_block<R: Read>(reader: &mut R,
@@ -991,7 +991,6 @@ fn compute_image(frame: &FrameInfo,
             }
         }
         decoded.resize(size, 0);
-        
         Ok(decoded)
     }
     else {
@@ -1009,7 +1008,7 @@ fn compute_image_parallel(frame: &FrameInfo,
     let output_size = frame.output_size;
     let components = &frame.components;
 
-    let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform, frame)?;
+    let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
     let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
     let mut image = vec![0u8; line_size * output_size.height as usize];
@@ -1021,7 +1020,7 @@ fn compute_image_parallel(frame: &FrameInfo,
              upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
              color_convert_func(line);
          });
-    
+
     Ok(image)
  }
 
@@ -1034,7 +1033,7 @@ fn compute_image_parallel(components: &[Component],
     let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
     let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
-    let mut image = vec![0u16; line_size * output_size.height as usize];
+    let mut image = vec![0u8; line_size * output_size.height as usize];
 
     for (row, line) in image.chunks_mut(line_size)
          .enumerate() {
@@ -1047,8 +1046,7 @@ fn compute_image_parallel(components: &[Component],
 
 fn choose_color_convert_func(component_count: usize,
                              _is_jfif: bool,
-                             color_transform: Option<AdobeColorTransform>,
-                             frame: &FrameInfo)
+                             color_transform: Option<AdobeColorTransform>)
                              -> Result<fn(&mut [u8])> {
     match component_count {
         3 => {
