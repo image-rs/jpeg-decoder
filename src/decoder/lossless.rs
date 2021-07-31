@@ -16,11 +16,12 @@ impl<R: Read> Decoder<R> {
         &mut self,
         frame: &FrameInfo,
         scan: &ScanInfo,
-    ) -> Result<(Option<Marker>, Option<Vec<Vec<u16>>>)> {
+    ) -> Result<(Option<Marker>, Vec<Vec<u16>>)> {
         let ncomp = scan.component_indices.len();
+        let npixel = frame.image_size.height as usize * frame.image_size.width as usize;
         assert!(ncomp <= MAX_COMPONENTS);
-        let mut results = vec![Vec::new(); MAX_COMPONENTS];
-
+        let mut results = vec![Vec::with_capacity(npixel); ncomp];
+        
         let components: Vec<Component> = scan
             .component_indices
             .iter()
@@ -99,6 +100,11 @@ impl<R: Read> Decoder<R> {
                             ));
                         }
                     };
+
+                    // The following lines could be further optimized, e.g. moving the checks
+                    // and updates of the previous values into the prediction function or
+                    // iterating such that diagonals with mcu_x + mcu_y = const are computed at
+                    // the same time to exploit independent predictions in this case
                     if mcu_x > 0 {
                         ra[i] = results[i][mcu_y * frame.image_size.width as usize + mcu_x - 1];
                     }
@@ -131,7 +137,7 @@ impl<R: Read> Decoder<R> {
         while let Some(Marker::RST(_)) = marker {
             marker = self.read_marker().ok();
         }
-        Ok((marker, Some(results)))
+        Ok((marker, results))
     }
 }
 
@@ -191,9 +197,9 @@ pub fn compute_image_lossless(
             0u16;
             ncomp * output_size.width as usize * output_size.height as usize
         ];
-        for (i, component) in components.iter().enumerate() {
-            for x in 0 .. data[i].len() {
-                decoded[x * ncomp + i] = data[i][x];
+        for (x, chunk) in decoded.chunks_mut(ncomp).enumerate() {
+            for (i, (component_data, _)) in data.iter().zip(components.iter()).enumerate() {
+                chunk[i] = component_data[x];
             }
         }
         let decoded = convert_to_u8(frame, decoded);

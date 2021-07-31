@@ -297,10 +297,8 @@ impl<R: Read> Decoder<R> {
                     if frame.coding_process == CodingProcess::Lossless {
                         let (marker, data) = self.decode_scan_lossless(&frame, &scan)?;
 
-                        if let Some(data) = data {
-                            for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
-                                planes_u16[i] = plane;
-                            }
+                        for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
+                            planes_u16[i] = plane;
                         }
                         pending_marker = marker;
                     }

@@ -2,9 +2,6 @@ extern crate jpeg_decoder as jpeg;
 extern crate png;
 extern crate core;
 
-use core::mem::size_of;
-use core::mem::forget;
-
 use std::env;
 use std::fs::File;
 use std::io::{self, BufReader, Write};

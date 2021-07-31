@@ -69,26 +69,26 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
         ref_data = rgba_to_rgb(&ref_data);
         ref_pixel_format = png::ColorType::RGB;
     }
-    let mut refdata_16 : Vec<u16> = ref_data.iter().map(|x| *x as u16).collect();
-    let mut data_u16 : Vec<u16> = data.iter().map(|x| *x as u16).collect();
 
-    match pixel_format {
+    let (refdata_16, data_u16) : (Vec<u16>, Vec<u16>) = match pixel_format {
         jpeg::PixelFormat::L8 => {
             assert_eq!(ref_pixel_format, png::ColorType::Grayscale);
             assert_eq!(ref_info.bit_depth, png::BitDepth::Eight);
+            (ref_data.iter().map(|x| *x as u16).collect(), data.iter().map(|x| *x as u16).collect())
         },
         jpeg::PixelFormat::L16 => {
             assert_eq!(ref_pixel_format, png::ColorType::Grayscale);
             assert_eq!(ref_info.bit_depth, png::BitDepth::Sixteen);
-            refdata_16 = ref_data.chunks_exact(2).into_iter().map(|a| u16::from_be_bytes([a[0],a[1]])).collect();
-            data_u16 = data.chunks_exact(2).into_iter().map(|a| u16::from_be_bytes([a[0],a[1]])).collect();
+            (ref_data.chunks_exact(2).map(|a| u16::from_be_bytes([a[0],a[1]])).collect(),
+            data.chunks_exact(2).map(|a| u16::from_be_bytes([a[0],a[1]])).collect())
         },
         jpeg::PixelFormat::RGB24 => {
             assert_eq!(ref_pixel_format, png::ColorType::RGB);
             assert_eq!(ref_info.bit_depth, png::BitDepth::Eight);
+            (ref_data.iter().map(|x| *x as u16).collect(), data.iter().map(|x| *x as u16).collect())
         },
         _ => panic!(),
-    }
+    };
 
     assert_eq!(data_u16.len(), refdata_16.len());
     let mut max_diff = 0;
