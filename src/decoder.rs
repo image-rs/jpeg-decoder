@@ -16,6 +16,7 @@ use worker::{RowData, PlatformWorker, Worker};
 pub const MAX_COMPONENTS: usize = 4;
 
 mod lossless;
+use self::lossless::compute_image_lossless;
 
 static UNZIGZAG: [u8; 64] = [
      0,  1,  8, 16,  9,  2,  3, 10,
@@ -221,7 +222,8 @@ impl<R: Read> Decoder<R> {
         let mut pending_marker = None;
         let mut worker = None;
         let mut scans_processed = 0;
-        let mut planes = vec![Vec::<u16>::new(); self.frame.as_ref().map_or(0, |frame| frame.components.len())];
+        let mut planes = vec![Vec::<u8>::new(); self.frame.as_ref().map_or(0, |frame| frame.components.len())];
+        let mut planes_u16 = vec![Vec::<u16>::new(); self.frame.as_ref().map_or(0, |frame| frame.components.len())];
 
         loop {
             let marker = match pending_marker.take() {
@@ -269,6 +271,7 @@ impl<R: Read> Decoder<R> {
                     }
 
                     planes = vec![Vec::new(); component_count];
+                    planes_u16 = vec![Vec::new(); component_count];
                 },
 
                 // Scan header
@@ -296,7 +299,7 @@ impl<R: Read> Decoder<R> {
 
                         if let Some(data) = data {
                             for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
-                                planes[i] = plane;
+                                planes_u16[i] = plane;
                             }
                         }
                         pending_marker = marker;
@@ -336,7 +339,7 @@ impl<R: Read> Decoder<R> {
                         if let Some(data) = data {
                             for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
                                 if self.coefficients_finished[i] == !0 {
-                                    planes[i] = plane.iter().map(|x| *x as u16).collect();
+                                    planes[i] = plane;
                                 }
                             }
                         }
@@ -486,11 +489,16 @@ impl<R: Read> Decoder<R> {
 
                     worker.append_row((i, row_coefficients))?;
                 }
-                planes[i] = worker.get_result(i)?.iter().map(|x| *x as u16).collect();
+                planes[i] = worker.get_result(i)?;
             }
         }
 
-        compute_image(&frame, planes, self.is_jfif, self.color_transform)
+        if frame.coding_process == CodingProcess::Lossless {
+            compute_image_lossless(&frame, planes_u16)
+        }
+        else{
+            compute_image(&frame, planes, self.is_jfif, self.color_transform)
+        }
     }
 
     fn read_marker(&mut self) -> Result<Marker> {
@@ -949,19 +957,8 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
     Ok(last)
 }
 
-fn convert_to_u8(frame: &FrameInfo, data: Vec<u16>) -> Vec<u8> {
-    if frame.precision == 8 {
-        data.iter().map(|x| *x as u8).collect()
-    }
-    else {
-        // we use big endian to conform with PNG
-        let out : Vec<[u8;2]>= data.iter().map(|x| x.to_be_bytes()).collect();
-        out.iter().flatten().map(|x| *x).collect()
-    }
-}
-
 fn compute_image(frame: &FrameInfo,
-                 mut data: Vec<Vec<u16>>,
+                 mut data: Vec<Vec<u8>>,
                  is_jfif: bool,
                  color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
     if data.is_empty() || data.iter().any(Vec::is_empty) {
@@ -972,7 +969,7 @@ fn compute_image(frame: &FrameInfo,
 
     if components.len() == 1 {
         let component = &components[0];
-        let mut decoded: Vec<u16> = data.remove(0);
+        let mut decoded: Vec<u8> = data.remove(0);
 
         let width = component.size.width as usize;
         let height = component.size.height as usize;
@@ -982,7 +979,7 @@ fn compute_image(frame: &FrameInfo,
         // if the image width is a multiple of the block size,
         // then we don't have to move bytes in the decoded data
         if frame.coding_process != CodingProcess::Lossless && usize::from(output_size.width) != line_stride {
-            let mut buffer = vec![0u16; width];
+            let mut buffer = vec![0u8; width];
             // The first line already starts at index 0, so we need to move only lines 1..height
             for y in 1..height {
                 let destination_idx = y * width;
@@ -995,7 +992,6 @@ fn compute_image(frame: &FrameInfo,
         }
         decoded.resize(size, 0);
         
-        let decoded = convert_to_u8(frame, decoded);
         Ok(decoded)
     }
     else {
@@ -1003,9 +999,10 @@ fn compute_image(frame: &FrameInfo,
     }
 }
 
+
 #[cfg(feature="rayon")]
 fn compute_image_parallel(frame: &FrameInfo,
-                          data: Vec<Vec<u16>>,
+                          data: Vec<Vec<u8>>,
                           is_jfif: bool,
                           color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
     use rayon::prelude::*;
@@ -1015,7 +1012,7 @@ fn compute_image_parallel(frame: &FrameInfo,
     let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform, frame)?;
     let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
-    let mut image = vec![0u16; line_size * output_size.height as usize];
+    let mut image = vec![0u8; line_size * output_size.height as usize];
 
     image.par_chunks_mut(line_size)
          .with_max_len(1)
@@ -1025,13 +1022,12 @@ fn compute_image_parallel(frame: &FrameInfo,
              color_convert_func(line);
          });
     
-    let image = convert_to_u8(frame, image);
     Ok(image)
  }
 
 #[cfg(not(feature="rayon"))]
 fn compute_image_parallel(components: &[Component],
-                          data: Vec<Vec<u16>>,
+                          data: Vec<Vec<u8>>,
                           output_size: Dimensions,
                           is_jfif: bool,
                           color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
@@ -1046,7 +1042,6 @@ fn compute_image_parallel(components: &[Component],
              color_convert_func(line);
          }
 
-    let image = convert_to_u8(frame, image);
     Ok(image)
 }
 
@@ -1054,11 +1049,7 @@ fn choose_color_convert_func(component_count: usize,
                              _is_jfif: bool,
                              color_transform: Option<AdobeColorTransform>,
                              frame: &FrameInfo)
-                             -> Result<fn(&mut [u16])> {
-    if frame.coding_process == CodingProcess::Lossless{
-        // Lossless JPEG has no color transformations
-        return Ok(color_convert_line_null);
-    }
+                             -> Result<fn(&mut [u8])> {
     match component_count {
         3 => {
             // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
@@ -1082,10 +1073,10 @@ fn choose_color_convert_func(component_count: usize,
     }
 }
 
-fn color_convert_line_null(_data: &mut [u16]) {
+fn color_convert_line_null(_data: &mut [u8]) {
 }
 
-fn color_convert_line_ycbcr(data: &mut [u16]) {
+fn color_convert_line_ycbcr(data: &mut [u8]) {
     for chunk in data.chunks_exact_mut(3) {
         let (r, g, b) = ycbcr_to_rgb(chunk[0], chunk[1], chunk[2]);
         chunk[0] = r;
@@ -1094,7 +1085,7 @@ fn color_convert_line_ycbcr(data: &mut [u16]) {
     }
 }
 
-fn color_convert_line_ycck(data: &mut [u16]) {
+fn color_convert_line_ycck(data: &mut [u8]) {
     for chunk in data.chunks_exact_mut(4) {
         let (r, g, b) = ycbcr_to_rgb(chunk[0], chunk[1], chunk[2]);
         let k = chunk[3];
@@ -1106,7 +1097,7 @@ fn color_convert_line_ycck(data: &mut [u16]) {
     }
 }
 
-fn color_convert_line_cmyk(data: &mut [u16]) {
+fn color_convert_line_cmyk(data: &mut [u8]) {
     for chunk in data.chunks_exact_mut(4) {
         chunk[0] = 255 - chunk[0];
         chunk[1] = 255 - chunk[1];
@@ -1116,7 +1107,7 @@ fn color_convert_line_cmyk(data: &mut [u16]) {
 }
 
 // ITU-R BT.601
-fn ycbcr_to_rgb(y: u16, cb: u16, cr: u16) -> (u16, u16, u16) {
+fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8) -> (u8, u8, u8) {
     let y = y as f32;
     let cb = cb as f32 - 128.0;
     let cr = cr as f32 - 128.0;
@@ -1131,9 +1122,9 @@ fn ycbcr_to_rgb(y: u16, cb: u16, cr: u16) -> (u16, u16, u16) {
     // This can be simplified to `(r + 0.5) as u8` without any clamping
     // as soon as our MSRV reaches the version that has saturating casts.
     // The version without explicit clamping is also noticeably faster.
-    (clamp_to_u8((r + 0.5) as i32) as u16,
-     clamp_to_u8((g + 0.5) as i32) as u16,
-     clamp_to_u8((b + 0.5) as i32) as u16)
+    (clamp_to_u8((r + 0.5) as i32) as u8,
+     clamp_to_u8((g + 0.5) as i32) as u8,
+     clamp_to_u8((b + 0.5) as i32) as u8)
 }
 
 fn clamp_to_u8(value: i32) -> i32 {
