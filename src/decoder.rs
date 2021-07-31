@@ -204,11 +204,11 @@ impl<R: Read> Decoder<R> {
     }
 
     /// Decodes the image and returns the decoded pixels if successful.
-    pub fn decode(&mut self) -> Result<Vec<u16>> {
+    pub fn decode(&mut self) -> Result<Vec<u8>> {
         self.decode_internal(false)
     }
 
-    fn decode_internal(&mut self, stop_after_metadata: bool) -> Result<Vec<u16>> {
+    fn decode_internal(&mut self, stop_after_metadata: bool) -> Result<Vec<u8>> {
         if stop_after_metadata && self.frame.is_some() {
             // The metadata has already been read.
             return Ok(Vec::new());
@@ -946,10 +946,21 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
     Ok(last)
 }
 
+fn convert_to_u8(frame: &FrameInfo, data: Vec<u16>) -> Vec<u8> {
+    if frame.precision == 8 {
+        data.iter().map(|x| *x as u8).collect()
+    }
+    else {
+        // we use big endian to conform with PNG
+        let out : Vec<[u8;2]>= data.iter().map(|x| x.to_be_bytes()).collect();
+        out.iter().flatten().map(|x| *x).collect()
+    }
+}
+
 fn compute_image(frame: &FrameInfo,
                  mut data: Vec<Vec<u16>>,
                  is_jfif: bool,
-                 color_transform: Option<AdobeColorTransform>) -> Result<Vec<u16>> {
+                 color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
     if data.is_empty() || data.iter().any(Vec::is_empty) {
         return Err(Error::Format("not all components have data".to_owned()));
     }
@@ -980,6 +991,8 @@ fn compute_image(frame: &FrameInfo,
             }
         }
         decoded.resize(size, 0);
+        
+        let decoded = convert_to_u8(frame, decoded);
         Ok(decoded)
     }
     else {
@@ -991,7 +1004,7 @@ fn compute_image(frame: &FrameInfo,
 fn compute_image_parallel(frame: &FrameInfo,
                           data: Vec<Vec<u16>>,
                           is_jfif: bool,
-                          color_transform: Option<AdobeColorTransform>) -> Result<Vec<u16>> {
+                          color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
     use rayon::prelude::*;
     let output_size = frame.output_size;
     let components = &frame.components;
@@ -1008,20 +1021,21 @@ fn compute_image_parallel(frame: &FrameInfo,
              upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
              color_convert_func(line);
          });
-
+    
+    let image = convert_to_u8(frame, image);
     Ok(image)
  }
 
 #[cfg(not(feature="rayon"))]
 fn compute_image_parallel(components: &[Component],
-                          data: Vec<Vec<u8>>,
+                          data: Vec<Vec<u16>>,
                           output_size: Dimensions,
                           is_jfif: bool,
                           color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
     let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
     let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
-    let mut image = vec![0u8; line_size * output_size.height as usize];
+    let mut image = vec![0u16; line_size * output_size.height as usize];
 
     for (row, line) in image.chunks_mut(line_size)
          .enumerate() {
@@ -1029,11 +1043,12 @@ fn compute_image_parallel(components: &[Component],
              color_convert_func(line);
          }
 
+    let image = convert_to_u8(frame, image);
     Ok(image)
 }
 
 fn choose_color_convert_func(component_count: usize,
-                             is_jfif: bool,
+                             _is_jfif: bool,
                              color_transform: Option<AdobeColorTransform>,
                              frame: &FrameInfo)
                              -> Result<fn(&mut [u16])> {

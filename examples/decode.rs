@@ -49,14 +49,13 @@ fn main() {
         },
     }
     
-    let mut data = transmute_to_bytes_vec(data);
     encoder.write_header()
            .expect("writing png header failed")
            .write_image_data(&data)
            .expect("png encoding failed");
 }
 
-fn cmyk_to_rgb(input: &[u16]) -> Vec<u16> {
+fn cmyk_to_rgb(input: &[u8]) -> Vec<u8> {
     let size = input.len() - input.len() / 4;
     let mut output = Vec::with_capacity(size);
 
@@ -76,20 +75,10 @@ fn cmyk_to_rgb(input: &[u16]) -> Vec<u16> {
         let g = (1.0 - m) * 255.0;
         let b = (1.0 - y) * 255.0;
 
-        output.push(r as u16);
-        output.push(g as u16);
-        output.push(b as u16);
+        output.push(r as u8);
+        output.push(g as u8);
+        output.push(b as u8);
     }
 
     output
-}
-
-pub fn transmute_to_bytes_vec<T>(mut from: Vec<T>) -> Vec<u8> {
-    unsafe {
-        let capacity = from.capacity() * size_of::<T>();
-        let len = from.len() * size_of::<T>();
-        let ptr = from.as_mut_ptr();
-        forget(from);
-        Vec::from_raw_parts(ptr as *mut u8, len, capacity)
-    }
 }
