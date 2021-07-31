@@ -48,22 +48,34 @@ impl<R: Read> Decoder<R> {
 
         for mcu_y in 0..frame.image_size.height as usize {
             for mcu_x in 0..frame.image_size.width as usize {
-                
                 if self.restart_interval > 0 {
                     if mcus_left_until_restart == 0 {
                         match huffman.take_marker(reader)? {
                             Some(Marker::RST(n)) => {
                                 if n != expected_rst_num {
-                                    return Err(Error::Format(format!("found RST{} where RST{} was expected", n, expected_rst_num)));
+                                    return Err(Error::Format(format!(
+                                        "found RST{} where RST{} was expected",
+                                        n, expected_rst_num
+                                    )));
                                 }
 
                                 huffman.reset();
 
                                 expected_rst_num = (expected_rst_num + 1) % 8;
                                 mcus_left_until_restart = self.restart_interval;
-                            },
-                            Some(marker) => return Err(Error::Format(format!("found marker {:?} inside scan where RST{} was expected", marker, expected_rst_num))),
-                            None => return Err(Error::Format(format!("no marker found where RST{} was expected", expected_rst_num))),
+                            }
+                            Some(marker) => {
+                                return Err(Error::Format(format!(
+                                    "found marker {:?} inside scan where RST{} was expected",
+                                    marker, expected_rst_num
+                                )))
+                            }
+                            None => {
+                                return Err(Error::Format(format!(
+                                    "no marker found where RST{} was expected",
+                                    expected_rst_num
+                                )))
+                            }
                         }
                     }
 
@@ -87,7 +99,6 @@ impl<R: Read> Decoder<R> {
                             ));
                         }
                     };
-                    
                     if mcu_x > 0 {
                         ra[i] = results[i][mcu_y * frame.image_size.width as usize + mcu_x - 1];
                     }
@@ -107,7 +118,8 @@ impl<R: Read> Decoder<R> {
                         frame.precision,
                         mcu_x,
                         mcu_y,
-                        self.restart_interval > 0 && mcus_left_until_restart == self.restart_interval - 1,
+                        self.restart_interval > 0
+                            && mcus_left_until_restart == self.restart_interval - 1,
                     );
                     let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
                     results[i].push(result << scan.point_transform);
@@ -119,7 +131,6 @@ impl<R: Read> Decoder<R> {
         while let Some(Marker::RST(_)) = marker {
             marker = self.read_marker().ok();
         }
-        
         Ok((marker, Some(results)))
     }
 }
@@ -159,4 +170,43 @@ fn predict(
         }
     };
     result
+}
+
+pub fn compute_image_lossless(
+    frame: &FrameInfo,
+    mut data: Vec<Vec<u16>>
+) -> Result<Vec<u8>> {
+    if data.is_empty() || data.iter().any(Vec::is_empty) {
+        return Err(Error::Format("not all components have data".to_owned()));
+    }
+    let output_size = frame.output_size;
+    let components = &frame.components;
+    let ncomp = components.len();
+
+    if ncomp == 1 {
+        let decoded = convert_to_u8(frame, data.remove(0));
+        Ok(decoded)
+    } else {
+        let mut decoded: Vec<u16> = vec![
+            0u16;
+            ncomp * output_size.width as usize * output_size.height as usize
+        ];
+        for (i, component) in components.iter().enumerate() {
+            for x in 0 .. data[i].len() {
+                decoded[x * ncomp + i] = data[i][x];
+            }
+        }
+        let decoded = convert_to_u8(frame, decoded);
+        Ok(decoded)
+    }
+}
+
+fn convert_to_u8(frame: &FrameInfo, data: Vec<u16>) -> Vec<u8> {
+    if frame.precision == 8 {
+        data.iter().map(|x| *x as u8).collect()
+    } else {
+        // we use big endian to conform with PNG
+        let out: Vec<[u8; 2]> = data.iter().map(|x| x.to_be_bytes()).collect();
+        out.iter().flatten().map(|x| *x).collect()
+    }
 }
