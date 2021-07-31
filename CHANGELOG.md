@@ -5,6 +5,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## Unreleased
 
 - Added Lossless JPEG support
+- Minimum supported rust version changed to 1.40
 
 ## v0.1.22 (2021-01-27)
 
