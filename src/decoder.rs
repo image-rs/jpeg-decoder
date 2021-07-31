@@ -252,6 +252,9 @@ impl<R: Read> Decoder<R> {
                     if frame.precision != 8 && frame.coding_process != CodingProcess::Lossless {
                         return Err(Error::Unsupported(UnsupportedFeature::SamplePrecision(frame.precision)));
                     }
+                    if frame.precision != 8 && frame.precision != 16 {
+                        return Err(Error::Unsupported(UnsupportedFeature::SamplePrecision(frame.precision)));
+                    }
                     if component_count != 1 && component_count != 3 && component_count != 4 {
                         return Err(Error::Unsupported(UnsupportedFeature::ComponentCount(component_count as u8)));
                     }

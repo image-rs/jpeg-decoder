@@ -4,6 +4,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
 
+- Added Lossless JPEG support
+
 ## v0.1.22 (2021-01-27)
 
 - Fix panic on jpeg without frames.
