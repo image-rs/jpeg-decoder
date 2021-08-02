@@ -992,19 +992,18 @@ fn compute_image(frame: &FrameInfo,
         Ok(decoded)
     }
     else {
-        compute_image_parallel(frame, data, is_jfif, color_transform)
+        compute_image_parallel(components, data, output_size, is_jfif, color_transform)
     }
 }
 
 
 #[cfg(feature="rayon")]
-fn compute_image_parallel(frame: &FrameInfo,
+fn compute_image_parallel(components: &[Component],
                           data: Vec<Vec<u8>>,
+                          output_size: Dimensions,
                           is_jfif: bool,
                           color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
     use rayon::prelude::*;
-    let output_size = frame.output_size;
-    let components = &frame.components;
 
     let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
     let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;

@@ -83,7 +83,7 @@ impl<R: Read> Decoder<R> {
                     mcus_left_until_restart -= 1;
                 }
 
-                for (i, component) in components.iter().enumerate() {
+                for (i, _component) in components.iter().enumerate() {
                     let dc_table = self.dc_huffman_tables[scan.dc_table_indices[i]]
                         .as_ref()
                         .unwrap();
