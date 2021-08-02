@@ -495,7 +495,7 @@ impl<R: Read> Decoder<R> {
             compute_image_lossless(&frame, planes_u16)
         }
         else{
-            compute_image(&frame, planes, self.is_jfif, self.color_transform)
+            compute_image(&frame.components, planes, frame.output_size, self.is_jfif, self.color_transform)
         }
     }
 
@@ -955,15 +955,14 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
     Ok(last)
 }
 
-fn compute_image(frame: &FrameInfo,
+fn compute_image(components: &[Component],
                  mut data: Vec<Vec<u8>>,
+                 output_size: Dimensions,
                  is_jfif: bool,
                  color_transform: Option<AdobeColorTransform>) -> Result<Vec<u8>> {
     if data.is_empty() || data.iter().any(Vec::is_empty) {
         return Err(Error::Format("not all components have data".to_owned()));
     }
-    let output_size = frame.output_size;
-    let components = &frame.components;
 
     if components.len() == 1 {
         let component = &components[0];
@@ -976,7 +975,7 @@ fn compute_image(frame: &FrameInfo,
 
         // if the image width is a multiple of the block size,
         // then we don't have to move bytes in the decoded data
-        if frame.coding_process != CodingProcess::Lossless && usize::from(output_size.width) != line_stride {
+        if usize::from(output_size.width) != line_stride {
             let mut buffer = vec![0u8; width];
             // The first line already starts at index 0, so we need to move only lines 1..height
             for y in 1..height {

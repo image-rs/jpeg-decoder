@@ -1,6 +1,5 @@
 extern crate jpeg_decoder as jpeg;
 extern crate png;
-extern crate core;
 
 use std::env;
 use std::fs::File;
