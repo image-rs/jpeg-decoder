@@ -130,8 +130,8 @@ impl<R: Read> Decoder<R> {
                 }
 
                 // calculate rows, using left pixel as predictor
-                for mcu_x in 1..width {
-                    for mcu_y in 0..height {
+                for mcu_y in 0..height {
+                    for mcu_x in 1..width {
                         let diff = differences[i][mcu_y * width + mcu_x];
                         let prediction = results[i][mcu_y * width + mcu_x - 1] as i32;
                         let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
