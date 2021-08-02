@@ -80,7 +80,7 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
             assert_eq!(ref_pixel_format, png::ColorType::Grayscale);
             assert_eq!(ref_info.bit_depth, png::BitDepth::Sixteen);
             (ref_data.chunks_exact(2).map(|a| u16::from_be_bytes([a[0],a[1]])).collect(),
-            data.chunks_exact(2).map(|a| u16::from_be_bytes([a[0],a[1]])).collect())
+            data.chunks_exact(2).map(|a| u16::from_ne_bytes([a[0],a[1]])).collect())
         },
         jpeg::PixelFormat::RGB24 => {
             assert_eq!(ref_pixel_format, png::ColorType::RGB);
