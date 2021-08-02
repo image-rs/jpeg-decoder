@@ -20,7 +20,7 @@ impl<R: Read> Decoder<R> {
         let ncomp = scan.component_indices.len();
         let npixel = frame.image_size.height as usize * frame.image_size.width as usize;
         assert!(ncomp <= MAX_COMPONENTS);
-        let mut results = vec![Vec::with_capacity(npixel); ncomp];
+        let mut results = vec![vec!(0;npixel); ncomp];
         
         let components: Vec<Component> = scan
             .component_indices
@@ -47,8 +47,12 @@ impl<R: Read> Decoder<R> {
         let mut rb = [0u16; MAX_COMPONENTS];
         let mut rc = [0u16; MAX_COMPONENTS];
 
-        for mcu_y in 0..frame.image_size.height as usize {
-            for mcu_x in 0..frame.image_size.width as usize {
+        let width = frame.image_size.width as usize;
+        let height = frame.image_size.height as usize;
+        
+        let mut differences = vec![Vec::with_capacity(npixel); ncomp];
+        for mcu_y in 0..height {
+            for mcu_x in 0..width {
                 if self.restart_interval > 0 {
                     if mcus_left_until_restart == 0 {
                         match huffman.take_marker(reader)? {
@@ -100,38 +104,82 @@ impl<R: Read> Decoder<R> {
                             ));
                         }
                     };
-
-                    // The following lines could be further optimized, e.g. moving the checks
-                    // and updates of the previous values into the prediction function or
-                    // iterating such that diagonals with mcu_x + mcu_y = const are computed at
-                    // the same time to exploit independent predictions in this case
-                    if mcu_x > 0 {
-                        ra[i] = results[i][mcu_y * frame.image_size.width as usize + mcu_x - 1];
-                    }
-                    if mcu_y > 0 {
-                        rb[i] = results[i][(mcu_y - 1) * frame.image_size.width as usize + mcu_x];
-                        if mcu_x > 0 {
-                            rc[i] = results[i]
-                                [(mcu_y - 1) * frame.image_size.width as usize + (mcu_x - 1)];
-                        }
-                    }
-                    let prediction = predict(
-                        ra[i] as i32,
-                        rb[i] as i32,
-                        rc[i] as i32,
-                        scan.predictor_selection,
-                        scan.point_transform,
-                        frame.precision,
-                        mcu_x,
-                        mcu_y,
-                        self.restart_interval > 0
-                            && mcus_left_until_restart == self.restart_interval - 1,
-                    );
-                    let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
-                    results[i].push(result << scan.point_transform);
+                    differences[i].push(diff);
                 }
             }
         }
+
+        if scan.predictor_selection == Predictor::Ra {
+            for (i, _component) in components.iter().enumerate() {
+                // calculate the top left pixel
+                let diff = differences[i][0];
+                let prediction = 1 << (frame.precision - scan.point_transform - 1) as i32;
+                let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
+                let result = result << scan.point_transform;
+                results[i][0] = result;
+
+                // calculate leftmost column, using top pixel as predictor
+                let mut previous = result;
+                for mcu_y in 1..height {
+                    let diff = differences[i][mcu_y * width];
+                    let prediction = previous as i32;
+                    let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
+                    let result = result << scan.point_transform;
+                    results[i][mcu_y * width] = result;
+                    previous = result;
+                }
+
+                // calculate rows, using left pixel as predictor
+                for mcu_x in 1..width {
+                    for mcu_y in 0..height {
+                        let diff = differences[i][mcu_y * width + mcu_x];
+                        let prediction = results[i][mcu_y * width + mcu_x - 1] as i32;
+                        let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
+                        let result = result << scan.point_transform;
+                        results[i][mcu_y * width + mcu_x] = result;
+                    }
+                }
+
+            }
+        } else {
+            for mcu_y in 0..height {
+                for mcu_x in 0..width {
+                    for (i, _component) in components.iter().enumerate() {
+                        let diff = differences[i][mcu_y * width + mcu_x];
+    
+                        // The following lines could be further optimized, e.g. moving the checks
+                        // and updates of the previous values into the prediction function or
+                        // iterating such that diagonals with mcu_x + mcu_y = const are computed at
+                        // the same time to exploit independent predictions in this case
+                        if mcu_x > 0 {
+                            ra[i] = results[i][mcu_y * frame.image_size.width as usize + mcu_x - 1];
+                        }
+                        if mcu_y > 0 {
+                            rb[i] = results[i][(mcu_y - 1) * frame.image_size.width as usize + mcu_x];
+                            if mcu_x > 0 {
+                                rc[i] = results[i]
+                                    [(mcu_y - 1) * frame.image_size.width as usize + (mcu_x - 1)];
+                            }
+                        }
+                        let prediction = predict(
+                            ra[i] as i32,
+                            rb[i] as i32,
+                            rc[i] as i32,
+                            scan.predictor_selection,
+                            scan.point_transform,
+                            frame.precision,
+                            mcu_x,
+                            mcu_y,
+                            self.restart_interval > 0
+                                && mcus_left_until_restart == self.restart_interval - 1,
+                        );
+                        let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
+                        results[i][mcu_y * width + mcu_x] = result << scan.point_transform;
+                    }
+                }
+            }
+        }
+        
 
         let mut marker = huffman.take_marker(&mut self.reader)?;
         while let Some(Marker::RST(_)) = marker {
