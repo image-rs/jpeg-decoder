@@ -259,7 +259,7 @@ fn convert_to_u8(frame: &FrameInfo, data: Vec<u16>) -> Vec<u8> {
     if frame.precision == 8 {
         data.iter().map(|x| *x as u8).collect()
     } else {
-        // we use big endian to conform with PNG
+        // we output native endian, which is the standard for image-rs
         let out: Vec<[u8; 2]> = data.iter().map(|x| x.to_ne_bytes()).collect();
         out.iter().flatten().map(|x| *x).collect()
     }
