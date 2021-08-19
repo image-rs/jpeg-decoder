@@ -1,12 +1,11 @@
 use decoder::{Decoder, MAX_COMPONENTS};
-use error::{Error, Result, UnsupportedFeature};
-use huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
+use error::{Error, Result};
+use huffman::HuffmanDecoder;
 use marker::Marker;
 use parser::Predictor;
 use parser::{
-    parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos,
-    AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
-    IccChunk, ScanInfo,
+    Component,  FrameInfo,
+    ScanInfo,
 };
 use std::io::Read;
 
@@ -20,8 +19,8 @@ impl<R: Read> Decoder<R> {
         let ncomp = scan.component_indices.len();
         let npixel = frame.image_size.height as usize * frame.image_size.width as usize;
         assert!(ncomp <= MAX_COMPONENTS);
-        let mut results = vec![vec!(0;npixel); ncomp];
-        
+        let mut results = vec![vec!(0, npixel); ncomp];
+
         let components: Vec<Component> = scan
             .component_indices
             .iter()
@@ -49,10 +48,10 @@ impl<R: Read> Decoder<R> {
 
         let width = frame.image_size.width as usize;
         let height = frame.image_size.height as usize;
-        
+
         let mut differences = vec![Vec::with_capacity(npixel); ncomp];
-        for mcu_y in 0..height {
-            for mcu_x in 0..width {
+        for _mcu_y in 0..height {
+            for _mcu_x in 0..width {
                 if self.restart_interval > 0 {
                     if mcus_left_until_restart == 0 {
                         match huffman.take_marker(reader)? {
@@ -139,14 +138,13 @@ impl<R: Read> Decoder<R> {
                         results[i][mcu_y * width + mcu_x] = result;
                     }
                 }
-
             }
         } else {
             for mcu_y in 0..height {
                 for mcu_x in 0..width {
                     for (i, _component) in components.iter().enumerate() {
                         let diff = differences[i][mcu_y * width + mcu_x];
-    
+
                         // The following lines could be further optimized, e.g. moving the checks
                         // and updates of the previous values into the prediction function or
                         // iterating such that diagonals with mcu_x + mcu_y = const are computed at
@@ -155,7 +153,8 @@ impl<R: Read> Decoder<R> {
                             ra[i] = results[i][mcu_y * frame.image_size.width as usize + mcu_x - 1];
                         }
                         if mcu_y > 0 {
-                            rb[i] = results[i][(mcu_y - 1) * frame.image_size.width as usize + mcu_x];
+                            rb[i] =
+                                results[i][(mcu_y - 1) * frame.image_size.width as usize + mcu_x];
                             if mcu_x > 0 {
                                 rc[i] = results[i]
                                     [(mcu_y - 1) * frame.image_size.width as usize + (mcu_x - 1)];
@@ -179,7 +178,6 @@ impl<R: Read> Decoder<R> {
                 }
             }
         }
-        
 
         let mut marker = huffman.take_marker(&mut self.reader)?;
         while let Some(Marker::RST(_)) = marker {
@@ -226,10 +224,7 @@ fn predict(
     result
 }
 
-pub fn compute_image_lossless(
-    frame: &FrameInfo,
-    mut data: Vec<Vec<u16>>
-) -> Result<Vec<u8>> {
+pub fn compute_image_lossless(frame: &FrameInfo, mut data: Vec<Vec<u16>>) -> Result<Vec<u8>> {
     if data.is_empty() || data.iter().any(Vec::is_empty) {
         return Err(Error::Format("not all components have data".to_owned()));
     }
@@ -241,10 +236,8 @@ pub fn compute_image_lossless(
         let decoded = convert_to_u8(frame, data.remove(0));
         Ok(decoded)
     } else {
-        let mut decoded: Vec<u16> = vec![
-            0u16;
-            ncomp * output_size.width as usize * output_size.height as usize
-        ];
+        let mut decoded: Vec<u16> =
+            vec![0u16; ncomp * output_size.width as usize * output_size.height as usize];
         for (x, chunk) in decoded.chunks_mut(ncomp).enumerate() {
             for (i, (component_data, _)) in data.iter().zip(components.iter()).enumerate() {
                 chunk[i] = component_data[x];
