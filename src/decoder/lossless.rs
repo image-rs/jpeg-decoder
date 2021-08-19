@@ -3,10 +3,7 @@ use error::{Error, Result};
 use huffman::HuffmanDecoder;
 use marker::Marker;
 use parser::Predictor;
-use parser::{
-    Component,  FrameInfo,
-    ScanInfo,
-};
+use parser::{Component, FrameInfo, ScanInfo};
 use std::io::Read;
 
 impl<R: Read> Decoder<R> {
@@ -19,7 +16,7 @@ impl<R: Read> Decoder<R> {
         let ncomp = scan.component_indices.len();
         let npixel = frame.image_size.height as usize * frame.image_size.width as usize;
         assert!(ncomp <= MAX_COMPONENTS);
-        let mut results = vec![vec!(0, npixel); ncomp];
+        let mut results = vec![vec![0u16; npixel]; ncomp];
 
         let components: Vec<Component> = scan
             .component_indices
