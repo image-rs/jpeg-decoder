@@ -1,10 +1,13 @@
+use alloc::borrow::ToOwned;
+use alloc::{format, vec};
+use alloc::vec::Vec;
+use core::ops::{self, Range};
 use crate::{read_u16_from_be, read_u8};
 use error::{Error, Result, UnsupportedFeature};
 use huffman::{HuffmanTable, HuffmanTableClass};
 use marker::Marker;
 use marker::Marker::*;
 use std::io::{self, Read};
-use std::ops::Range;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Dimensions {
@@ -359,7 +362,7 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
 
     let blocks_per_mcu = component_indices.iter().map(|&i| {
         frame.components[i].horizontal_sampling_factor as u32 * frame.components[i].vertical_sampling_factor as u32
-    }).fold(0, ::std::ops::Add::add);
+    }).fold(0, ops::Add::add);
 
     if component_count > 1 && blocks_per_mcu > 10 {
         return Err(Error::Format("scan with more than one component and more than 10 blocks per MCU".to_owned()));
@@ -489,7 +492,7 @@ pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<(
         let mut counts = [0u8; 16];
         reader.read_exact(&mut counts)?;
 
-        let size = counts.iter().map(|&val| val as usize).fold(0, ::std::ops::Add::add);
+        let size = counts.iter().map(|&val| val as usize).fold(0, ops::Add::add);
 
         if size == 0 {
             return Err(Error::Format("encountered table with zero length in DHT".to_owned()));

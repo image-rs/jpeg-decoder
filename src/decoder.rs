@@ -1,3 +1,10 @@
+use alloc::borrow::ToOwned;
+use alloc::{format, vec};
+use alloc::vec::Vec;
+use alloc::sync::Arc;
+use core::cmp;
+use core::mem;
+use core::ops::Range;
 use crate::read_u8;
 use error::{Error, Result, UnsupportedFeature};
 use huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
@@ -6,11 +13,7 @@ use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions,
              parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos, IccChunk,
              ScanInfo};
 use upsampler::Upsampler;
-use std::cmp;
 use std::io::Read;
-use std::mem;
-use std::ops::Range;
-use std::sync::Arc;
 use worker::{RowData, PlatformWorker, Worker};
 
 pub const MAX_COMPONENTS: usize = 4;
@@ -1090,6 +1093,6 @@ fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8) -> (u8, u8, u8) {
 }
 
 fn clamp_to_u8(value: i32) -> i32 {
-    let value = std::cmp::max(value, 0);
-    std::cmp::min(value, 255)
+    let value = cmp::max(value, 0);
+    cmp::min(value, 255)
 }

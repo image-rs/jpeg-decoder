@@ -1,3 +1,7 @@
+use alloc::borrow::ToOwned;
+use alloc::vec;
+use alloc::vec::Vec;
+use core::iter;
 use crate::read_u8;
 use error::{Error, Result};
 use marker::Marker;
@@ -253,7 +257,7 @@ fn derive_huffman_codes(bits: &[u8; 16]) -> Result<(Vec<u16>, Vec<u8>)> {
     let huffsize = bits.iter()
                        .enumerate()
                        .fold(Vec::new(), |mut acc, (i, &value)| {
-                           acc.extend(std::iter::repeat((i + 1) as u8).take(value as usize));
+                           acc.extend(iter::repeat((i + 1) as u8).take(value as usize));
                            acc
                        });
 

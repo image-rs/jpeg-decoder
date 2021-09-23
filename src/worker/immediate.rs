@@ -1,8 +1,10 @@
+use alloc::vec;
+use alloc::vec::Vec;
+use core::mem;
 use decoder::MAX_COMPONENTS;
 use error::Result;
 use idct::dequantize_and_idct_block;
-use std::mem;
-use std::sync::Arc;
+use alloc::sync::Arc;
 use parser::Component;
 use super::{RowData, Worker};
 
