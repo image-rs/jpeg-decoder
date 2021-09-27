@@ -1116,28 +1116,27 @@ fn color_convert_line_cmyk(data: &[Vec<u8>], output: &mut [u8]) {
     }
 }
 
+const FIXED_POINT_OFFSET: i32 = 20;
+const HALF: i32 = (1 << FIXED_POINT_OFFSET) / 2;
+
 // ITU-R BT.601
+// Based on libjpeg-turbo's jdcolext.c
 fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8) -> (u8, u8, u8) {
-    let y = y as f32;
-    let cb = cb as f32 - 128.0;
-    let cr = cr as f32 - 128.0;
+    let y = y as i32 * (1 << FIXED_POINT_OFFSET) + HALF;
+    let cb = cb as i32 - 128;
+    let cr = cr as i32 - 128;
 
-    let r = y                + 1.40200 * cr;
-    let g = y - 0.34414 * cb - 0.71414 * cr;
-    let b = y + 1.77200 * cb;
-
-    // TODO: Rust has defined float-to-int conversion as saturating,
-    // which is exactly what we need here. However, as of this writing
-    // it still hasn't reached the stable channel.
-    // This can be simplified to `(r + 0.5) as u8` without any clamping
-    // as soon as our MSRV reaches the version that has saturating casts.
-    // The version without explicit clamping is also noticeably faster.
-    (clamp_to_u8((r + 0.5) as i32) as u8,
-     clamp_to_u8((g + 0.5) as i32) as u8,
-     clamp_to_u8((b + 0.5) as i32) as u8)
+    let r = clamp_fixed_point(y                          + stbi_f2f(1.40200) * cr);
+    let g = clamp_fixed_point(y - stbi_f2f(0.34414) * cb - stbi_f2f(0.71414) * cr);
+    let b = clamp_fixed_point(y + stbi_f2f(1.77200) * cb                         );
+    (r, g, b)
 }
 
-fn clamp_to_u8(value: i32) -> i32 {
-    let value = cmp::max(value, 0);
-    cmp::min(value, 255)
+fn stbi_f2f(x: f32) -> i32 {
+    (x * ((1 << FIXED_POINT_OFFSET) as f32) + 0.5) as i32
 }
+
+fn clamp_fixed_point(value: i32) -> u8 {
+    (value >> FIXED_POINT_OFFSET).min(255).max(0) as u8
+}
+
