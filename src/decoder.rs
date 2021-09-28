@@ -15,6 +15,7 @@ use parser::{AdobeColorTransform, AppData, CodingProcess, Component, Dimensions,
 use upsampler::Upsampler;
 use std::io::Read;
 use worker::{RowData, PlatformWorker, Worker};
+use std::convert::TryInto;
 
 pub const MAX_COMPONENTS: usize = 4;
 
@@ -1016,8 +1017,7 @@ fn compute_image_parallel(components: &[Component],
          .with_max_len(1)
          .enumerate()
          .for_each(|(row, line)| {
-             upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
-             color_convert_func(line);
+             upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line, color_convert_func);
          });
 
     Ok(image)
@@ -1036,8 +1036,7 @@ fn compute_image_parallel(components: &[Component],
 
     for (row, line) in image.chunks_mut(line_size)
          .enumerate() {
-             upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line);
-             color_convert_func(line);
+             upsampler.upsample_and_interleave_row(&data, row, output_size.width as usize, line, color_convert_func);
          }
 
     Ok(image)
@@ -1046,13 +1045,13 @@ fn compute_image_parallel(components: &[Component],
 fn choose_color_convert_func(component_count: usize,
                              _is_jfif: bool,
                              color_transform: Option<AdobeColorTransform>)
-                             -> Result<fn(&mut [u8])> {
+                             -> Result<fn(&[Vec<u8>], &mut [u8])> {
     match component_count {
         3 => {
             // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
             // Unknown means the data is RGB, so we don't need to perform any color conversion on it.
             if color_transform == Some(AdobeColorTransform::Unknown) {
-                Ok(color_convert_line_null)
+                Ok(color_convert_line_rgb)
             }
             else {
                 Ok(color_convert_line_ycbcr)
@@ -1070,36 +1069,50 @@ fn choose_color_convert_func(component_count: usize,
     }
 }
 
-fn color_convert_line_null(_data: &mut [u8]) {
+fn color_convert_line_rgb(data: &[Vec<u8>], output: &mut [u8]) {
+    assert!(data.len() == 3, "wrong number of components for rgb");
+    let [r, g, b]: &[Vec<u8>; 3] = data.try_into().unwrap();
+    for (((chunk, r), g), b) in output.chunks_exact_mut(3).zip(r.iter()).zip(g.iter()).zip(b.iter()) {
+        chunk[0] = *r;
+        chunk[1] = *g;
+        chunk[2] = *b;
+    }
 }
 
-fn color_convert_line_ycbcr(data: &mut [u8]) {
-    for chunk in data.chunks_exact_mut(3) {
-        let (r, g, b) = ycbcr_to_rgb(chunk[0], chunk[1], chunk[2]);
+fn color_convert_line_ycbcr(data: &[Vec<u8>], output: &mut [u8]) {
+    assert!(data.len() == 3, "wrong number of components for ycbcr");
+    let [y, cb, cr]: &[_; 3] = data.try_into().unwrap();
+
+    for (((chunk, y), cb), cr) in output.chunks_exact_mut(3).zip(y.iter()).zip(cb.iter()).zip(cr.iter()) {
+        let (r, g, b) = ycbcr_to_rgb(*y, *cb, *cr);
         chunk[0] = r;
         chunk[1] = g;
         chunk[2] = b;
     }
 }
 
-fn color_convert_line_ycck(data: &mut [u8]) {
-    for chunk in data.chunks_exact_mut(4) {
-        let (r, g, b) = ycbcr_to_rgb(chunk[0], chunk[1], chunk[2]);
-        let k = chunk[3];
+fn color_convert_line_ycck(data: &[Vec<u8>], output: &mut [u8]) {
+    assert!(data.len() == 4, "wrong number of components for ycck");
+    let [c, m, y, k]: &[Vec<u8>; 4] = data.try_into().unwrap();
+
+    for ((((chunk, c), m), y), k) in output.chunks_exact_mut(4).zip(c.iter()).zip(m.iter()).zip(y.iter()).zip(k.iter()) {
+        let (r, g, b) = ycbcr_to_rgb(*c, *m, *y);
         chunk[0] = r;
         chunk[1] = g;
         chunk[2] = b;
+        chunk[3] = 255 - *k;
+    }
+}
+
+fn color_convert_line_cmyk(data: &[Vec<u8>], output: &mut [u8]) {
+    assert!(data.len() == 4, "wrong number of components for cmyk");
+    let [c, m, y, k]: &[Vec<u8>; 4] = data.try_into().unwrap();
+
+    for ((((chunk, c), m), y), k) in output.chunks_exact_mut(4).zip(c.iter()).zip(m.iter()).zip(y.iter()).zip(k.iter()) {
+        chunk[0] = 255 - c;
+        chunk[1] = 255 - m;
+        chunk[2] = 255 - y;
         chunk[3] = 255 - k;
-
-    }
-}
-
-fn color_convert_line_cmyk(data: &mut [u8]) {
-    for chunk in data.chunks_exact_mut(4) {
-        chunk[0] = 255 - chunk[0];
-        chunk[1] = 255 - chunk[1];
-        chunk[2] = 255 - chunk[2];
-        chunk[3] = 255 - chunk[3];
     }
 }
 
