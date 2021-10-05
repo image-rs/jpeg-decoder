@@ -1,8 +1,11 @@
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::fmt;
+use core::result;
 use std::error::Error as StdError;
-use std::fmt;
 use std::io::Error as IoError;
 
-pub type Result<T> = ::std::result::Result<T, Error>;
+pub type Result<T> = result::Result<T, Error>;
 
 /// An enumeration over JPEG features (currently) unsupported by this library.
 ///

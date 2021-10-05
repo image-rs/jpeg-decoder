@@ -29,12 +29,17 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
+extern crate core;
+extern crate alloc;
+
 #[cfg(feature="rayon")]
 extern crate rayon;
 
 pub use decoder::{Decoder, ImageInfo, PixelFormat};
 pub use error::{Error, UnsupportedFeature};
 pub use parser::CodingProcess;
+
+use std::io;
 
 mod decoder;
 mod error;
@@ -45,13 +50,13 @@ mod parser;
 mod upsampler;
 mod worker;
 
-fn read_u8<R: std::io::Read>(reader: &mut R) -> std::io::Result<u8> {
+fn read_u8<R: io::Read>(reader: &mut R) -> io::Result<u8> {
     let mut buf = [0];
     reader.read_exact(&mut buf)?;
     Ok(buf[0])
 }
 
-fn read_u16_from_be<R: std::io::Read>(reader: &mut R) -> std::io::Result<u16> {
+fn read_u16_from_be<R: io::Read>(reader: &mut R) -> io::Result<u16> {
     let mut buf = [0, 0];
     reader.read_exact(&mut buf)?;
     Ok(u16::from_be_bytes(buf))
