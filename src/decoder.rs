@@ -15,6 +15,9 @@ use worker::{RowData, PlatformWorker, Worker};
 
 pub const MAX_COMPONENTS: usize = 4;
 
+mod lossless;
+use self::lossless::compute_image_lossless;
+
 static UNZIGZAG: [u8; 64] = [
      0,  1,  8, 16,  9,  2,  3, 10,
     17, 24, 32, 25, 18, 11,  4,  5,
@@ -31,6 +34,8 @@ static UNZIGZAG: [u8; 64] = [
 pub enum PixelFormat {
     /// Luminance (grayscale), 8 bits
     L8,
+    /// Luminance (grayscale), 16 bits
+    L16,
     /// RGB, 8 bits per channel
     RGB24,
     /// CMYK, 8 bits per channel
@@ -42,6 +47,7 @@ impl PixelFormat {
     pub fn pixel_bytes(&self) -> usize {
         match self {
             PixelFormat::L8 => 1,
+            PixelFormat::L16 => 2,
             PixelFormat::RGB24 => 3,
             PixelFormat::CMYK32 => 4,
         }
@@ -57,6 +63,8 @@ pub struct ImageInfo {
     pub height: u16,
     /// The pixel format of the image.
     pub pixel_format: PixelFormat,
+    /// The coding process of the image.
+    pub coding_process: CodingProcess,
 }
 
 /// JPEG decoder
@@ -111,7 +119,11 @@ impl<R: Read> Decoder<R> {
         match self.frame {
             Some(ref frame) => {
                 let pixel_format = match frame.components.len() {
-                    1 => PixelFormat::L8,
+                    1 => match frame.precision {
+                        8 => PixelFormat::L8,
+                        16 => PixelFormat::L16,
+                        _ => panic!()
+                    },
                     3 => PixelFormat::RGB24,
                     4 => PixelFormat::CMYK32,
                     _ => panic!(),
@@ -121,6 +133,7 @@ impl<R: Read> Decoder<R> {
                     width: frame.output_size.width,
                     height: frame.output_size.height,
                     pixel_format: pixel_format,
+                    coding_process: frame.coding_process,
                 })
             },
             None => None,
@@ -209,7 +222,8 @@ impl<R: Read> Decoder<R> {
         let mut pending_marker = None;
         let mut worker = None;
         let mut scans_processed = 0;
-        let mut planes = vec![Vec::new(); self.frame.as_ref().map_or(0, |frame| frame.components.len())];
+        let mut planes = vec![Vec::<u8>::new(); self.frame.as_ref().map_or(0, |frame| frame.components.len())];
+        let mut planes_u16 = vec![Vec::<u16>::new(); self.frame.as_ref().map_or(0, |frame| frame.components.len())];
 
         loop {
             let marker = match pending_marker.take() {
@@ -234,13 +248,13 @@ impl<R: Read> Decoder<R> {
                     if frame.is_differential {
                         return Err(Error::Unsupported(UnsupportedFeature::Hierarchical));
                     }
-                    if frame.coding_process == CodingProcess::Lossless {
-                        return Err(Error::Unsupported(UnsupportedFeature::Lossless));
-                    }
                     if frame.entropy_coding == EntropyCoding::Arithmetic {
                         return Err(Error::Unsupported(UnsupportedFeature::ArithmeticEntropyCoding));
                     }
-                    if frame.precision != 8 {
+                    if frame.precision != 8 && frame.coding_process != CodingProcess::Lossless {
+                        return Err(Error::Unsupported(UnsupportedFeature::SamplePrecision(frame.precision)));
+                    }
+                    if frame.precision != 8 && frame.precision != 16 {
                         return Err(Error::Unsupported(UnsupportedFeature::SamplePrecision(frame.precision)));
                     }
                     if component_count != 1 && component_count != 3 && component_count != 4 {
@@ -257,6 +271,7 @@ impl<R: Read> Decoder<R> {
                     }
 
                     planes = vec![Vec::new(); component_count];
+                    planes_u16 = vec![Vec::new(); component_count];
                 },
 
                 // Scan header
@@ -278,46 +293,57 @@ impl<R: Read> Decoder<R> {
                         }).collect();
                     }
 
-                    // This was previously buggy, so let's explain the log here a bit. When a
-                    // progressive frame is encoded then the coefficients (DC, AC) of each
-                    // component (=color plane) can be split amongst scans. In particular it can
-                    // happen or at least occurs in the wild that a scan contains coefficient 0 of
-                    // all components. If now one but not all components had all other coefficients
-                    // delivered in previous scans then such a scan contains all components but
-                    // completes only some of them! (This is technically NOT permitted for all
-                    // other coefficients as the standard dictates that scans with coefficients
-                    // other than the 0th must only contain ONE component so we would either
-                    // complete it or not. We may want to detect and error in case more component
-                    // are part of a scan than allowed.) What a weird edge case.
-                    //
-                    // But this means we track precisely which components get completed here.
-                    let mut finished = [false; MAX_COMPONENTS];
+                    
+                    if frame.coding_process == CodingProcess::Lossless {
+                        let (marker, data) = self.decode_scan_lossless(&frame, &scan)?;
 
-                    if scan.successive_approximation_low == 0 {
-                        for (&i, component_finished) in scan.component_indices.iter().zip(&mut finished) {
-                            if self.coefficients_finished[i] == !0 {
-                                continue;
-                            }
-                            for j in scan.spectral_selection.clone() {
-                                self.coefficients_finished[i] |= 1 << j;
-                            }
-                            if self.coefficients_finished[i] == !0 {
-                                *component_finished = true;
-                            }
-                        }
-                    }
-
-                    let (marker, data) = self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), &finished)?;
-
-                    if let Some(data) = data {
                         for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
-                            if self.coefficients_finished[i] == !0 {
-                                planes[i] = plane;
+                            planes_u16[i] = plane;
+                        }
+                        pending_marker = marker;
+                    }
+                    else {
+                        // This was previously buggy, so let's explain the log here a bit. When a
+                        // progressive frame is encoded then the coefficients (DC, AC) of each
+                        // component (=color plane) can be split amongst scans. In particular it can
+                        // happen or at least occurs in the wild that a scan contains coefficient 0 of
+                        // all components. If now one but not all components had all other coefficients
+                        // delivered in previous scans then such a scan contains all components but
+                        // completes only some of them! (This is technically NOT permitted for all
+                        // other coefficients as the standard dictates that scans with coefficients
+                        // other than the 0th must only contain ONE component so we would either
+                        // complete it or not. We may want to detect and error in case more component
+                        // are part of a scan than allowed.) What a weird edge case.
+                        //
+                        // But this means we track precisely which components get completed here.
+                        let mut finished = [false; MAX_COMPONENTS];
+
+                        if scan.successive_approximation_low == 0 {
+                            for (&i, component_finished) in scan.component_indices.iter().zip(&mut finished) {
+                                if self.coefficients_finished[i] == !0 {
+                                    continue;
+                                }
+                                for j in scan.spectral_selection.clone() {
+                                    self.coefficients_finished[i] |= 1 << j;
+                                }
+                                if self.coefficients_finished[i] == !0 {
+                                    *component_finished = true;
+                                }
                             }
                         }
+
+                        let (marker, data) = self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), &finished)?;
+
+                        if let Some(data) = data {
+                            for (i, plane) in data.into_iter().enumerate().filter(|&(_, ref plane)| !plane.is_empty()) {
+                                if self.coefficients_finished[i] == !0 {
+                                    planes[i] = plane;
+                                }
+                            }
+                        }
+                        pending_marker = marker;
                     }
 
-                    pending_marker = marker;
                     scans_processed += 1;
                 },
 
@@ -465,7 +491,12 @@ impl<R: Read> Decoder<R> {
             }
         }
 
-        compute_image(&frame.components, planes, frame.output_size, self.is_jfif, self.color_transform)
+        if frame.coding_process == CodingProcess::Lossless {
+            compute_image_lossless(&frame, planes_u16)
+        }
+        else{
+            compute_image(&frame.components, planes, frame.output_size, self.is_jfif, self.color_transform)
+        }
     }
 
     fn read_marker(&mut self) -> Result<Marker> {
@@ -963,6 +994,7 @@ fn compute_image(components: &[Component],
         compute_image_parallel(components, data, output_size, is_jfif, color_transform)
     }
 }
+
 
 #[cfg(feature="rayon")]
 fn compute_image_parallel(components: &[Component],

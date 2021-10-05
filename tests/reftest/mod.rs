@@ -49,36 +49,55 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
     }
 
     let ref_file = File::open(ref_path).unwrap();
-    let (ref_info, mut ref_reader) = png::Decoder::new(ref_file).read_info().expect("png failed to read info");
+    let mut decoder = png::Decoder::new(ref_file);
+
+    if pixel_format == jpeg::PixelFormat::L16 {
+        // disable the default 8bit output of png v0.16.8 (fixed in master branch of png)
+        decoder.set_transformations(png::Transformations::EXPAND);
+    }
+    
+    let (ref_info, mut ref_reader) = decoder.read_info().expect("png failed to read info");
 
     assert_eq!(ref_info.width, info.width as u32);
     assert_eq!(ref_info.height, info.height as u32);
-    assert_eq!(ref_info.bit_depth, png::BitDepth::Eight);
 
     let mut ref_data = vec![0; ref_info.buffer_size()];
     ref_reader.next_frame(&mut ref_data).expect("png decode failed");
     let mut ref_pixel_format = ref_info.color_type;
 
-    if ref_pixel_format == png::ColorType::RGBA {
+    if ref_pixel_format == png::ColorType::RGBA { 
         ref_data = rgba_to_rgb(&ref_data);
         ref_pixel_format = png::ColorType::RGB;
     }
 
-    match pixel_format {
-        jpeg::PixelFormat::L8 => assert_eq!(ref_pixel_format, png::ColorType::Grayscale),
-        jpeg::PixelFormat::RGB24 => assert_eq!(ref_pixel_format, png::ColorType::RGB),
+    let (refdata_16, data_u16) : (Vec<u16>, Vec<u16>) = match pixel_format {
+        jpeg::PixelFormat::L8 => {
+            assert_eq!(ref_pixel_format, png::ColorType::Grayscale);
+            assert_eq!(ref_info.bit_depth, png::BitDepth::Eight);
+            (ref_data.iter().map(|x| *x as u16).collect(), data.iter().map(|x| *x as u16).collect())
+        },
+        jpeg::PixelFormat::L16 => {
+            assert_eq!(ref_pixel_format, png::ColorType::Grayscale);
+            assert_eq!(ref_info.bit_depth, png::BitDepth::Sixteen);
+            (ref_data.chunks_exact(2).map(|a| u16::from_be_bytes([a[0],a[1]])).collect(),
+            data.chunks_exact(2).map(|a| u16::from_ne_bytes([a[0],a[1]])).collect())
+        },
+        jpeg::PixelFormat::RGB24 => {
+            assert_eq!(ref_pixel_format, png::ColorType::RGB);
+            assert_eq!(ref_info.bit_depth, png::BitDepth::Eight);
+            (ref_data.iter().map(|x| *x as u16).collect(), data.iter().map(|x| *x as u16).collect())
+        },
         _ => panic!(),
-    }
+    };
 
-    assert_eq!(data.len(), ref_data.len());
-
+    assert_eq!(data_u16.len(), refdata_16.len());
     let mut max_diff = 0;
-    let pixels: Vec<u8> = data.iter().zip(ref_data.iter()).map(|(&a, &b)| {
-        let diff = (a as i16 - b as i16).abs();
+    let pixels: Vec<u8> = data_u16.iter().zip(refdata_16.iter()).map(|(&a, &b)| {
+        let diff = (a as isize - b as isize).abs();
         max_diff = cmp::max(diff, max_diff);
 
         // FIXME: Only a diff of 1 should be allowed?
-        if diff <= 2 {
+        if (info.coding_process != jpeg::CodingProcess::Lossless && diff <= 2) || diff == 0  {
             // White for correct
             0xFF
         } else {

@@ -34,6 +34,7 @@ extern crate rayon;
 
 pub use decoder::{Decoder, ImageInfo, PixelFormat};
 pub use error::{Error, UnsupportedFeature};
+pub use parser::CodingProcess;
 
 mod decoder;
 mod error;

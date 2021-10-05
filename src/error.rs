@@ -11,11 +11,9 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 pub enum UnsupportedFeature {
     /// Hierarchical JPEG.
     Hierarchical,
-    /// Lossless JPEG.
-    Lossless,
     /// JPEG using arithmetic entropy coding instead of Huffman coding.
     ArithmeticEntropyCoding,
-    /// Sample precision in bits. 8 bit sample precision is what is currently supported.
+    /// Sample precision in bits. 8 bit sample precision is what is currently supported in non-lossless coding process.
     SamplePrecision(u8),
     /// Number of components in an image. 1, 3 and 4 components are currently supported.
     ComponentCount(u8),

@@ -18,12 +18,30 @@ pub enum EntropyCoding {
     Arithmetic,
 }
 
+/// Represents the coding process of an image.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CodingProcess {
+    /// Sequential Discrete Cosine Transform
     DctSequential,
+    /// Progressive Discrete Cosine Transform
     DctProgressive,
+    /// Lossless
     Lossless,
 }
+
+// Table H.1
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Predictor {
+    NoPrediction,
+    Ra,
+    Rb,
+    Rc,
+    RaRbRc1, // Ra + Rb - Rc
+    RaRbRc2, // Ra + ((Rb - Rc) >> 1)
+    RaRbRc3, // Rb + ((Ra - Rb) >> 1)
+    RaRb,    // (Ra + Rb)/2
+}
+
 
 #[derive(Clone)]
 pub struct FrameInfo {
@@ -46,8 +64,10 @@ pub struct ScanInfo {
     pub ac_table_indices: Vec<usize>,
 
     pub spectral_selection: Range<u8>,
+    pub predictor_selection: Predictor, // for lossless
     pub successive_approximation_high: u8,
     pub successive_approximation_low: u8,
+    pub point_transform: u8, // for lossless
 }
 
 #[derive(Clone, Debug)]
@@ -167,7 +187,7 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
             }
         },
         _ => {
-            if coding_process != CodingProcess::Lossless {
+            if coding_process != CodingProcess::Lossless || precision > 16 {
                 return Err(Error::Format(format!("invalid precision {} in frame header", precision)))
             }
         },
@@ -372,6 +392,21 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
     let successive_approximation_high = byte >> 4;
     let successive_approximation_low = byte & 0x0f;
 
+    let predictor_selection = match spectral_selection_start {
+        0 => Predictor::NoPrediction,
+        1 => Predictor::Ra,
+        2 => Predictor::Rb,
+        3 => Predictor::Rc,
+        4 => Predictor::RaRbRc1,
+        5 => Predictor::RaRbRc2,
+        6 => Predictor::RaRbRc3,
+        7 => Predictor::RaRb,
+        _ => {
+            return Err(Error::Format(format!("invalid predictor selection value: {}", spectral_selection_start)));
+        }
+    };
+    let point_transform = successive_approximation_low;
+
     if frame.coding_process == CodingProcess::DctProgressive {
         if spectral_selection_end > 63 || spectral_selection_start > spectral_selection_end ||
                 (spectral_selection_start == 0 && spectral_selection_end != 0) {
@@ -392,6 +427,14 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
             return Err(Error::Format("successive approximation scan with more than one bit of improvement".to_owned()));
         }
     }
+    else if frame.coding_process == CodingProcess::Lossless {
+        if spectral_selection_end != 0 {
+            return Err(Error::Format("spectral selection end shall be zero in lossless scan".to_owned()));
+        }
+        if successive_approximation_high != 0 {
+            return Err(Error::Format("successive approximation high shall be zero in lossless scan".to_owned()));
+        }
+    }
     else {
         if spectral_selection_start != 0 || spectral_selection_end != 63 {
             return Err(Error::Format("spectral selection is not allowed in non-progressive scan".to_owned()));
@@ -409,8 +452,10 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
             start: spectral_selection_start,
             end: spectral_selection_end + 1,
         },
+        predictor_selection,
         successive_approximation_high: successive_approximation_high,
         successive_approximation_low: successive_approximation_low,
+        point_transform,
     })
 }
 
