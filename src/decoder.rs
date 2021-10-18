@@ -92,6 +92,9 @@ pub struct Decoder<R> {
     coefficients: Vec<Vec<i16>>,
     // Bitmask of which coefficients has been completely decoded.
     coefficients_finished: [u64; MAX_COMPONENTS],
+
+    // Maximum allowed size of decoded image buffer
+    decoding_buffer_size_limit: usize,
 }
 
 impl<R: Read> Decoder<R> {
@@ -111,7 +114,13 @@ impl<R: Read> Decoder<R> {
             exif_data: None,
             coefficients: Vec::new(),
             coefficients_finished: [0; MAX_COMPONENTS],
+            decoding_buffer_size_limit: usize::MAX,
         }
+    }
+
+    /// Set maximum buffer size allowed for decoded images
+    pub fn set_max_decoding_buffer_size(&mut self, max: usize) {
+        self.decoding_buffer_size_limit = max;
     }
 
     /// Returns metadata about the image.
@@ -454,6 +463,10 @@ impl<R: Read> Decoder<R> {
         }
 
         let frame = self.frame.as_ref().unwrap();
+
+        if frame.output_size.width as u64 * frame.output_size.height as u64 * frame.components.len() as u64 > self.decoding_buffer_size_limit as u64 {
+            return Err(Error::Format("size of decoded image exceeds maximum allowed size".to_owned()));
+        }
 
         // If we're decoding a progressive jpeg and a component is unfinished, render what we've got
         if frame.coding_process == CodingProcess::DctProgressive && self.coefficients.len() == frame.components.len() {
