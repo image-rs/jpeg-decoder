@@ -145,7 +145,7 @@ impl<R: Read> Decoder<R> {
 
     /// Returns raw exif data, starting at the TIFF header, if the image contains any.
     ///
-    /// The returned value will be `None` until a call to `decode` has returned `Ok`.    
+    /// The returned value will be `None` until a call to `decode` has returned `Ok`.
     pub fn exif_data(&self) -> Option<&[u8]> {
         self.exif_data.as_ref().map(|v| v.as_slice())
     }
@@ -296,7 +296,7 @@ impl<R: Read> Decoder<R> {
                         }).collect();
                     }
 
-                    
+
                     if frame.coding_process == CodingProcess::Lossless {
                         let (marker, data) = self.decode_scan_lossless(&frame, &scan)?;
 
@@ -1095,11 +1095,8 @@ fn color_convert_line_ycck(data: &mut [u8]) {
 }
 
 fn color_convert_line_cmyk(data: &mut [u8]) {
-    for chunk in data.chunks_exact_mut(4) {
-        chunk[0] = 255 - chunk[0];
-        chunk[1] = 255 - chunk[1];
-        chunk[2] = 255 - chunk[2];
-        chunk[3] = 255 - chunk[3];
+    for i in 0..data.len() {
+        data[i] = 255 - data[i];
     }
 }
 
