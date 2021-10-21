@@ -243,10 +243,10 @@ impl HuffmanTable {
 
         Ok(HuffmanTable {
             values: values.to_vec(),
-            delta: delta,
-            maxcode: maxcode,
-            lut: lut,
-            ac_lut: ac_lut,
+            delta,
+            maxcode,
+            lut,
+            ac_lut,
         })
     }
 }

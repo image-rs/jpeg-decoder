@@ -99,7 +99,7 @@ impl<R: Read> Decoder<R> {
     /// Creates a new `Decoder` using the reader `reader`.
     pub fn new(reader: R) -> Decoder<R> {
         Decoder {
-            reader: reader,
+            reader,
             frame: None,
             dc_huffman_tables: vec![None, None, None, None],
             ac_huffman_tables: vec![None, None, None, None],
@@ -136,7 +136,7 @@ impl<R: Read> Decoder<R> {
                 Some(ImageInfo {
                     width: frame.output_size.width,
                     height: frame.output_size.height,
-                    pixel_format: pixel_format,
+                    pixel_format,
                     coding_process: frame.coding_process,
                 })
             },
@@ -148,7 +148,7 @@ impl<R: Read> Decoder<R> {
     ///
     /// The returned value will be `None` until a call to `decode` has returned `Ok`.    
     pub fn exif_data(&self) -> Option<&[u8]> {
-        self.exif_data.as_ref().map(|v| v.as_slice())
+        self.exif_data.as_deref()
     }
 
     /// Returns the embeded icc profile if the image contains one.
@@ -373,13 +373,13 @@ impl<R: Read> Decoder<R> {
                     let is_baseline = self.frame.as_ref().map(|frame| frame.is_baseline);
                     let (dc_tables, ac_tables) = parse_dht(&mut self.reader, is_baseline)?;
 
-                    let current_dc_tables = mem::replace(&mut self.dc_huffman_tables, vec![]);
+                    let current_dc_tables = mem::take(&mut self.dc_huffman_tables);
                     self.dc_huffman_tables = dc_tables.into_iter()
                                                       .zip(current_dc_tables.into_iter())
                                                       .map(|(a, b)| a.or(b))
                                                       .collect();
 
-                    let current_ac_tables = mem::replace(&mut self.ac_huffman_tables, vec![]);
+                    let current_ac_tables = mem::take(&mut self.ac_huffman_tables);
                     self.ac_huffman_tables = ac_tables.into_iter()
                                                       .zip(current_ac_tables.into_iter())
                                                       .map(|(a, b)| a.or(b))
@@ -496,7 +496,7 @@ impl<R: Read> Decoder<R> {
         }
 
         if frame.coding_process == CodingProcess::Lossless {
-            compute_image_lossless(&frame, planes_u16)
+            compute_image_lossless(frame, planes_u16)
         }
         else{
             compute_image(&frame.components, planes, frame.output_size, self.is_jfif, self.color_transform)

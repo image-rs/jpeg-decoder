@@ -251,9 +251,9 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
         }
 
         components.push(Component {
-            identifier: identifier,
-            horizontal_sampling_factor: horizontal_sampling_factor,
-            vertical_sampling_factor: vertical_sampling_factor,
+            identifier,
+            horizontal_sampling_factor,
+            vertical_sampling_factor,
             quantization_table_index: quantization_table_index as usize,
             dct_scale: 8,
             size: Dimensions {width: 0, height: 0},
@@ -264,15 +264,15 @@ pub fn parse_sof<R: Read>(reader: &mut R, marker: Marker) -> Result<FrameInfo> {
     let mcu_size = update_component_sizes(Dimensions { width, height }, &mut components)?;
 
     Ok(FrameInfo {
-        is_baseline: is_baseline,
-        is_differential: is_differential,
-        coding_process: coding_process,
-        entropy_coding: entropy_coding,
-        precision: precision,
+        is_baseline,
+        is_differential,
+        coding_process,
+        entropy_coding,
+        precision,
         image_size: Dimensions { width, height },
         output_size: Dimensions { width, height },
         mcu_size,
-        components: components,
+        components,
     })
 }
 
@@ -451,16 +451,16 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
     }
 
     Ok(ScanInfo {
-        component_indices: component_indices,
-        dc_table_indices: dc_table_indices,
-        ac_table_indices: ac_table_indices,
+        component_indices,
+        dc_table_indices,
+        ac_table_indices,
         spectral_selection: Range {
             start: spectral_selection_start,
             end: spectral_selection_end + 1,
         },
         predictor_selection,
-        successive_approximation_high: successive_approximation_high,
-        successive_approximation_low: successive_approximation_low,
+        successive_approximation_high,
+        successive_approximation_low,
         point_transform,
     })
 }
@@ -606,10 +606,10 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
                 bytes_read = buffer.len();
 
                 // http://www.w3.org/Graphics/JPEG/jfif3.pdf
-                if &buffer[0 .. 5] == &[b'J', b'F', b'I', b'F', b'\0'] {
+                if buffer[0..5] == *b"JFIF\0" {
                     result = Some(AppData::Jfif);
                 // https://sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#AVI1
-                } else if &buffer[0 .. 5] == &[b'A', b'V', b'I', b'1', b'\0'] {
+                } else if buffer[0..5] == *b"AVI1\0" {
                     result = Some(AppData::Avi1);
                 }
             }
@@ -621,13 +621,13 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
                 reader.read_exact(&mut buffer)?;
                 bytes_read = buffer.len();
 
-            // https://web.archive.org/web/20190624045241if_/http://www.cipa.jp:80/std/documents/e/DC-008-Translation-2019-E.pdf
-            // 4.5.4 Basic Structure of JPEG Compressed Data
-            if &buffer == b"Exif\x00\x00" {
-                let mut data = vec![0; length - bytes_read];
-                reader.read_exact(&mut data)?;
-                bytes_read += data.len();
-                result = Some(AppData::Exif(data));
+                // https://web.archive.org/web/20190624045241if_/http://www.cipa.jp:80/std/documents/e/DC-008-Translation-2019-E.pdf
+                // 4.5.4 Basic Structure of JPEG Compressed Data
+                if buffer == *b"Exif\x00\x00" {
+                    let mut data = vec![0; length - bytes_read];
+                    reader.read_exact(&mut data)?;
+                    bytes_read += data.len();
+                    result = Some(AppData::Exif(data));
                 }
             }
         }
@@ -639,7 +639,7 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
 
                 // http://www.color.org/ICC_Minor_Revision_for_Web.pdf
                 // B.4 Embedding ICC profiles in JFIF files
-                if &buffer[0..12] == b"ICC_PROFILE\0" {
+                if buffer[0..12] == *b"ICC_PROFILE\0" {
                     let mut data = vec![0; length - bytes_read];
                     reader.read_exact(&mut data)?;
                     bytes_read += data.len();
@@ -658,7 +658,7 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
                 bytes_read = buffer.len();
 
                 // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-                if &buffer[0 .. 6] == &[b'A', b'd', b'o', b'b', b'e', b'\0'] {
+                if buffer[0 .. 6] == *b"Adobe\0" {
                     let color_transform = match buffer[11] {
                         0 => AdobeColorTransform::Unknown,
                         1 => AdobeColorTransform::YCbCr,

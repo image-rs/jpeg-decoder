@@ -55,7 +55,7 @@ impl ImmediateWorker {
         self.offsets[index] += block_count * component.dct_scale * component.dct_scale;
     }
     pub fn get_result_immediate(&mut self, index: usize) -> Vec<u8> {
-        mem::replace(&mut self.results[index], Vec::new())
+        mem::take(&mut self.results[index])
     }
 }
 
