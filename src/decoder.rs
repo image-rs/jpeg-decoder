@@ -980,15 +980,13 @@ fn compute_image(components: &[Component],
         // if the image width is a multiple of the block size,
         // then we don't have to move bytes in the decoded data
         if usize::from(output_size.width) != line_stride {
-            let mut buffer = vec![0u8; width];
             // The first line already starts at index 0, so we need to move only lines 1..height
+            // We move from the top down because all lines are being moved backwards.
             for y in 1..height {
                 let destination_idx = y * width;
                 let source_idx = y * line_stride;
-                // We could use copy_within, but we need to support old rust versions
-                buffer.copy_from_slice(&decoded[source_idx..][..width]);
-                let destination = &mut decoded[destination_idx..][..width];
-                destination.copy_from_slice(&buffer);
+                let end = source_idx + width;
+                decoded.copy_within(source_idx..end, destination_idx);
             }
         }
         decoded.resize(size, 0);
