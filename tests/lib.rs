@@ -43,6 +43,81 @@ fn read_icc_profile() {
     assert_eq!(&profile[36..40], b"acsp");
 }
 
+// Test if chunks are concatenated in the correct order
+#[test]
+fn read_icc_profile_random_order() {
+    let path = Path::new("tests")
+        .join("icc")
+        .join("icc_chunk_order.jpeg");
+
+    let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
+    decoder.decode().unwrap();
+
+    let profile = decoder.icc_profile().unwrap();
+
+    assert_eq!(profile.len(), 254);
+
+    for i in 1..=254 {
+        assert_eq!(profile[i - 1], i as u8);
+    }
+}
+
+// Check if ICC profiles with invalid chunk number 0 are discarded
+#[test]
+fn read_icc_profile_seq_no_0() {
+    let path = Path::new("tests")
+        .join("icc")
+        .join("icc_chunk_seq_no_0.jpeg");
+
+    let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
+    decoder.decode().unwrap();
+
+    let profile = decoder.icc_profile();
+    assert!(profile.is_none());
+}
+
+// Check if ICC profiles with multiple chunks with the same number are discarded
+#[test]
+fn read_icc_profile_double_seq_no() {
+    let path = Path::new("tests")
+        .join("icc")
+        .join("icc_chunk_double_seq_no.jpeg");
+
+    let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
+    decoder.decode().unwrap();
+
+    let profile = decoder.icc_profile();
+    assert!(profile.is_none());
+}
+
+// Check if ICC profiles with mismatching number of chunks and total chunk count are discarded
+#[test]
+fn read_icc_profile_chunk_count_mismatch() {
+    let path = Path::new("tests")
+        .join("icc")
+        .join("icc_chunk_count_mismatch.jpeg");
+
+    let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
+    decoder.decode().unwrap();
+
+    let profile = decoder.icc_profile();
+    assert!(profile.is_none());
+}
+
+// Check if ICC profiles with missing chunk are discarded
+#[test]
+fn read_icc_profile_missing_chunk() {
+    let path = Path::new("tests")
+        .join("icc")
+        .join("icc_missing_chunk.jpeg");
+
+    let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
+    decoder.decode().unwrap();
+
+    let profile = decoder.icc_profile();
+    assert!(profile.is_none());
+}
+
 #[test]
 fn read_exif_data() {
     let path = Path::new("tests")

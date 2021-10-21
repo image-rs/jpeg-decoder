@@ -154,7 +154,7 @@ impl<R: Read> Decoder<R> {
     pub fn icc_profile(&self) -> Option<Vec<u8>> {
         let mut marker_present: [Option<&IccChunk>; 256] = [None; 256];
         let num_markers = self.icc_markers.len();
-        if num_markers == 0 && num_markers < 256 {
+        if num_markers == 0 || num_markers >= 255 {
             return None;
         }
         // check the validity of the markers
