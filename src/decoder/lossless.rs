@@ -196,7 +196,7 @@ fn predict(
     iy: usize,
     restart: bool,
 ) -> i32 {
-    let result = if (ix == 0 && iy == 0) || restart {
+    if (ix == 0 && iy == 0) || restart {
         // start of first line or restart
         1 << (input_precision - point_transform - 1)
     } else if iy == 0 {
@@ -217,8 +217,7 @@ fn predict(
             Predictor::RaRbRc3 => rb + ((ra - rc) >> 1),
             Predictor::RaRb => (ra + rb) / 2,
         }
-    };
-    result
+    }
 }
 
 pub fn compute_image_lossless(frame: &FrameInfo, mut data: Vec<Vec<u16>>) -> Result<Vec<u8>> {
@@ -250,7 +249,7 @@ fn convert_to_u8(frame: &FrameInfo, data: Vec<u16>) -> Vec<u8> {
         data.iter().map(|x| *x as u8).collect()
     } else {
         // we output native endian, which is the standard for image-rs
-        let out: Vec<[u8; 2]> = data.iter().map(|x| x.to_ne_bytes()).collect();
-        out.iter().flatten().map(|x| *x).collect()
+        let ne_bytes: Vec<_> = data.iter().map(|x| x.to_ne_bytes()).collect();
+        ne_bytes.concat()
     }
 }

@@ -1,6 +1,13 @@
 // Malicious JPEG files can cause operations in the idct to overflow.
 // One example is tests/crashtest/images/imagetestsuite/b0b8914cc5f7a6eff409f16d8cc236c5.jpg
 // That's why wrapping operators are needed.
+
+// Note: we have many values that are straight from a reference.
+// Do not warn on them or try to automatically change them.
+#![allow(clippy::excessive_precision)]
+// Note: consistency for unrolled, scaled offset loops
+#![allow(clippy::erasing_op)]
+#![allow(clippy::identity_op)]
 use crate::parser::Dimensions;
 use core::{convert::TryFrom, num::Wrapping};
 

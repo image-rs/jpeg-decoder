@@ -1,5 +1,7 @@
 // Table B.1
 #[derive(Clone, Copy, Debug, PartialEq)]
+// Note: Established names.
+#[allow(clippy::upper_case_acronyms)]
 pub enum Marker {
     /// Start Of Frame markers
     ///
@@ -56,10 +58,7 @@ pub enum Marker {
 impl Marker {
     pub fn has_length(self) -> bool {
         use self::Marker::*;
-        match self {
-            RST(..) | SOI | EOI | TEM => false,
-            _ => true,
-        }
+        ! matches!(self, RST(..) | SOI | EOI | TEM)
     }
 
     pub fn from_u8(n: u8) -> Option<Marker> {
