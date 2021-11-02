@@ -939,19 +939,21 @@ fn refine_non_zeroes<R: Read>(reader: &mut R,
     for i in range {
         let index = UNZIGZAG[i as usize] as usize;
 
-        if coefficients[index] == 0 {
+        let coefficient = &mut coefficients[index];
+
+        if *coefficient == 0 {
             if zero_run_length == 0 {
                 return Ok(i);
             }
 
             zero_run_length -= 1;
         }
-        else if huffman.get_bits(reader, 1)? == 1 && coefficients[index] & bit == 0 {
-            if coefficients[index] > 0 {
-                coefficients[index] += bit;
+        else if huffman.get_bits(reader, 1)? == 1 && *coefficient & bit == 0 {
+            if *coefficient > 0 {
+                *coefficient = coefficient.checked_add(bit).ok_or_else(|| Error::Format("Coefficient overflow".to_owned()))?;
             }
             else {
-                coefficients[index] -= bit;
+                *coefficient = coefficient.checked_sub(bit).ok_or_else(|| Error::Format("Coefficient overflow".to_owned()))?;
             }
         }
     }
