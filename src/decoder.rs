@@ -582,12 +582,12 @@ impl<R: Read> Decoder<R> {
         let mut mcus_left_until_restart = self.restart_interval;
         let mut expected_rst_num = 0;
         let mut eob_run = 0;
-        let mut mcu_row_coefficients = Vec::with_capacity(components.len());
+        let mut mcu_row_coefficients = vec![vec![]; components.len()];
 
         if !is_progressive {
-            for (_, component) in components.iter().enumerate().filter(|&(i, _)| finished[i]) {
+            for (i, component) in components.iter().enumerate().filter(|&(i, _)| finished[i]) {
                 let coefficients_per_mcu_row = component.block_size.width as usize * component.vertical_sampling_factor as usize * 64;
-                mcu_row_coefficients.push(vec![0i16; coefficients_per_mcu_row]);
+                mcu_row_coefficients[i] = vec![0i16; coefficients_per_mcu_row];
             }
         }
 
