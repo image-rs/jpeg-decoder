@@ -2,10 +2,12 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## Unreleased
+## v0.2.0 (2021-12-04)
 
 - Added Lossless JPEG support
-- Minimum supported rust version changed to 1.36
+- Added support for EXIF and ICC data
+- Minimum supported rust version changed to 1.48 and no formal policy for bump releases for now
+- Minor stability fixes on invalid jpeg images
 
 ## v0.1.22 (2021-01-27)
 
