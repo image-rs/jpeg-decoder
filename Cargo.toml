@@ -1,7 +1,7 @@
 [package]
 name = "jpeg-decoder"
 version = "0.2.0"
-authors = ["Ulf Nilsson <kaksmet@gmail.com>"]
+authors = ["The image-rs Developers"]
 description = "JPEG decoder"
 documentation = "https://docs.rs/jpeg-decoder"
 repository = "https://github.com/image-rs/jpeg-decoder"
