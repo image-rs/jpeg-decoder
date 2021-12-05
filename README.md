@@ -13,7 +13,7 @@ A Rust library for decoding JPEGs.
 Cargo.toml:
 ```toml
 [dependencies]
-jpeg-decoder = "0.1"
+jpeg-decoder = "0.2"
 ```
 
 main.rs:
@@ -32,4 +32,7 @@ fn main() {
 ```
 
 ## Requirements
-This crate compiles only with rust >= 1.36.
+
+This crate compiles with rust >= 1.48. Minimum Supported Rust Version:
+- All releases `0.1.*` compile with rust >= 1.36.
+- The releases `0.2.*` may bump Rust Version requirements (TBD).
