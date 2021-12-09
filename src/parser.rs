@@ -388,29 +388,22 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
         return Err(Error::Format("scan with more than one component and more than 10 blocks per MCU".to_owned()));
     }
 
+    // Also utilized as 'Predictor' in lossless coding, as MEAN in JPEG-LS etc.
     let spectral_selection_start = read_u8(reader)?;
+    // Also utilized as ILV parameter in JPEG-LS.
     let mut spectral_selection_end = read_u8(reader)?;
 
     let byte = read_u8(reader)?;
     let successive_approximation_high = byte >> 4;
     let successive_approximation_low = byte & 0x0f;
 
-    let predictor_selection = match spectral_selection_start {
-        0 => Predictor::NoPrediction,
-        1 => Predictor::Ra,
-        2 => Predictor::Rb,
-        3 => Predictor::Rc,
-        4 => Predictor::RaRbRc1,
-        5 => Predictor::RaRbRc2,
-        6 => Predictor::RaRbRc3,
-        7 => Predictor::RaRb,
-        _ => {
-            return Err(Error::Format(format!("invalid predictor selection value: {}", spectral_selection_start)));
-        }
-    };
+    // The Differential Pulse-Mode prediction used (similar to png). Only utilized in Lossless
+    // coding. Don't confuse with the JPEG-LS parameter coded using the same scan info portion.
+    let predictor_selection;
     let point_transform = successive_approximation_low;
 
     if frame.coding_process == CodingProcess::DctProgressive {
+        predictor_selection = Predictor::NoPrediction;
         if spectral_selection_end > 63 || spectral_selection_start > spectral_selection_end ||
                 (spectral_selection_start == 0 && spectral_selection_end != 0) {
             return Err(Error::Format(format!("invalid spectral selection parameters: ss={}, se={}", spectral_selection_start, spectral_selection_end)));
@@ -437,8 +430,22 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
         if successive_approximation_high != 0 {
             return Err(Error::Format("successive approximation high shall be zero in lossless scan".to_owned()));
         }
+        predictor_selection = match spectral_selection_start {
+            0 => Predictor::NoPrediction,
+            1 => Predictor::Ra,
+            2 => Predictor::Rb,
+            3 => Predictor::Rc,
+            4 => Predictor::RaRbRc1,
+            5 => Predictor::RaRbRc2,
+            6 => Predictor::RaRbRc3,
+            7 => Predictor::RaRb,
+            _ => {
+                return Err(Error::Format(format!("invalid predictor selection value: {}", spectral_selection_start)));
+            },
+        };
     }
     else {
+        predictor_selection = Predictor::NoPrediction;
         if spectral_selection_end == 0 {
             spectral_selection_end = 63;
         }
