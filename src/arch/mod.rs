@@ -1,3 +1,5 @@
+#![allow(unsafe_code)]
+
 mod ssse3;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

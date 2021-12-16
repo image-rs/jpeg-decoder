@@ -5,7 +5,6 @@ use std::arch::x86_64::*;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "ssse3")]
-#[allow(unsafe_code)]
 unsafe fn idct8(data: &mut [__m128i; 8]) {
     // The fixed-point constants here are obtained by taking the fractional part of the constants
     // from the non-SIMD implementation and scaling them up by 1<<15. This is because
@@ -83,7 +82,6 @@ unsafe fn idct8(data: &mut [__m128i; 8]) {
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "ssse3")]
-#[allow(unsafe_code)]
 unsafe fn transpose8(data: &mut [__m128i; 8]) {
     let d01l = _mm_unpacklo_epi16(data[0], data[1]);
     let d23l = _mm_unpacklo_epi16(data[2], data[3]);
@@ -113,7 +111,6 @@ unsafe fn transpose8(data: &mut [__m128i; 8]) {
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "ssse3")]
-#[allow(unsafe_code)]
 pub unsafe fn dequantize_and_idct_block_8x8(
     coefficients: &[i16],
     quantization_table: &[u16; 64],
@@ -178,7 +175,6 @@ pub unsafe fn dequantize_and_idct_block_8x8(
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "ssse3")]
-#[allow(unsafe_code)]
 pub unsafe fn color_convert_line_ycbcr(y: &[u8], cb: &[u8], cr: &[u8], output: &mut [u8]) -> usize {
     assert!(output.len() % 3 == 0);
     let num = output.len() / 3;
