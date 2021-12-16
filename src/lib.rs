@@ -41,6 +41,8 @@ pub use parser::CodingProcess;
 
 use std::io;
 
+#[cfg(feature = "simd")]
+mod arch;
 mod decoder;
 mod error;
 mod huffman;

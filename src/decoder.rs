@@ -16,7 +16,6 @@ use parser::{
 };
 use std::convert::TryInto;
 use std::io::Read;
-use std::is_x86_feature_detected;
 use upsampler::Upsampler;
 use worker::{PlatformWorker, RowData, Worker};
 
@@ -1254,124 +1253,22 @@ fn color_convert_line_rgb(data: &[Vec<u8>], output: &mut [u8]) {
     }
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-#[target_feature(enable = "ssse3")]
-#[allow(unsafe_code)]
-unsafe fn color_convert_line_ycbcr_ssse3(
-    y: &[u8],
-    cb: &[u8],
-    cr: &[u8],
-    output: &mut [u8],
-) -> usize {
-    #[cfg(target_arch = "x86")]
-    use std::arch::x86::*;
-    #[cfg(target_arch = "x86_64")]
-    use std::arch::x86_64::*;
-
-    assert!(output.len() % 3 == 0);
-    let num = output.len() / 3;
-    assert!(num <= y.len());
-    assert!(num <= cb.len());
-    assert!(num <= cr.len());
-    let num_vecs = num / 8;
-
-    for i in 0..num_vecs {
-        const SHIFT: i32 = 6;
-        // Load.
-        let y = _mm_loadu_si64(y.as_ptr().wrapping_add(i * 8) as *const _);
-        let cb = _mm_loadu_si64(cb.as_ptr().wrapping_add(i * 8) as *const _);
-        let cr = _mm_loadu_si64(cr.as_ptr().wrapping_add(i * 8) as *const _);
-
-        // Convert to 16 bit.
-        let zero = _mm_setzero_si128();
-        let y = _mm_slli_epi16(_mm_unpackhi_epi8(y, zero), SHIFT);
-        let cb = _mm_slli_epi16(_mm_unpackhi_epi8(cb, zero), SHIFT);
-        let cr = _mm_slli_epi16(_mm_unpackhi_epi8(cr, zero), SHIFT);
-
-        // Add offsets
-        let c128 = _mm_set1_epi16(128 << SHIFT);
-        let y = _mm_adds_epi16(y, _mm_set1_epi16((1 << SHIFT) >> 1));
-        let cb = _mm_subs_epi16(cb, c128);
-        let cr = _mm_subs_epi16(cr, c128);
-
-        // Compute cr * 1.402, cb * 0.34414, cr * 0.71414, cb * 1.772
-        let cr_140200 = _mm_adds_epi16(_mm_mulhrs_epi16(cr, _mm_set1_epi16(13173)), cr);
-        let cb_034414 = _mm_mulhrs_epi16(cb, _mm_set1_epi16(11276));
-        let cr_071414 = _mm_mulhrs_epi16(cr, _mm_set1_epi16(23401));
-        let cb_177200 = _mm_adds_epi16(_mm_mulhrs_epi16(cb, _mm_set1_epi16(25297)), cb);
-
-        // Last conversion step.
-        let r = _mm_adds_epi16(y, cr_140200);
-        let g = _mm_subs_epi16(y, _mm_adds_epi16(cb_034414, cr_071414));
-        let b = _mm_adds_epi16(y, cb_177200);
-
-        // Shift back and convert to u8.
-        let r = _mm_packus_epi16(_mm_srai_epi16(r, SHIFT), zero);
-        let g = _mm_packus_epi16(_mm_srai_epi16(g, SHIFT), zero);
-        let b = _mm_packus_epi16(_mm_srai_epi16(b, SHIFT), zero);
-
-        // Shuffle rrrrrrrrggggggggbbbbbbbb to rgbrgbrgb...
-        let shufr = _mm_loadu_si128(
-            [
-                0u8, 0x80, 0x80, 1, 0x80, 0x80, 2, 0x80, 0x80, 3, 0x80, 0x80, 4, 0x80, 0x80, 5,
-            ]
-            .as_ptr() as *const _,
-        );
-        let shufg = _mm_loadu_si128(
-            [
-                0x80u8, 0, 0x80, 0x80, 1, 0x80, 0x80, 2, 0x80, 0x80, 3, 0x80, 0x80, 4, 0x80, 0x80,
-            ]
-            .as_ptr() as *const _,
-        );
-        let shufb = _mm_alignr_epi8(shufg, shufg, 15);
-
-        let rgb_low = _mm_or_si128(
-            _mm_shuffle_epi8(r, shufr),
-            _mm_or_si128(_mm_shuffle_epi8(g, shufg), _mm_shuffle_epi8(b, shufb)),
-        );
-
-        let shufr1 = _mm_add_epi8(shufb, _mm_set1_epi8(6));
-        let shufg1 = _mm_add_epi8(shufr, _mm_set1_epi8(5));
-        let shufb1 = _mm_add_epi8(shufg, _mm_set1_epi8(5));
-
-        let rgb_hi = _mm_or_si128(
-            _mm_shuffle_epi8(r, shufr1),
-            _mm_or_si128(_mm_shuffle_epi8(g, shufg1), _mm_shuffle_epi8(b, shufb1)),
-        );
-
-        let mut data = [0u8; 32];
-        _mm_storeu_si128(data.as_mut_ptr() as *mut _, rgb_low);
-        _mm_storeu_si128(data.as_mut_ptr().wrapping_add(16) as *mut _, rgb_hi);
-        std::ptr::copy_nonoverlapping::<u8>(
-            data.as_ptr(),
-            output.as_mut_ptr().wrapping_add(24 * i),
-            24,
-        );
-    }
-
-    num_vecs * 8
-}
-
 fn color_convert_line_ycbcr(data: &[Vec<u8>], output: &mut [u8]) {
     assert!(data.len() == 3, "wrong number of components for ycbcr");
     let [y, cb, cr]: &[_; 3] = data.try_into().unwrap();
 
-    let mut skip = 0usize;
+    #[cfg(feature = "simd")]
+    let arch_specific_pixels = crate::arch::color_convert_line_ycbcr(y, cb, cr, output);
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    #[allow(unsafe_code)]
-    {
-        if is_x86_feature_detected!("ssse3") {
-            skip = unsafe { color_convert_line_ycbcr_ssse3(y, cb, cr, output) };
-        }
-    }
+    #[cfg(not(feature = "simd"))]
+    let arch_specific_pixels = 0;
 
     for (((chunk, y), cb), cr) in output
         .chunks_exact_mut(3)
         .zip(y.iter())
         .zip(cb.iter())
         .zip(cr.iter())
-        .skip(skip)
+        .skip(arch_specific_pixels)
     {
         let (r, g, b) = ycbcr_to_rgb(*y, *cb, *cr);
         chunk[0] = r;

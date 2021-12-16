@@ -34,4 +34,5 @@ name = "large_image"
 harness = false
 
 [features]
-default = ["rayon"]
+default = ["rayon", "simd"]
+simd = []
