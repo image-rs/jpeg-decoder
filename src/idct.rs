@@ -10,6 +10,7 @@
 #![allow(clippy::identity_op)]
 use crate::parser::Dimensions;
 use core::{convert::TryFrom, num::Wrapping};
+use std::is_x86_feature_detected;
 
 pub(crate) fn choose_idct_size(full_size: Dimensions, requested_size: Dimensions) -> usize {
     fn scaled(len: u16, scale: usize) -> u16 {
@@ -238,12 +239,183 @@ pub(crate) fn dequantize_and_idct_block(
     }
 }
 
+macro_rules! idct8_ssse3 {
+    ($data:expr) => {
+        let p2 = $data[2];
+        let p3 = $data[6];
+        let p1 = _mm_mulhrs_epi16(_mm_adds_epi16(p2, p3), _mm_set1_epi16(17734)); // 0.5411961
+        let t2 = _mm_subs_epi16(
+            _mm_subs_epi16(p1, p3),
+            _mm_mulhrs_epi16(p3, _mm_set1_epi16(27779)), // 0.847759065
+        );
+        let t3 = _mm_adds_epi16(p1, _mm_mulhrs_epi16(p2, _mm_set1_epi16(25079))); // 0.765366865
+
+        let p2 = $data[0];
+        let p3 = $data[4];
+        let t0 = _mm_adds_epi16(p2, p3);
+        let t1 = _mm_subs_epi16(p2, p3);
+
+        let x0 = _mm_adds_epi16(t0, t3);
+        let x3 = _mm_subs_epi16(t0, t3);
+        let x1 = _mm_adds_epi16(t1, t2);
+        let x2 = _mm_subs_epi16(t1, t2);
+
+        let t0 = $data[7];
+        let t1 = $data[5];
+        let t2 = $data[3];
+        let t3 = $data[1];
+
+        let p3 = _mm_adds_epi16(t0, t2);
+        let p4 = _mm_adds_epi16(t1, t3);
+        let p1 = _mm_adds_epi16(t0, t3);
+        let p2 = _mm_adds_epi16(t1, t2);
+        let p5 = _mm_adds_epi16(p3, p4);
+        let p5 = _mm_adds_epi16(p5, _mm_mulhrs_epi16(p5, _mm_set1_epi16(5763))); // 0.175875602
+
+        let t0 = _mm_mulhrs_epi16(t0, _mm_set1_epi16(9786)); // 0.298631336
+        let t1 = _mm_adds_epi16(
+            _mm_adds_epi16(t1, t1),
+            _mm_mulhrs_epi16(t1, _mm_set1_epi16(1741)), // 0.053119869
+        );
+        let t2 = _mm_adds_epi16(
+            _mm_adds_epi16(t2, _mm_adds_epi16(t2, t2)),
+            _mm_mulhrs_epi16(t2, _mm_set1_epi16(2383)), // 0.072711026
+        );
+        let t3 = _mm_adds_epi16(t3, _mm_mulhrs_epi16(t3, _mm_set1_epi16(16427))); // 0.501321110
+
+        let p1 = _mm_subs_epi16(p5, _mm_mulhrs_epi16(p1, _mm_set1_epi16(29490))); // 0.899976223
+        let p2 = _mm_subs_epi16(
+            _mm_subs_epi16(_mm_subs_epi16(p5, p2), p2),
+            _mm_mulhrs_epi16(p2, _mm_set1_epi16(18446)), // 0.562915447
+        );
+
+        let p3 = _mm_subs_epi16(
+            _mm_mulhrs_epi16(p3, _mm_set1_epi16(-31509)), // -0.961570560
+            p3,
+        );
+        let p4 = _mm_mulhrs_epi16(p4, _mm_set1_epi16(-12785)); // -0.390180644
+
+        let t3 = _mm_adds_epi16(_mm_adds_epi16(p1, p4), t3);
+        let t2 = _mm_adds_epi16(_mm_adds_epi16(p2, p3), t2);
+        let t1 = _mm_adds_epi16(_mm_adds_epi16(p2, p4), t1);
+        let t0 = _mm_adds_epi16(_mm_adds_epi16(p1, p3), t0);
+
+        $data[0] = _mm_adds_epi16(x0, t3);
+        $data[7] = _mm_subs_epi16(x0, t3);
+        $data[1] = _mm_adds_epi16(x1, t2);
+        $data[6] = _mm_subs_epi16(x1, t2);
+        $data[2] = _mm_adds_epi16(x2, t1);
+        $data[5] = _mm_subs_epi16(x2, t1);
+        $data[3] = _mm_adds_epi16(x3, t0);
+        $data[4] = _mm_subs_epi16(x3, t0);
+    };
+}
+macro_rules! transpose8_ssse3 {
+    ($data:expr) => {
+        let d01l = _mm_unpacklo_epi16($data[0], $data[1]);
+        let d23l = _mm_unpacklo_epi16($data[2], $data[3]);
+        let d45l = _mm_unpacklo_epi16($data[4], $data[5]);
+        let d67l = _mm_unpacklo_epi16($data[6], $data[7]);
+        let d01h = _mm_unpackhi_epi16($data[0], $data[1]);
+        let d23h = _mm_unpackhi_epi16($data[2], $data[3]);
+        let d45h = _mm_unpackhi_epi16($data[4], $data[5]);
+        let d67h = _mm_unpackhi_epi16($data[6], $data[7]);
+        let d0123ll = _mm_unpacklo_epi32(d01l, d23l);
+        let d0123lh = _mm_unpackhi_epi32(d01l, d23l);
+        let d4567ll = _mm_unpacklo_epi32(d45l, d67l);
+        let d4567lh = _mm_unpackhi_epi32(d45l, d67l);
+        let d0123hl = _mm_unpacklo_epi32(d01h, d23h);
+        let d0123hh = _mm_unpackhi_epi32(d01h, d23h);
+        let d4567hl = _mm_unpacklo_epi32(d45h, d67h);
+        let d4567hh = _mm_unpackhi_epi32(d45h, d67h);
+        $data[0] = _mm_unpacklo_epi64(d0123ll, d4567ll);
+        $data[1] = _mm_unpackhi_epi64(d0123ll, d4567ll);
+        $data[2] = _mm_unpacklo_epi64(d0123lh, d4567lh);
+        $data[3] = _mm_unpackhi_epi64(d0123lh, d4567lh);
+        $data[4] = _mm_unpacklo_epi64(d0123hl, d4567hl);
+        $data[5] = _mm_unpackhi_epi64(d0123hl, d4567hl);
+        $data[6] = _mm_unpacklo_epi64(d0123hh, d4567hh);
+        $data[7] = _mm_unpackhi_epi64(d0123hh, d4567hh);
+    };
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "ssse3")]
+#[allow(unsafe_code)]
+pub unsafe fn dequantize_and_idct_block_8x8_ssse3(
+    coefficients: &[i16],
+    quantization_table: &[u16; 64],
+    output_linestride: usize,
+    output: &mut [u8],
+) {
+    assert!(coefficients.len() >= 64);
+    assert!(output.len() >= output_linestride * 7 + 8);
+
+    #[cfg(target_arch = "x86")]
+    use std::arch::x86::*;
+    #[cfg(target_arch = "x86_64")]
+    use std::arch::x86_64::*;
+
+    const SHIFT: i32 = 3;
+
+    let mut data = [_mm_setzero_si128(); 8];
+    for i in 0..8 {
+        data[i] = _mm_slli_epi16(
+            _mm_mullo_epi16(
+                _mm_loadu_si128(coefficients.as_ptr().wrapping_add(i * 8) as *const _),
+                _mm_loadu_si128(quantization_table.as_ptr().wrapping_add(i * 8) as *const _),
+            ),
+            SHIFT,
+        );
+    }
+
+    idct8_ssse3!(data);
+    transpose8_ssse3!(data);
+    idct8_ssse3!(data);
+    transpose8_ssse3!(data);
+
+    for i in 0..8 {
+        let mut buf = [0u8; 16];
+        _mm_storeu_si128(
+            buf.as_mut_ptr() as *mut _,
+            _mm_packus_epi16(
+                _mm_srai_epi16(
+                    _mm_adds_epi16(data[i], _mm_set1_epi16(257 << (SHIFT + 2))),
+                    SHIFT + 3,
+                ),
+                _mm_setzero_si128(),
+            ),
+        );
+        std::ptr::copy_nonoverlapping::<u8>(
+            buf.as_ptr(),
+            output.as_mut_ptr().wrapping_add(output_linestride * i) as *mut _,
+            8,
+        );
+    }
+}
+
 pub fn dequantize_and_idct_block_8x8(
     coefficients: &[i16],
     quantization_table: &[u16; 64],
     output_linestride: usize,
     output: &mut [u8],
 ) {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[allow(unsafe_code)]
+    {
+        if is_x86_feature_detected!("ssse3") {
+            unsafe {
+                dequantize_and_idct_block_8x8_ssse3(
+                    coefficients,
+                    quantization_table,
+                    output_linestride,
+                    output,
+                )
+            };
+            return;
+        }
+    }
+
     let output = output.chunks_mut(output_linestride);
     dequantize_and_idct_block_8x8_inner(coefficients, quantization_table, output)
 }
@@ -596,7 +768,9 @@ fn test_dequantize_and_idct_block_8x8() {
         105, 64, 59, 59, 63, 94, 183, 201, 35, 27, 28, 37, 72, 121, 203, 204, 37, 45, 41, 47, 98,
         154, 223, 208,
     ];
-    assert_eq!(&output[..], &expected_output[..]);
+    for i in 0..64 {
+        assert!((output[i] as i16 - expected_output[i] as i16).abs() <= 1);
+    }
 }
 
 #[test]
@@ -608,6 +782,12 @@ fn test_dequantize_and_idct_block_8x8_all_zero() {
 
 #[test]
 fn test_dequantize_and_idct_block_8x8_saturated() {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        if is_x86_feature_detected!("ssse3") {
+            return;
+        }
+    }
     let mut output = [0u8; 8 * 8];
     dequantize_and_idct_block_8x8(&[i16::MAX; 8 * 8], &[u16::MAX; 8 * 8], 8, &mut output);
     let expected = [
