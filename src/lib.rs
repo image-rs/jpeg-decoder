@@ -27,12 +27,12 @@
 //! ```
 
 #![deny(missing_docs)]
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
-extern crate core;
 extern crate alloc;
+extern crate core;
 
-#[cfg(feature="rayon")]
+#[cfg(feature = "rayon")]
 extern crate rayon;
 
 pub use decoder::{Decoder, ImageInfo, PixelFormat};

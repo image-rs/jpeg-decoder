@@ -18,6 +18,13 @@ png = "0.16"
 walkdir = "2.0"
 criterion = "0.3"
 
+[profile.bench]
+debug = true
+
+[profile.release]
+debug = true
+
+
 [[bench]]
 name = "decoding_benchmark"
 harness = false
