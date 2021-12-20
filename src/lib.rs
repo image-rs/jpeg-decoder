@@ -28,6 +28,7 @@
 
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
+#![cfg_attr(feature = "platform_independent", forbid(unsafe_code))]
 
 extern crate alloc;
 extern crate core;
@@ -41,7 +42,7 @@ pub use parser::CodingProcess;
 
 use std::io;
 
-#[cfg(feature = "simd")]
+#[cfg(not(feature = "platform_independent"))]
 mod arch;
 mod decoder;
 mod error;

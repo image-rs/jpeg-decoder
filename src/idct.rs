@@ -244,14 +244,12 @@ pub fn dequantize_and_idct_block_8x8(
     output_linestride: usize,
     output: &mut [u8],
 ) {
-    #[cfg(feature = "simd")]
-    if crate::arch::has_arch_specific_idct() {
-        return crate::arch::dequantize_and_idct_block_8x8(
-            coefficients,
-            quantization_table,
-            output_linestride,
-            output,
-        );
+    #[cfg(not(feature = "platform_independent"))]
+    if let Some(idct) = crate::arch::get_dequantize_and_idct_block_8x8() {
+        #[allow(unsafe_code)]
+        unsafe {
+            return idct(coefficients, quantization_table, output_linestride, output);
+        }
     }
 
     let output = output.chunks_mut(output_linestride);
@@ -638,8 +636,8 @@ fn test_dequantize_and_idct_block_8x8_all_zero() {
 #[test]
 fn test_dequantize_and_idct_block_8x8_saturated() {
     // Arch-specific IDCT implementations need not handle i16::MAX values.
-    #[cfg(feature = "simd")]
-    if crate::arch::has_arch_specific_idct() {
+    #[cfg(not(feature = "platform_independent"))]
+    if crate::arch::get_dequantize_and_idct_block_8x8().is_some() {
         return;
     }
     let mut output = [0u8; 8 * 8];

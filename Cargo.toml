@@ -27,5 +27,5 @@ name = "large_image"
 harness = false
 
 [features]
-default = ["rayon", "simd"]
-simd = []
+default = ["rayon"]
+platform_independent = []

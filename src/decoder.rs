@@ -1257,10 +1257,19 @@ fn color_convert_line_ycbcr(data: &[Vec<u8>], output: &mut [u8]) {
     assert!(data.len() == 3, "wrong number of components for ycbcr");
     let [y, cb, cr]: &[_; 3] = data.try_into().unwrap();
 
-    #[cfg(feature = "simd")]
-    let arch_specific_pixels = crate::arch::color_convert_line_ycbcr(y, cb, cr, output);
+    #[cfg(not(feature = "platform_independent"))]
+    let arch_specific_pixels = {
+        if let Some(ycbcr) = crate::arch::get_color_convert_line_ycbcr() {
+            #[allow(unsafe_code)]
+            unsafe {
+                ycbcr(y, cb, cr, output)
+            }
+        } else {
+            0
+        }
+    };
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(feature = "platform_independent")]
     let arch_specific_pixels = 0;
 
     for (((chunk, y), cb), cr) in output
