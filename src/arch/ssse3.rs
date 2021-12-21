@@ -181,9 +181,10 @@ pub unsafe fn color_convert_line_ycbcr(y: &[u8], cb: &[u8], cr: &[u8], output: &
     assert!(num <= y.len());
     assert!(num <= cb.len());
     assert!(num <= cr.len());
-    // _mm_loadu_si64 seems to be confused between stable and beta on whether it loads on the low
-    // or the upper half of the vector. To circumvent the issue, we use _mm_loadu_si128, and skip
-    // one vector to avoid loads from outside accessible memory.
+    // _mm_loadu_si64 generates incorrect code for Rust <1.58. To circumvent this, we use a full
+    // 128-bit load, but that requires leaving an extra vector of border to the scalar code.
+    // From Rust 1.58 on, the _mm_loadu_si128 can be replaced with _mm_loadu_si64 and this
+    // .saturating_sub() can be removed.
     let num_vecs = (num / 8).saturating_sub(1);
 
     for i in 0..num_vecs {
