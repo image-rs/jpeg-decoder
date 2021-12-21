@@ -181,20 +181,25 @@ pub unsafe fn color_convert_line_ycbcr(y: &[u8], cb: &[u8], cr: &[u8], output: &
     assert!(num <= y.len());
     assert!(num <= cb.len());
     assert!(num <= cr.len());
-    let num_vecs = num / 8;
+    // _mm_loadu_si64 seems to be confused between stable and beta on whether it loads on the low
+    // or the upper half of the vector. To circumvent the issue, we use _mm_loadu_si128, and skip
+    // one vector to avoid loads from outside accessible memory.
+    let num_vecs = (num / 8).saturating_sub(1);
 
     for i in 0..num_vecs {
         const SHIFT: i32 = 6;
         // Load.
-        let y = _mm_loadu_si64(y.as_ptr().wrapping_add(i * 8) as *const _);
-        let cb = _mm_loadu_si64(cb.as_ptr().wrapping_add(i * 8) as *const _);
-        let cr = _mm_loadu_si64(cr.as_ptr().wrapping_add(i * 8) as *const _);
+        let y = _mm_loadu_si128(y.as_ptr().wrapping_add(i * 8) as *const _);
+        let cb = _mm_loadu_si128(cb.as_ptr().wrapping_add(i * 8) as *const _);
+        let cr = _mm_loadu_si128(cr.as_ptr().wrapping_add(i * 8) as *const _);
 
         // Convert to 16 bit.
-        let zero = _mm_setzero_si128();
-        let y = _mm_slli_epi16(_mm_unpackhi_epi8(y, zero), SHIFT);
-        let cb = _mm_slli_epi16(_mm_unpackhi_epi8(cb, zero), SHIFT);
-        let cr = _mm_slli_epi16(_mm_unpackhi_epi8(cr, zero), SHIFT);
+        let shuf16 = _mm_setr_epi8(
+            0, -0x7F, 1, -0x7F, 2, -0x7F, 3, -0x7F, 4, -0x7F, 5, -0x7F, 6, -0x7F, 7, -0x7F,
+        );
+        let y = _mm_slli_epi16(_mm_shuffle_epi8(y, shuf16), SHIFT);
+        let cb = _mm_slli_epi16(_mm_shuffle_epi8(cb, shuf16), SHIFT);
+        let cr = _mm_slli_epi16(_mm_shuffle_epi8(cr, shuf16), SHIFT);
 
         // Add offsets
         let c128 = _mm_set1_epi16(128 << SHIFT);
@@ -214,22 +219,18 @@ pub unsafe fn color_convert_line_ycbcr(y: &[u8], cb: &[u8], cr: &[u8], output: &
         let b = _mm_adds_epi16(y, cb_177200);
 
         // Shift back and convert to u8.
+        let zero = _mm_setzero_si128();
         let r = _mm_packus_epi16(_mm_srai_epi16(r, SHIFT), zero);
         let g = _mm_packus_epi16(_mm_srai_epi16(g, SHIFT), zero);
         let b = _mm_packus_epi16(_mm_srai_epi16(b, SHIFT), zero);
 
         // Shuffle rrrrrrrrggggggggbbbbbbbb to rgbrgbrgb...
-        let shufr = _mm_loadu_si128(
-            [
-                0u8, 0x80, 0x80, 1, 0x80, 0x80, 2, 0x80, 0x80, 3, 0x80, 0x80, 4, 0x80, 0x80, 5,
-            ]
-            .as_ptr() as *const _,
+        let shufr = _mm_setr_epi8(
+            0, -0x7F, -0x7F, 1, -0x7F, -0x7F, 2, -0x7F, -0x7F, 3, -0x7F, -0x7F, 4, -0x7F, -0x7F, 5,
         );
-        let shufg = _mm_loadu_si128(
-            [
-                0x80u8, 0, 0x80, 0x80, 1, 0x80, 0x80, 2, 0x80, 0x80, 3, 0x80, 0x80, 4, 0x80, 0x80,
-            ]
-            .as_ptr() as *const _,
+        let shufg = _mm_setr_epi8(
+            -0x7F, 0, -0x7F, -0x7F, 1, -0x7F, -0x7F, 2, -0x7F, -0x7F, 3, -0x7F, -0x7F, 4, -0x7F,
+            -0x7F,
         );
         let shufb = _mm_alignr_epi8(shufg, shufg, 15);
 
