@@ -11,6 +11,9 @@ unsafe fn idct8(data: &mut [__m128i; 8]) {
     // _mm_mulhrs_epi16(a, b) is effectively equivalent to (a*b)>>15 (except for possibly some
     // slight differences in rounding).
 
+    // The code here is effectively equivalent to the calls to "kernel" in idct.rs, except that it
+    // doesn't apply any further scaling and fixed point constants have a different precision.
+
     let p2 = data[2];
     let p3 = data[6];
     let p1 = _mm_mulhrs_epi16(_mm_adds_epi16(p2, p3), _mm_set1_epi16(17734)); // 0.5411961
@@ -83,6 +86,11 @@ unsafe fn idct8(data: &mut [__m128i; 8]) {
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "ssse3")]
 unsafe fn transpose8(data: &mut [__m128i; 8]) {
+    // Transpose a 8x8 matrix with a sequence of interleaving operations.
+    // Naming: dABl contains elements from the *l*ower halves of vectors A and B, interleaved, i.e.
+    // A0 B0 A1 B1 ...
+    // dABCDll contains elements from the lower quarter (ll) of vectors A, B, C, D, interleaved -
+    // A0 B0 C0 D0 A1 B1 C1 D1 ...
     let d01l = _mm_unpacklo_epi16(data[0], data[1]);
     let d23l = _mm_unpacklo_epi16(data[2], data[3]);
     let d45l = _mm_unpacklo_epi16(data[4], data[5]);
@@ -91,6 +99,7 @@ unsafe fn transpose8(data: &mut [__m128i; 8]) {
     let d23h = _mm_unpackhi_epi16(data[2], data[3]);
     let d45h = _mm_unpackhi_epi16(data[4], data[5]);
     let d67h = _mm_unpackhi_epi16(data[6], data[7]);
+    // Operating on 32-bits will interleave *consecutive pairs* of 16-bit integers.
     let d0123ll = _mm_unpacklo_epi32(d01l, d23l);
     let d0123lh = _mm_unpackhi_epi32(d01l, d23l);
     let d4567ll = _mm_unpacklo_epi32(d45l, d67l);
@@ -99,6 +108,7 @@ unsafe fn transpose8(data: &mut [__m128i; 8]) {
     let d0123hh = _mm_unpackhi_epi32(d01h, d23h);
     let d4567hl = _mm_unpacklo_epi32(d45h, d67h);
     let d4567hh = _mm_unpackhi_epi32(d45h, d67h);
+    // Operating on 64-bits will interleave *consecutive quadruples* of 16-bit integers.
     data[0] = _mm_unpacklo_epi64(d0123ll, d4567ll);
     data[1] = _mm_unpackhi_epi64(d0123ll, d4567ll);
     data[2] = _mm_unpacklo_epi64(d0123lh, d4567lh);
@@ -137,6 +147,7 @@ pub unsafe fn dequantize_and_idct_block_8x8(
 
     const SHIFT: i32 = 3;
 
+    // Read the DCT coefficients, scale them up and dequantize them.
     let mut data = [_mm_setzero_si128(); 8];
     for i in 0..8 {
         data[i] = _mm_slli_epi16(
@@ -148,6 +159,7 @@ pub unsafe fn dequantize_and_idct_block_8x8(
         );
     }
 
+    // Usual column IDCT - transpose - column IDCT - transpose approach.
     idct8(&mut data);
     transpose8(&mut data);
     idct8(&mut data);
@@ -155,13 +167,20 @@ pub unsafe fn dequantize_and_idct_block_8x8(
 
     for i in 0..8 {
         let mut buf = [0u8; 16];
+        // The two passes of the IDCT algorithm give us a factor of 8, so the shift here is
+        // increased by 3.
+        // As values will be stored in a u8, they need to be 128-centered and not 0-centered.
+        // We add 128 with the appropriate shift for that purpose.
+        const OFFSET: i16 = 128 << (SHIFT + 3);
+        // We want rounding right shift, so we should add (1/2) << (SHIFT+3) before shifting.
+        const ROUNDING_BIAS: i16 = (1 << (SHIFT + 3)) >> 1;
+
+        let data_with_offset = _mm_adds_epi16(data[i], _mm_set1_epi16(OFFSET + ROUNDING_BIAS));
+
         _mm_storeu_si128(
             buf.as_mut_ptr() as *mut _,
             _mm_packus_epi16(
-                _mm_srai_epi16(
-                    _mm_adds_epi16(data[i], _mm_set1_epi16(257 << (SHIFT + 2))),
-                    SHIFT + 3,
-                ),
+                _mm_srai_epi16(data_with_offset, SHIFT + 3),
                 _mm_setzero_si128(),
             ),
         );
@@ -226,6 +245,10 @@ pub unsafe fn color_convert_line_ycbcr(y: &[u8], cb: &[u8], cr: &[u8], output: &
         let b = _mm_packus_epi16(_mm_srai_epi16(b, SHIFT), zero);
 
         // Shuffle rrrrrrrrggggggggbbbbbbbb to rgbrgbrgb...
+
+        // Control vectors for _mm_shuffle_epi8. -0x7F is selected so that the resulting position
+        // after _mm_shuffle_epi8 will be filled with 0, so that the r, g, and b vectors can then
+        // be OR-ed together.
         let shufr = _mm_setr_epi8(
             0, -0x7F, -0x7F, 1, -0x7F, -0x7F, 2, -0x7F, -0x7F, 3, -0x7F, -0x7F, 4, -0x7F, -0x7F, 5,
         );
@@ -240,6 +263,9 @@ pub unsafe fn color_convert_line_ycbcr(y: &[u8], cb: &[u8], cr: &[u8], output: &
             _mm_or_si128(_mm_shuffle_epi8(g, shufg), _mm_shuffle_epi8(b, shufb)),
         );
 
+        // For the next part of the rgb vectors, we need to select R values from 6 up, G and B from
+        // 5 up. The highest bit of -0x7F + 6 is still set, so the corresponding location will
+        // still be 0.
         let shufr1 = _mm_add_epi8(shufb, _mm_set1_epi8(6));
         let shufg1 = _mm_add_epi8(shufr, _mm_set1_epi8(5));
         let shufb1 = _mm_add_epi8(shufg, _mm_set1_epi8(5));
