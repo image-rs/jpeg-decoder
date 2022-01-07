@@ -6,8 +6,7 @@
 
 use decoder::MAX_COMPONENTS;
 use error::Result;
-use std::{mem, sync::mpsc::{self, Sender}};
-use std::thread;
+use std::{mem, io, sync::mpsc::{self, Sender}};
 use super::{RowData, Worker};
 use super::immediate::ImmediateWorker;
 
@@ -57,10 +56,9 @@ impl Worker for MultiThreadedWorker {
 }
 
 fn spawn_worker_thread(component: usize) -> Result<Sender<WorkerMsg>> {
-    let thread_builder = thread::Builder::new().name(format!("worker thread for component {}", component));
     let (tx, rx) = mpsc::channel();
 
-    thread_builder.spawn(move || {
+    spawn(component, move || {
         let mut worker = ImmediateWorker::new_immediate();
 
         while let Ok(message) = rx.recv() {
@@ -84,4 +82,24 @@ fn spawn_worker_thread(component: usize) -> Result<Sender<WorkerMsg>> {
     })?;
 
     Ok(tx)
+}
+
+#[cfg(feature = "rayon")]
+fn spawn<F>(_component: usize, func: F) -> io::Result<()>
+where
+    F: FnOnce() + Send + 'static,
+{
+    rayon::spawn(func);
+    Ok(())
+}
+
+#[cfg(not(feature = "rayon"))]
+fn spawn<F>(component: usize, func: F) -> io::Result<()>
+where
+    F: FnOnce() + Send + 'static,
+{
+    let thread_builder =
+        std::thread::Builder::new().name(format!("worker thread for component {}", component));
+    thread_builder.spawn(func)?;
+    Ok(())
 }
