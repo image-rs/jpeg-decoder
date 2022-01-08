@@ -142,6 +142,9 @@ fn dequantize_and_idct_block_8x8_inner<'a, I>(
         // to encode as 0..255 by adding 128, so we'll add that before the shift
         const X_SCALE: i32 = 65536 + (128 << 17);
 
+        // eliminate downstream bounds checks
+        let output_chunk = &mut output_chunk[..8];
+
         // TODO When the minimum rust version supports it
         // let [s0, rest @ ..] = chunk;
         let (s0, rest) = chunk.split_first().unwrap();
