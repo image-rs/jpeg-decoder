@@ -668,8 +668,8 @@ impl<R: Read> Decoder<R> {
                                 let block_offset = (block_y * component.block_size.width as usize + block_x) * 64;
                                 &mut mcu_row_coefficients[i][block_offset..block_offset + 64]
                             } else {
-                                &mut dummy_block[..]
-                            };
+                                &mut dummy_block[..64]
+                            }.try_into().unwrap();
 
                             if scan.successive_approximation_high == 0 {
                                 decode_block(&mut self.reader,
@@ -755,7 +755,7 @@ impl<R: Read> Decoder<R> {
 }
 
 fn decode_block<R: Read>(reader: &mut R,
-                         coefficients: &mut [i16],
+                         coefficients: &mut [i16; 64],
                          huffman: &mut HuffmanDecoder,
                          dc_table: Option<&HuffmanTable>,
                          ac_table: Option<&HuffmanTable>,
@@ -763,8 +763,6 @@ fn decode_block<R: Read>(reader: &mut R,
                          successive_approximation_low: u8,
                          eob_run: &mut u16,
                          dc_predictor: &mut i16) -> Result<()> {
-    debug_assert_eq!(coefficients.len(), 64);
-
     if spectral_selection.start == 0 {
         // Section F.2.2.1
         // Figure F.12
@@ -840,14 +838,12 @@ fn decode_block<R: Read>(reader: &mut R,
 }
 
 fn decode_block_successive_approximation<R: Read>(reader: &mut R,
-                                                  coefficients: &mut [i16],
+                                                  coefficients: &mut [i16; 64],
                                                   huffman: &mut HuffmanDecoder,
                                                   ac_table: Option<&HuffmanTable>,
                                                   spectral_selection: Range<u8>,
                                                   successive_approximation_low: u8,
                                                   eob_run: &mut u16) -> Result<()> {
-    debug_assert_eq!(coefficients.len(), 64);
-
     let bit = 1 << successive_approximation_low;
 
     if spectral_selection.start == 0 {
@@ -926,13 +922,11 @@ fn decode_block_successive_approximation<R: Read>(reader: &mut R,
 }
 
 fn refine_non_zeroes<R: Read>(reader: &mut R,
-                              coefficients: &mut [i16],
+                              coefficients: &mut [i16; 64],
                               huffman: &mut HuffmanDecoder,
                               range: Range<u8>,
                               zrl: u8,
                               bit: i16) -> Result<u8> {
-    debug_assert_eq!(coefficients.len(), 64);
-
     let last = range.end - 1;
     let mut zero_run_length = zrl;
 

@@ -1,6 +1,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use core::mem;
+use core::convert::TryInto;
 use decoder::MAX_COMPONENTS;
 use error::Result;
 use idct::dequantize_and_idct_block;
@@ -46,7 +47,7 @@ impl ImmediateWorker {
             let x = (i % component.block_size.width as usize) * component.dct_scale;
             let y = (i / component.block_size.width as usize) * component.dct_scale;
 
-            let coefficients = &data[i * 64..(i + 1) * 64];
+            let coefficients = data[i * 64..(i + 1) * 64].try_into().unwrap();
             let output = &mut self.results[index][self.offsets[index] + y * line_stride + x..];
 
             dequantize_and_idct_block(component.dct_scale, coefficients, quantization_table, line_stride, output);

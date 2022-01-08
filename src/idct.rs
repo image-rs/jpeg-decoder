@@ -42,7 +42,7 @@ fn test_choose_idct_size() {
     assert_eq!(choose_idct_size(Dimensions{width: 5472, height: 3648}, Dimensions{width: 16384, height: 16384}), 8);
 }
 
-pub(crate) fn dequantize_and_idct_block(scale: usize, coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
+pub(crate) fn dequantize_and_idct_block(scale: usize, coefficients: &[i16; 64], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
     match scale {
         8 => dequantize_and_idct_block_8x8(coefficients, quantization_table, output_linestride, output),
         4 => dequantize_and_idct_block_4x4(coefficients, quantization_table, output_linestride, output),
@@ -53,7 +53,7 @@ pub(crate) fn dequantize_and_idct_block(scale: usize, coefficients: &[i16], quan
 }
 
 pub fn dequantize_and_idct_block_8x8(
-    coefficients: &[i16],
+    coefficients: &[i16; 64],
     quantization_table: &[u16; 64],
     output_linestride: usize,
     output: &mut [u8]
@@ -65,7 +65,7 @@ pub fn dequantize_and_idct_block_8x8(
 
 // This is based on stb_image's 'stbi__idct_block'.
 fn dequantize_and_idct_block_8x8_inner<'a, I>(
-    coefficients: &[i16],
+    coefficients: &[i16; 64],
     quantization_table: &[u16; 64],
     output: I,
 ) where
@@ -78,9 +78,6 @@ fn dequantize_and_idct_block_8x8_inner<'a, I>(
         "Output iterator has the wrong length: {}",
         output.len()
     );
-
-    // optimizer hint to eliminate bounds checks within loops
-    assert!(coefficients.len() == 64);
 
     let mut temp = [Wrapping(0); 64];
 
@@ -260,8 +257,7 @@ fn dequantize(c: i16, q: u16) -> Wrapping<i32> {
 
 // 4x4 and 2x2 IDCT based on Rakesh Dugad and Narendra Ahuja: "A Fast Scheme for Image Size Change in the Compressed Domain" (2001).
 // http://sylvana.net/jpegcrop/jidctred/
-fn dequantize_and_idct_block_4x4(coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
-    debug_assert_eq!(coefficients.len(), 64);
+fn dequantize_and_idct_block_4x4(coefficients: &[i16; 64], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
     let mut temp = [Wrapping(0i32); 4 * 4];
 
     const CONST_BITS: usize = 12;
@@ -317,9 +313,7 @@ fn dequantize_and_idct_block_4x4(coefficients: &[i16], quantization_table: &[u16
     }
 }
 
-fn dequantize_and_idct_block_2x2(coefficients: &[i16], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
-    debug_assert_eq!(coefficients.len(), 64);
-
+fn dequantize_and_idct_block_2x2(coefficients: &[i16; 64], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
     const SCALE_BITS: usize = 3;
 
     // Column 0
@@ -348,9 +342,7 @@ fn dequantize_and_idct_block_2x2(coefficients: &[i16], quantization_table: &[u16
     output[output_linestride + 1] = stbi_clamp((x2 - x3) >> SCALE_BITS);
 }
 
-fn dequantize_and_idct_block_1x1(coefficients: &[i16], quantization_table: &[u16; 64], _output_linestride: usize, output: &mut [u8]) {
-    debug_assert_eq!(coefficients.len(), 64);
-
+fn dequantize_and_idct_block_1x1(coefficients: &[i16; 64], quantization_table: &[u16; 64], _output_linestride: usize, output: &mut [u8]) {
     let s0 = (Wrapping(coefficients[0] as i32 * quantization_table[0] as i32) + Wrapping(128 * 8)) / Wrapping(8);
     output[0] = stbi_clamp(s0);
 }
