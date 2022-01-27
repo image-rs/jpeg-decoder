@@ -12,10 +12,14 @@ use crate::parser::Dimensions;
 use core::{convert::TryFrom, num::Wrapping};
 
 pub(crate) fn choose_idct_size(full_size: Dimensions, requested_size: Dimensions) -> usize {
-    fn scaled(len: u16, scale: usize) -> u16 { ((len as u32 * scale as u32 - 1) / 8 + 1) as u16 }
+    fn scaled(len: u16, scale: usize) -> u16 {
+        ((len as u32 * scale as u32 - 1) / 8 + 1) as u16
+    }
 
     for &scale in &[1, 2, 4] {
-        if scaled(full_size.width, scale) >= requested_size.width || scaled(full_size.height, scale) >= requested_size.height {
+        if scaled(full_size.width, scale) >= requested_size.width
+            || scaled(full_size.height, scale) >= requested_size.height
+        {
             return scale;
         }
     }
@@ -25,29 +29,211 @@ pub(crate) fn choose_idct_size(full_size: Dimensions, requested_size: Dimensions
 
 #[test]
 fn test_choose_idct_size() {
-    assert_eq!(choose_idct_size(Dimensions{width: 5472, height: 3648}, Dimensions{width: 200, height: 200}), 1);
-    assert_eq!(choose_idct_size(Dimensions{width: 5472, height: 3648}, Dimensions{width: 500, height: 500}), 1);
-    assert_eq!(choose_idct_size(Dimensions{width: 5472, height: 3648}, Dimensions{width: 684, height: 456}), 1);
-    assert_eq!(choose_idct_size(Dimensions{width: 5472, height: 3648}, Dimensions{width: 999, height: 456}), 1);
-    assert_eq!(choose_idct_size(Dimensions{width: 5472, height: 3648}, Dimensions{width: 684, height: 999}), 1);
-    assert_eq!(choose_idct_size(Dimensions{width: 500, height: 333}, Dimensions{width: 63, height: 42}), 1);
+    assert_eq!(
+        choose_idct_size(
+            Dimensions {
+                width: 5472,
+                height: 3648
+            },
+            Dimensions {
+                width: 200,
+                height: 200
+            }
+        ),
+        1
+    );
+    assert_eq!(
+        choose_idct_size(
+            Dimensions {
+                width: 5472,
+                height: 3648
+            },
+            Dimensions {
+                width: 500,
+                height: 500
+            }
+        ),
+        1
+    );
+    assert_eq!(
+        choose_idct_size(
+            Dimensions {
+                width: 5472,
+                height: 3648
+            },
+            Dimensions {
+                width: 684,
+                height: 456
+            }
+        ),
+        1
+    );
+    assert_eq!(
+        choose_idct_size(
+            Dimensions {
+                width: 5472,
+                height: 3648
+            },
+            Dimensions {
+                width: 999,
+                height: 456
+            }
+        ),
+        1
+    );
+    assert_eq!(
+        choose_idct_size(
+            Dimensions {
+                width: 5472,
+                height: 3648
+            },
+            Dimensions {
+                width: 684,
+                height: 999
+            }
+        ),
+        1
+    );
+    assert_eq!(
+        choose_idct_size(
+            Dimensions {
+                width: 500,
+                height: 333
+            },
+            Dimensions {
+                width: 63,
+                height: 42
+            }
+        ),
+        1
+    );
 
-    assert_eq!(choose_idct_size(Dimensions{width: 5472, height: 3648}, Dimensions{width: 685, height: 999}), 2);
-    assert_eq!(choose_idct_size(Dimensions{width: 5472, height: 3648}, Dimensions{width: 1000, height: 1000}), 2);
-    assert_eq!(choose_idct_size(Dimensions{width: 5472, height: 3648}, Dimensions{width: 1400, height: 1400}), 4);
+    assert_eq!(
+        choose_idct_size(
+            Dimensions {
+                width: 5472,
+                height: 3648
+            },
+            Dimensions {
+                width: 685,
+                height: 999
+            }
+        ),
+        2
+    );
+    assert_eq!(
+        choose_idct_size(
+            Dimensions {
+                width: 5472,
+                height: 3648
+            },
+            Dimensions {
+                width: 1000,
+                height: 1000
+            }
+        ),
+        2
+    );
+    assert_eq!(
+        choose_idct_size(
+            Dimensions {
+                width: 5472,
+                height: 3648
+            },
+            Dimensions {
+                width: 1400,
+                height: 1400
+            }
+        ),
+        4
+    );
 
-    assert_eq!(choose_idct_size(Dimensions{width: 5472, height: 3648}, Dimensions{width: 5472, height: 3648}), 8);
-    assert_eq!(choose_idct_size(Dimensions{width: 5472, height: 3648}, Dimensions{width: 16384, height: 16384}), 8);
-    assert_eq!(choose_idct_size(Dimensions{width: 1, height: 1}, Dimensions{width: 65535, height: 65535}), 8);
-    assert_eq!(choose_idct_size(Dimensions{width: 5472, height: 3648}, Dimensions{width: 16384, height: 16384}), 8);
+    assert_eq!(
+        choose_idct_size(
+            Dimensions {
+                width: 5472,
+                height: 3648
+            },
+            Dimensions {
+                width: 5472,
+                height: 3648
+            }
+        ),
+        8
+    );
+    assert_eq!(
+        choose_idct_size(
+            Dimensions {
+                width: 5472,
+                height: 3648
+            },
+            Dimensions {
+                width: 16384,
+                height: 16384
+            }
+        ),
+        8
+    );
+    assert_eq!(
+        choose_idct_size(
+            Dimensions {
+                width: 1,
+                height: 1
+            },
+            Dimensions {
+                width: 65535,
+                height: 65535
+            }
+        ),
+        8
+    );
+    assert_eq!(
+        choose_idct_size(
+            Dimensions {
+                width: 5472,
+                height: 3648
+            },
+            Dimensions {
+                width: 16384,
+                height: 16384
+            }
+        ),
+        8
+    );
 }
 
-pub(crate) fn dequantize_and_idct_block(scale: usize, coefficients: &[i16; 64], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
+pub(crate) fn dequantize_and_idct_block(
+    scale: usize,
+    coefficients: &[i16; 64],
+    quantization_table: &[u16; 64],
+    output_linestride: usize,
+    output: &mut [u8],
+) {
     match scale {
-        8 => dequantize_and_idct_block_8x8(coefficients, quantization_table, output_linestride, output),
-        4 => dequantize_and_idct_block_4x4(coefficients, quantization_table, output_linestride, output),
-        2 => dequantize_and_idct_block_2x2(coefficients, quantization_table, output_linestride, output),
-        1 => dequantize_and_idct_block_1x1(coefficients, quantization_table, output_linestride, output),
+        8 => dequantize_and_idct_block_8x8(
+            coefficients,
+            quantization_table,
+            output_linestride,
+            output,
+        ),
+        4 => dequantize_and_idct_block_4x4(
+            coefficients,
+            quantization_table,
+            output_linestride,
+            output,
+        ),
+        2 => dequantize_and_idct_block_2x2(
+            coefficients,
+            quantization_table,
+            output_linestride,
+            output,
+        ),
+        1 => dequantize_and_idct_block_1x1(
+            coefficients,
+            quantization_table,
+            output_linestride,
+            output,
+        ),
         _ => panic!("Unsupported IDCT scale {}/8", scale),
     }
 }
@@ -56,10 +242,17 @@ pub fn dequantize_and_idct_block_8x8(
     coefficients: &[i16; 64],
     quantization_table: &[u16; 64],
     output_linestride: usize,
-    output: &mut [u8]
+    output: &mut [u8],
 ) {
-    let output = output
-        .chunks_mut(output_linestride);
+    #[cfg(not(feature = "platform_independent"))]
+    if let Some(idct) = crate::arch::get_dequantize_and_idct_block_8x8() {
+        #[allow(unsafe_code)]
+        unsafe {
+            return idct(coefficients, quantization_table, output_linestride, output);
+        }
+    }
+
+    let output = output.chunks_mut(output_linestride);
     dequantize_and_idct_block_8x8_inner(coefficients, quantization_table, output)
 }
 
@@ -260,7 +453,13 @@ fn dequantize(c: i16, q: u16) -> Wrapping<i32> {
 
 // 4x4 and 2x2 IDCT based on Rakesh Dugad and Narendra Ahuja: "A Fast Scheme for Image Size Change in the Compressed Domain" (2001).
 // http://sylvana.net/jpegcrop/jidctred/
-fn dequantize_and_idct_block_4x4(coefficients: &[i16; 64], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
+fn dequantize_and_idct_block_4x4(
+    coefficients: &[i16; 64],
+    quantization_table: &[u16; 64],
+    output_linestride: usize,
+    output: &mut [u8],
+) {
+    debug_assert_eq!(coefficients.len(), 64);
     let mut temp = [Wrapping(0i32); 4 * 4];
 
     const CONST_BITS: usize = 12;
@@ -287,7 +486,7 @@ fn dequantize_and_idct_block_4x4(coefficients: &[i16; 64], quantization_table: &
         temp[i + 4 * 2] = x2 - t0;
     }
 
-    for i in 0 .. 4 {
+    for i in 0..4 {
         let s0 = temp[i * 4 + 0];
         let s1 = temp[i * 4 + 1];
         let s2 = temp[i * 4 + 2];
@@ -316,7 +515,14 @@ fn dequantize_and_idct_block_4x4(coefficients: &[i16; 64], quantization_table: &
     }
 }
 
-fn dequantize_and_idct_block_2x2(coefficients: &[i16; 64], quantization_table: &[u16; 64], output_linestride: usize, output: &mut [u8]) {
+fn dequantize_and_idct_block_2x2(
+    coefficients: &[i16; 64],
+    quantization_table: &[u16; 64],
+    output_linestride: usize,
+    output: &mut [u8],
+) {
+    debug_assert_eq!(coefficients.len(), 64);
+
     const SCALE_BITS: usize = 3;
 
     // Column 0
@@ -345,14 +551,20 @@ fn dequantize_and_idct_block_2x2(coefficients: &[i16; 64], quantization_table: &
     output[output_linestride + 1] = stbi_clamp((x2 - x3) >> SCALE_BITS);
 }
 
-fn dequantize_and_idct_block_1x1(coefficients: &[i16; 64], quantization_table: &[u16; 64], _output_linestride: usize, output: &mut [u8]) {
+fn dequantize_and_idct_block_1x1(
+    coefficients: &[i16; 64],
+    quantization_table: &[u16; 64],
+    _output_linestride: usize,
+    output: &mut [u8],
+) {
+    debug_assert_eq!(coefficients.len(), 64);
+
     let s0 = (Wrapping(coefficients[0] as i32 * quantization_table[0] as i32) + Wrapping(128 * 8)) / Wrapping(8);
     output[0] = stbi_clamp(s0);
 }
 
 // take a -128..127 value and stbi__clamp it and convert to 0..255
-fn stbi_clamp(x: Wrapping<i32>) -> u8
-{
+fn stbi_clamp(x: Wrapping<i32>) -> u8 {
     x.0.max(0).min(255) as u8
 }
 
@@ -366,6 +578,7 @@ fn stbi_fsh(x: Wrapping<i32>) -> Wrapping<i32> {
 
 #[test]
 fn test_dequantize_and_idct_block_8x8() {
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     let coefficients: [i16; 8 * 8] = [
         -14, -39, 58, -2, 3, 3, 0, 1,
         11, 27, 4, -3, 3, 0, 1, 0,
@@ -374,8 +587,10 @@ fn test_dequantize_and_idct_block_8x8() {
         3, 0, 0, 0, 0, 0, 0, 0,
         -3, -2, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0];
+        0, 0, 0, 0, 0, 0, 0, 0
+    ];
 
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     let quantization_table: [u16; 8 * 8] = [
         8, 6, 5, 8, 12, 20, 26, 31,
         6, 6, 7, 10, 13, 29, 30, 28,
@@ -384,14 +599,17 @@ fn test_dequantize_and_idct_block_8x8() {
         9, 11, 19, 28, 34, 55, 52, 39,
         12, 18, 28, 32, 41, 52, 57, 46,
         25, 32, 39, 44, 52, 61, 60, 51,
-        36, 46, 48, 49, 56, 50, 52, 50];
+        36, 46, 48, 49, 56, 50, 52, 50
+    ];
     let output_linestride: usize = 8;
     let mut output = [0u8; 8 * 8];
     dequantize_and_idct_block_8x8(
         &coefficients,
         &quantization_table,
         output_linestride,
-        &mut output);
+        &mut output,
+    );
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     let expected_output = [
         118, 92, 110, 83, 77, 93, 144, 198,
         172, 116, 114, 87, 78, 93, 146, 191,
@@ -400,29 +618,30 @@ fn test_dequantize_and_idct_block_8x8() {
         182, 104, 88, 81, 68, 89, 178, 206,
         105, 64, 59, 59, 63, 94, 183, 201,
         35, 27, 28, 37, 72, 121, 203, 204,
-        37, 45, 41, 47, 98, 154, 223, 208];
-    assert_eq!(&output[..], &expected_output[..]);
+        37, 45, 41, 47, 98, 154, 223, 208
+    ];
+    for i in 0..64 {
+        assert!((output[i] as i16 - expected_output[i] as i16).abs() <= 1);
+    }
 }
 
 #[test]
 fn test_dequantize_and_idct_block_8x8_all_zero() {
     let mut output = [0u8; 8 * 8];
-    dequantize_and_idct_block_8x8(
-        &[0; 8*8],
-        &[666; 8*8],
-        8,
-        &mut output);
-    assert_eq!(&output[..], &[128; 8*8][..]);
+    dequantize_and_idct_block_8x8(&[0; 8 * 8], &[666; 8 * 8], 8, &mut output);
+    assert_eq!(&output[..], &[128; 8 * 8][..]);
 }
 
 #[test]
 fn test_dequantize_and_idct_block_8x8_saturated() {
+    // Arch-specific IDCT implementations need not handle i16::MAX values.
+    #[cfg(not(feature = "platform_independent"))]
+    if crate::arch::get_dequantize_and_idct_block_8x8().is_some() {
+        return;
+    }
     let mut output = [0u8; 8 * 8];
-    dequantize_and_idct_block_8x8(
-        &[i16::MAX; 8*8],
-        &[u16::MAX; 8*8],
-        8,
-        &mut output);
+    dequantize_and_idct_block_8x8(&[i16::MAX; 8 * 8], &[u16::MAX; 8 * 8], 8, &mut output);
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     let expected = [
         0, 0, 0, 255, 255, 0, 0, 255,
         0, 0, 215, 0, 0, 255, 255, 0,
@@ -431,6 +650,7 @@ fn test_dequantize_and_idct_block_8x8_saturated() {
         0, 0, 255, 255, 0, 255, 0, 0,
         255, 255, 0, 255, 255, 255, 170, 0,
         0, 255, 0, 0, 0, 0, 0, 255,
-        255, 255, 0, 255, 0, 255, 0, 0];
+        255, 255, 0, 255, 0, 255, 0, 0
+    ];
     assert_eq!(&output[..], &expected[..]);
 }

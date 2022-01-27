@@ -27,12 +27,13 @@
 //! ```
 
 #![deny(missing_docs)]
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
+#![cfg_attr(feature = "platform_independent", forbid(unsafe_code))]
 
-extern crate core;
 extern crate alloc;
+extern crate core;
 
-#[cfg(feature="rayon")]
+#[cfg(feature = "rayon")]
 extern crate rayon;
 
 pub use decoder::{Decoder, ImageInfo, PixelFormat};
@@ -41,6 +42,8 @@ pub use parser::CodingProcess;
 
 use std::io;
 
+#[cfg(not(feature = "platform_independent"))]
+mod arch;
 mod decoder;
 mod error;
 mod huffman;

@@ -22,5 +22,10 @@ criterion = "0.3"
 name = "decoding_benchmark"
 harness = false
 
+[[bench]]
+name = "large_image"
+harness = false
+
 [features]
 default = ["rayon"]
+platform_independent = []
