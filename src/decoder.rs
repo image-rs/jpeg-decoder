@@ -803,8 +803,8 @@ impl<R: Read> Decoder<R> {
                                     (block_y * component.block_size.width as usize + block_x) * 64;
                                 &mut mcu_row_coefficients[i][block_offset..block_offset + 64]
                             } else {
-                                &mut dummy_block[..]
-                            };
+                                &mut dummy_block[..64]
+                            }.try_into().unwrap();
 
                             if scan.successive_approximation_high == 0 {
                                 decode_block(
@@ -900,7 +900,7 @@ impl<R: Read> Decoder<R> {
 
 fn decode_block<R: Read>(
     reader: &mut R,
-    coefficients: &mut [i16],
+    coefficients: &mut [i16; 64],
     huffman: &mut HuffmanDecoder,
     dc_table: Option<&HuffmanTable>,
     ac_table: Option<&HuffmanTable>,
@@ -988,7 +988,7 @@ fn decode_block<R: Read>(
 
 fn decode_block_successive_approximation<R: Read>(
     reader: &mut R,
-    coefficients: &mut [i16],
+    coefficients: &mut [i16; 64],
     huffman: &mut HuffmanDecoder,
     ac_table: Option<&HuffmanTable>,
     spectral_selection: Range<u8>,
@@ -1074,7 +1074,7 @@ fn decode_block_successive_approximation<R: Read>(
 
 fn refine_non_zeroes<R: Read>(
     reader: &mut R,
-    coefficients: &mut [i16],
+    coefficients: &mut [i16; 64],
     huffman: &mut HuffmanDecoder,
     range: Range<u8>,
     zrl: u8,
