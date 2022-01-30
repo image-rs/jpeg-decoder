@@ -508,10 +508,11 @@ fn dequantize_and_idct_block_4x4(
         let x0 = x0 + Wrapping(1 << (FINAL_BITS - 1)) + Wrapping(128 << FINAL_BITS);
         let x2 = x2 + Wrapping(1 << (FINAL_BITS - 1)) + Wrapping(128 << FINAL_BITS);
 
-        output[i * output_linestride + 0] = stbi_clamp((x0 + t2) >> FINAL_BITS);
-        output[i * output_linestride + 3] = stbi_clamp((x0 - t2) >> FINAL_BITS);
-        output[i * output_linestride + 1] = stbi_clamp((x2 + t0) >> FINAL_BITS);
-        output[i * output_linestride + 2] = stbi_clamp((x2 - t0) >> FINAL_BITS);
+        let output = &mut output[i * output_linestride..][..4];
+        output[0] = stbi_clamp((x0 + t2) >> FINAL_BITS);
+        output[3] = stbi_clamp((x0 - t2) >> FINAL_BITS);
+        output[1] = stbi_clamp((x2 + t0) >> FINAL_BITS);
+        output[2] = stbi_clamp((x2 - t0) >> FINAL_BITS);
     }
 }
 

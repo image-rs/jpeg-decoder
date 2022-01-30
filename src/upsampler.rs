@@ -181,7 +181,10 @@ impl Upsample for UpsamplerH1V2 {
         let input_near = &input[row_near as usize * row_stride ..];
         let input_far = &input[row_far as usize * row_stride ..];
 
-        for i in 0 .. output_width {
+        let output = &mut output[..output_width];
+        let input_near = &input_near[..output_width];
+        let input_far = &input_far[..output_width];
+        for i in 0..output_width {
             output[i] = ((3 * input_near[i] as u32 + input_far[i] as u32 + 2) >> 2) as u8;
         }
     }

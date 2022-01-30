@@ -20,7 +20,7 @@ pub fn get_color_convert_line_ycbcr() -> Option<unsafe fn(&[u8], &[u8], &[u8], &
 }
 
 /// Arch-specific implementation of 8x8 IDCT.
-pub fn get_dequantize_and_idct_block_8x8() -> Option<unsafe fn(&[i16], &[u16; 64], usize, &mut [u8])>
+pub fn get_dequantize_and_idct_block_8x8() -> Option<unsafe fn(&[i16; 64], &[u16; 64], usize, &mut [u8])>
 {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[allow(unsafe_code)]
