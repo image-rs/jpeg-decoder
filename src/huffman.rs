@@ -213,8 +213,9 @@ impl HuffmanTable {
             let bits_remaining = LUT_BITS - size;
             let start = (huffcode[i] << bits_remaining) as usize;
 
-            for j in 0 .. 1 << bits_remaining {
-                lut[start + j] = (values[i], size);
+            let val = (values[i], size);
+            for b in &mut lut[start..][..1 << bits_remaining] {
+                *b = val;
             }
         }
 

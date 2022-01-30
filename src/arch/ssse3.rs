@@ -122,12 +122,11 @@ unsafe fn transpose8(data: &mut [__m128i; 8]) {
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "ssse3")]
 pub unsafe fn dequantize_and_idct_block_8x8(
-    coefficients: &[i16],
+    coefficients: &[i16; 64],
     quantization_table: &[u16; 64],
     output_linestride: usize,
     output: &mut [u8],
 ) {
-    assert!(coefficients.len() >= 64);
     // The loop below will write to positions [output_linestride * i, output_linestride * i + 8)
     // for 0<=i<8. Thus, the last accessed position is at an offset of output_linestrade * 7 + 7,
     // and if that position is in-bounds, so are all other accesses.
