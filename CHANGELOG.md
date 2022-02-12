@@ -2,7 +2,18 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## v0.2.1 (2012-12-09)
+## v0.2.2 (2022-02-12)
+
+- Added and SSE3-specific SIMD intrinsic implementation for idct and color
+  conversion. It will run if applicable targets are detect at _runtime_.
+- The SIMD implementation is not bit-for-bit compatible with non-SIMD output.
+  You can enable the `platform_independent` feature, to ensure that only
+  bit-for-bit equivalent code runs and output is the same on all platforms.
+- Improved performance some more by avoiding bounds checks with array types.
+- Multithreading is now used more frequently, without the rayon target, except
+  on an explicit list of unsupported platforms.
+
+## v0.2.1 (2022-12-09)
 
 - Fix decoding error due to conflict of lossless with some spectral selections.
 
