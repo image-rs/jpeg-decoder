@@ -29,3 +29,5 @@ harness = false
 [features]
 default = ["rayon"]
 platform_independent = []
+nightly_aarch64_neon = []
+
