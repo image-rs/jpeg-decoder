@@ -44,7 +44,7 @@ jobs:
     strategy:
       matrix:
         rust: [nightly]
-        features: ["", "rayon"]
+        features: ["", "rayon", "nightly_aarch64_neon"]
 
     steps:
       - name: Installing emulator and linker
