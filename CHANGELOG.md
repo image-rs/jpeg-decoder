@@ -2,6 +2,18 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.2.3 (2022-02-14)
+
+- Added `Decoder::set_max_decoding_buffer_size` which limits the bytes
+  allocated for the output of the decoding process.
+- Added Arm64-Neon intrinsic implementation of idct and color conversion. This
+  depends on a Rust nightly compiler feature ([`aarch64_target_feature`]) and
+  it must be explicitly enabled. As soon as the minimum supported Rust version
+  includes the stabilization of this feature, the code will be enabled by
+  default and the feature changed to do nothing.
+
+[`aarch64_target_feature`]: https://github.com/rust-lang/rust/issues/90620
+
 ## v0.2.2 (2022-02-12)
 
 - Added and SSE3-specific SIMD intrinsic implementation for idct and color
