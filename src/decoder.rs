@@ -1229,9 +1229,10 @@ fn choose_color_convert_func(
             match color_transform {
                 Some(AdobeColorTransform::Unknown) => Ok(color_convert_line_cmyk),
                 Some(_) => Ok(color_convert_line_ycck),
-                None => Err(Error::Format(
-                    "4 components without Adobe APP14 metadata to indicate color space".to_owned(),
-                )),
+                None => {
+                    // Assume CMYK because no APP14 marker was found
+                    Ok(color_convert_line_cmyk)
+                },
             }
         }
         _ => panic!(),
