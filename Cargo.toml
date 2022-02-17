@@ -9,6 +9,7 @@ readme = "README.md"
 keywords = ["jpeg", "jpg", "decoder", "image"]
 license = "MIT / Apache-2.0"
 exclude = ["tests/*"]
+edition = "2018"
 
 [dependencies]
 rayon = { version = "1.0", optional = true }

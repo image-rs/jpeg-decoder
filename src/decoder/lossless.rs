@@ -1,10 +1,10 @@
-use decoder::{Decoder, MAX_COMPONENTS};
-use error::{Error, Result};
-use huffman::HuffmanDecoder;
-use marker::Marker;
-use parser::Predictor;
-use parser::{Component, FrameInfo, ScanInfo};
 use std::io::Read;
+use crate::decoder::{Decoder, MAX_COMPONENTS};
+use crate::error::{Error, Result};
+use crate::huffman::HuffmanDecoder;
+use crate::marker::Marker;
+use crate::parser::Predictor;
+use crate::parser::{Component, FrameInfo, ScanInfo};
 
 impl<R: Read> Decoder<R> {
     /// decode_scan_lossless

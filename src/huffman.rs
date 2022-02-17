@@ -2,11 +2,11 @@ use alloc::borrow::ToOwned;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::iter;
-use crate::read_u8;
-use error::{Error, Result};
-use marker::Marker;
-use parser::ScanInfo;
 use std::io::Read;
+use crate::read_u8;
+use crate::error::{Error, Result};
+use crate::marker::Marker;
+use crate::parser::ScanInfo;
 
 const LUT_BITS: u8 = 8;
 

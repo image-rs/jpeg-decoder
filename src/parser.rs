@@ -2,12 +2,12 @@ use alloc::borrow::ToOwned;
 use alloc::{format, vec};
 use alloc::vec::Vec;
 use core::ops::{self, Range};
-use crate::{read_u16_from_be, read_u8};
-use error::{Error, Result, UnsupportedFeature};
-use huffman::{HuffmanTable, HuffmanTableClass};
-use marker::Marker;
-use marker::Marker::*;
 use std::io::{self, Read};
+use crate::{read_u16_from_be, read_u8};
+use crate::error::{Error, Result, UnsupportedFeature};
+use crate::huffman::{HuffmanTable, HuffmanTableClass};
+use crate::marker::Marker;
+use crate::marker::Marker::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Dimensions {
