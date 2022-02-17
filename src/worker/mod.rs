@@ -8,8 +8,8 @@ pub use self::immediate::ImmediateWorker as PlatformWorker;
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use error::Result;
-use parser::Component;
+use crate::error::Result;
+use crate::parser::Component;
 
 pub struct RowData {
     pub index: usize,

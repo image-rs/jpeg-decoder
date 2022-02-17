@@ -4,9 +4,9 @@
 //! and allow scaling to more cores.
 //! However, that would be more complex, so we use this as a starting point.
 
-use decoder::MAX_COMPONENTS;
-use error::Result;
 use std::{mem, io, sync::mpsc::{self, Sender}};
+use crate::decoder::MAX_COMPONENTS;
+use crate::error::Result;
 use super::{RowData, Worker};
 use super::immediate::ImmediateWorker;
 

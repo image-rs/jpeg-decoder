@@ -2,11 +2,11 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::mem;
 use core::convert::TryInto;
-use decoder::MAX_COMPONENTS;
-use error::Result;
-use idct::dequantize_and_idct_block;
-use alloc::sync::Arc;
-use parser::Component;
+use crate::decoder::MAX_COMPONENTS;
+use crate::error::Result;
+use crate::idct::dequantize_and_idct_block;
+use crate::alloc::sync::Arc;
+use crate::parser::Component;
 use super::{RowData, Worker};
 
 pub struct ImmediateWorker {

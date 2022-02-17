@@ -1,4 +1,3 @@
-use crate::read_u8;
 use alloc::borrow::ToOwned;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -6,18 +5,19 @@ use alloc::{format, vec};
 use core::cmp;
 use core::mem;
 use core::ops::Range;
-use error::{Error, Result, UnsupportedFeature};
-use huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
-use marker::Marker;
-use parser::{
+use std::convert::TryInto;
+use std::io::Read;
+use crate::read_u8;
+use crate::error::{Error, Result, UnsupportedFeature};
+use crate::huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
+use crate::marker::Marker;
+use crate::parser::{
     parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos,
     AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
     IccChunk, ScanInfo,
 };
-use std::convert::TryInto;
-use std::io::Read;
-use upsampler::Upsampler;
-use worker::{PlatformWorker, RowData, Worker};
+use crate::upsampler::Upsampler;
+use crate::worker::{PlatformWorker, RowData, Worker};
 
 pub const MAX_COMPONENTS: usize = 4;
 

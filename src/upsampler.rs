@@ -1,8 +1,8 @@
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
-use error::{Error, Result, UnsupportedFeature};
-use parser::Component;
+use crate::error::{Error, Result, UnsupportedFeature};
+use crate::parser::Component;
 
 pub struct Upsampler {
     components: Vec<UpsamplerComponent>,
