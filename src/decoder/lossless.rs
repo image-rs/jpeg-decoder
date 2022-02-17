@@ -1,3 +1,7 @@
+use alloc::borrow::ToOwned;
+use alloc::vec::Vec;
+use alloc::{format, vec};
+
 use crate::decoder::{Decoder, MAX_COMPONENTS};
 use crate::error::{Error, Result};
 use crate::huffman::HuffmanDecoder;

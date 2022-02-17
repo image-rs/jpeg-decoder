@@ -5,7 +5,7 @@ use alloc::{format, vec};
 use core::cmp;
 use core::mem;
 use core::ops::Range;
-use std::convert::TryInto;
+use core::convert::TryInto;
 use crate::error::{Error, Result, UnsupportedFeature};
 use crate::huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
 use crate::marker::Marker;
