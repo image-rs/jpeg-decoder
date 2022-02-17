@@ -37,6 +37,8 @@ pub enum Error {
     Format(String),
     /// The image makes use of a JPEG feature not (currently) supported by this library.
     Unsupported(UnsupportedFeature),
+    /// Error reading input data.
+    Read(String),
     /// An I/O error occurred while decoding the image.
     Io(IoError),
     /// An internal error occurred while decoding the image.
@@ -48,6 +50,7 @@ impl fmt::Display for Error {
         match *self {
             Error::Format(ref desc)      => write!(f, "invalid JPEG format: {}", desc),
             Error::Unsupported(ref feat) => write!(f, "unsupported JPEG feature: {:?}", feat),
+            Error::Read(ref desc)        => write!(f, "error reading input: {}", desc),
             Error::Io(ref err)           => err.fmt(f),
             Error::Internal(ref err)     => err.fmt(f),
         }

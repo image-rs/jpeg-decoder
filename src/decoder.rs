@@ -6,8 +6,6 @@ use core::cmp;
 use core::mem;
 use core::ops::Range;
 use std::convert::TryInto;
-use std::io::Read;
-use crate::read_u8;
 use crate::error::{Error, Result, UnsupportedFeature};
 use crate::huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
 use crate::marker::Marker;
@@ -16,6 +14,7 @@ use crate::parser::{
     AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
     IccChunk, ScanInfo,
 };
+use crate::reader::JpegRead;
 use crate::upsampler::Upsampler;
 use crate::worker::{PlatformWorker, RowData, Worker};
 
@@ -98,7 +97,7 @@ pub struct Decoder<R> {
     coefficients_finished: [u64; MAX_COMPONENTS],
 }
 
-impl<R: Read> Decoder<R> {
+impl<R: JpegRead> Decoder<R> {
     /// Creates a new `Decoder` using the reader `reader`.
     pub fn new(reader: R) -> Decoder<R> {
         Decoder {
@@ -227,8 +226,8 @@ impl<R: Read> Decoder<R> {
             // The metadata has already been read.
             return Ok(Vec::new());
         } else if self.frame.is_none()
-            && (read_u8(&mut self.reader)? != 0xFF
-                || Marker::from_u8(read_u8(&mut self.reader)?) != Some(Marker::SOI))
+            && (self.reader.read_u8()? != 0xFF
+                || Marker::from_u8(self.reader.read_u8()?) != Some(Marker::SOI))
         {
             return Err(Error::Format(
                 "first two bytes are not an SOI marker".to_owned(),
@@ -591,19 +590,19 @@ impl<R: Read> Decoder<R> {
             // libjpeg allows this though and there are images in the wild utilising it, so we are
             // forced to support this behavior.
             // Sony Ericsson P990i is an example of a device which produce this sort of JPEGs.
-            while read_u8(&mut self.reader)? != 0xFF {}
+            while self.reader.read_u8()? != 0xFF {}
 
             // Section B.1.1.2
             // All markers are assigned two-byte codes: an X’FF’ byte followed by a
             // byte which is not equal to 0 or X’FF’ (see Table B.1). Any marker may
             // optionally be preceded by any number of fill bytes, which are bytes
             // assigned code X’FF’.
-            let mut byte = read_u8(&mut self.reader)?;
+            let mut byte = self.reader.read_u8()?;
 
             // Section B.1.1.2
             // "Any marker may optionally be preceded by any number of fill bytes, which are bytes assigned code X’FF’."
             while byte == 0xFF {
-                byte = read_u8(&mut self.reader)?;
+                byte = self.reader.read_u8()?;
             }
 
             if byte != 0x00 && byte != 0xFF {
@@ -898,7 +897,7 @@ impl<R: Read> Decoder<R> {
     }
 }
 
-fn decode_block<R: Read>(
+fn decode_block<R: JpegRead>(
     reader: &mut R,
     coefficients: &mut [i16; 64],
     huffman: &mut HuffmanDecoder,
@@ -986,7 +985,7 @@ fn decode_block<R: Read>(
     Ok(())
 }
 
-fn decode_block_successive_approximation<R: Read>(
+fn decode_block_successive_approximation<R: JpegRead>(
     reader: &mut R,
     coefficients: &mut [i16; 64],
     huffman: &mut HuffmanDecoder,
@@ -1072,7 +1071,7 @@ fn decode_block_successive_approximation<R: Read>(
     Ok(())
 }
 
-fn refine_non_zeroes<R: Read>(
+fn refine_non_zeroes<R: JpegRead>(
     reader: &mut R,
     coefficients: &mut [i16; 64],
     huffman: &mut HuffmanDecoder,

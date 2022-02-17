@@ -2,11 +2,10 @@ use alloc::borrow::ToOwned;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::iter;
-use std::io::Read;
-use crate::read_u8;
 use crate::error::{Error, Result};
 use crate::marker::Marker;
 use crate::parser::ScanInfo;
+use crate::reader::JpegRead;
 
 const LUT_BITS: u8 = 8;
 
@@ -28,7 +27,7 @@ impl HuffmanDecoder {
 
     // Section F.2.2.3
     // Figure F.16
-    pub fn decode<R: Read>(&mut self, reader: &mut R, table: &HuffmanTable) -> Result<u8> {
+    pub fn decode<R: JpegRead>(&mut self, reader: &mut R, table: &HuffmanTable) -> Result<u8> {
         if self.num_bits < 16 {
             self.read_bits(reader)?;
         }
@@ -57,7 +56,7 @@ impl HuffmanDecoder {
         }
     }
 
-    pub fn decode_fast_ac<R: Read>(&mut self, reader: &mut R, table: &HuffmanTable) -> Result<Option<(i16, u8)>> {
+    pub fn decode_fast_ac<R: JpegRead>(&mut self, reader: &mut R, table: &HuffmanTable) -> Result<Option<(i16, u8)>> {
         if let Some(ref ac_lut) = table.ac_lut {
             if self.num_bits < LUT_BITS {
                 self.read_bits(reader)?;
@@ -78,7 +77,7 @@ impl HuffmanDecoder {
     }
 
     #[inline]
-    pub fn get_bits<R: Read>(&mut self, reader: &mut R, count: u8) -> Result<u16> {
+    pub fn get_bits<R: JpegRead>(&mut self, reader: &mut R, count: u8) -> Result<u16> {
         if self.num_bits < count {
             self.read_bits(reader)?;
         }
@@ -90,7 +89,7 @@ impl HuffmanDecoder {
     }
 
     #[inline]
-    pub fn receive_extend<R: Read>(&mut self, reader: &mut R, count: u8) -> Result<i16> {
+    pub fn receive_extend<R: JpegRead>(&mut self, reader: &mut R, count: u8) -> Result<i16> {
         let value = self.get_bits(reader, count)?;
         Ok(extend(value, count))
     }
@@ -100,7 +99,7 @@ impl HuffmanDecoder {
         self.num_bits = 0;
     }
 
-    pub fn take_marker<R: Read>(&mut self, reader: &mut R) -> Result<Option<Marker>> {
+    pub fn take_marker<R: JpegRead>(&mut self, reader: &mut R) -> Result<Option<Marker>> {
         self.read_bits(reader).map(|_| self.marker.take())
     }
 
@@ -120,16 +119,16 @@ impl HuffmanDecoder {
         self.num_bits -= count;
     }
 
-    fn read_bits<R: Read>(&mut self, reader: &mut R) -> Result<()> {
+    fn read_bits<R: JpegRead>(&mut self, reader: &mut R) -> Result<()> {
         while self.num_bits <= 56 {
             // Fill with zero bits if we have reached the end.
             let byte = match self.marker {
                 Some(_) => 0,
-                None => read_u8(reader)?,
+                None => reader.read_u8()?,
             };
 
             if byte == 0xFF {
-                let mut next_byte = read_u8(reader)?;
+                let mut next_byte = reader.read_u8()?;
 
                 // Check for byte stuffing.
                 if next_byte != 0x00 {
@@ -140,7 +139,7 @@ impl HuffmanDecoder {
                     // Section B.1.1.2
                     // "Any marker may optionally be preceded by any number of fill bytes, which are bytes assigned code X’FF’."
                     while next_byte == 0xFF {
-                        next_byte = read_u8(reader)?;
+                        next_byte = reader.read_u8()?;
                     }
 
                     match next_byte {
