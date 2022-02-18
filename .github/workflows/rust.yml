@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         rust: ["1.48.0", stable, beta, nightly]
-        features: ["", "rayon"]
+        features: ["", "std", "rayon"]
         command: [test, benchmark]
 
     steps:
