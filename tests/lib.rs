@@ -8,6 +8,7 @@ use std::fs::File;
 mod common;
 mod crashtest;
 mod reftest;
+mod no_std;
 
 #[test]
 fn read_info() {
