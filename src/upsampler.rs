@@ -164,6 +164,13 @@ impl Upsample for UpsamplerH2V1 {
     }
 }
 
+// no_std version to calculate fractional part of positive numbers
+fn fract(v: f32) -> f32 {
+    debug_assert!(v >= 0.0 && v <= (1 << core::f32::MANTISSA_DIGITS - 1) as f32);
+    let int = v as usize as f32;
+    v - int
+}
+
 impl Upsample for UpsamplerH1V2 {
     fn upsample_row(&self,
                     input: &[u8],
@@ -176,7 +183,7 @@ impl Upsample for UpsamplerH1V2 {
         let row_near = row as f32 / 2.0;
         // If row_near's fractional is 0.0 we want row_far to be the previous row and if it's 0.5 we
         // want it to be the next row.
-        let row_far = (row_near + row_near.fract() * 3.0 - 0.25).min((input_height - 1) as f32);
+        let row_far = (row_near + fract(row_near) * 3.0 - 0.25).min((input_height - 1) as f32);
 
         let input_near = &input[row_near as usize * row_stride ..];
         let input_far = &input[row_far as usize * row_stride ..];
@@ -202,7 +209,7 @@ impl Upsample for UpsamplerH2V2 {
         let row_near = row as f32 / 2.0;
         // If row_near's fractional is 0.0 we want row_far to be the previous row and if it's 0.5 we
         // want it to be the next row.
-        let row_far = (row_near + row_near.fract() * 3.0 - 0.25).min((input_height - 1) as f32);
+        let row_far = (row_near + fract(row_near) * 3.0 - 0.25).min((input_height - 1) as f32);
 
         let input_near = &input[row_near as usize * row_stride ..];
         let input_far = &input[row_far as usize * row_stride ..];
@@ -248,5 +255,19 @@ impl Upsample for UpsamplerGeneric {
                 index += 1;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::upsampler::fract;
+
+    #[test]
+    fn test_fract() {
+        let value = 3.6_f32;
+        let frac = fract(value);
+        let diff = frac - 0.6_f32;
+
+        assert!(diff >= -core::f32::EPSILON && diff <= core::f32::EPSILON);
     }
 }
