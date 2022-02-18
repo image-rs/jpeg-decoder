@@ -112,6 +112,12 @@ pub struct IccChunk {
     pub data: Vec<u8>,
 }
 
+fn calc_output_size(size: u16, idct_size: usize) -> u16 {
+    let size = size as u32 * idct_size as u32;
+    let dim = size / 8 + u32::from(size % 8 != 0);
+    dim as u16
+}
+
 impl FrameInfo {
     pub(crate) fn update_idct_size(&mut self, idct_size: usize) -> Result<()> {
         for component in &mut self.components {
@@ -121,8 +127,8 @@ impl FrameInfo {
         update_component_sizes(self.image_size, &mut self.components)?;
 
         self.output_size = Dimensions {
-            width: (self.image_size.width as f32 * idct_size as f32 / 8.0).ceil() as u16,
-            height: (self.image_size.height as f32 * idct_size as f32 / 8.0).ceil() as u16
+            width: calc_output_size(self.image_size.width, idct_size),
+            height: calc_output_size(self.image_size.height, idct_size),
         };
 
         Ok(())
