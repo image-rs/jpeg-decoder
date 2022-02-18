@@ -244,7 +244,7 @@ pub fn dequantize_and_idct_block_8x8(
     output_linestride: usize,
     output: &mut [u8],
 ) {
-    #[cfg(not(feature = "platform_independent"))]
+    #[cfg(all(feature="std", not(feature = "platform_independent")))]
     if let Some(idct) = crate::arch::get_dequantize_and_idct_block_8x8() {
         #[allow(unsafe_code)]
         unsafe {
@@ -636,7 +636,7 @@ fn test_dequantize_and_idct_block_8x8_all_zero() {
 #[test]
 fn test_dequantize_and_idct_block_8x8_saturated() {
     // Arch-specific IDCT implementations need not handle i16::MAX values.
-    #[cfg(not(feature = "platform_independent"))]
+    #[cfg(all(feature = "std", not(feature = "platform_independent")))]
     if crate::arch::get_dequantize_and_idct_block_8x8().is_some() {
         return;
     }

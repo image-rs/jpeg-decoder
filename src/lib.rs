@@ -26,6 +26,8 @@
 //! let metadata = decoder.info().unwrap();
 //! ```
 
+#![no_std]
+
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 #![cfg_attr(feature = "platform_independent", forbid(unsafe_code))]
@@ -37,6 +39,9 @@
 extern crate alloc;
 extern crate core;
 
+#[cfg(feature = "std")]
+extern crate std;
+
 #[cfg(feature = "rayon")]
 extern crate rayon;
 
@@ -45,7 +50,7 @@ pub use error::{Error, UnsupportedFeature};
 pub use parser::CodingProcess;
 pub use reader::JpegRead;
 
-#[cfg(not(feature = "platform_independent"))]
+#[cfg(all(feature="std", not(feature = "platform_independent")))]
 mod arch;
 mod decoder;
 mod error;

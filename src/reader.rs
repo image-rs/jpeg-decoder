@@ -1,3 +1,4 @@
+#[cfg(feature = "std")]
 use std::io::Read;
 
 use crate::Error;
@@ -27,9 +28,10 @@ pub trait JpegRead {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T: Read> JpegRead for T {
     fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error> {
-        Ok(std::io::Read::read_exact(self, buf)?)
+        Ok(Read::read_exact(self, buf)?)
     }
 
     fn skip_bytes(&mut self, length: usize) -> Result<(), Error> {
@@ -43,3 +45,39 @@ impl<T: Read> JpegRead for T {
         }
     }
 }
+
+#[cfg(not(feature = "std"))]
+impl<W: JpegRead + ?Sized> JpegRead for &mut W {
+    fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error> {
+        (**self).read_exact(buf)
+    }
+
+    fn skip_bytes(&mut self, length: usize) -> Result<(), Error> {
+        (**self).skip_bytes(length)
+    }
+}
+
+#[cfg(not(feature = "std"))]
+impl JpegRead for &[u8] {
+    fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error> {
+        if buf.len() <= self.len() {
+            let (data, remaining) = self.split_at(buf.len());
+            buf.copy_from_slice(data);
+            *self = remaining;
+            Ok(())
+        } else {
+            panic!();
+        }
+    }
+
+    fn skip_bytes(&mut self, length: usize) -> Result<(), Error> {
+        if length <= self.len() {
+            let (_, remaining) = self.split_at(length);
+            *self = remaining;
+            Ok(())
+        } else {
+            panic!();
+        }
+    }
+}
+

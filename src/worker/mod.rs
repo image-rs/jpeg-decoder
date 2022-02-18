@@ -1,9 +1,11 @@
 mod immediate;
+
+#[cfg(feature = "std")]
 mod multithreaded;
 
-#[cfg(not(any(target_arch = "asmjs", target_arch = "wasm32")))]
+#[cfg(all(feature = "std", not(any(target_arch = "asmjs", target_arch = "wasm32"))))]
 pub use self::multithreaded::MultiThreadedWorker as PlatformWorker;
-#[cfg(any(target_arch = "asmjs", target_arch = "wasm32"))]
+#[cfg(any(not(feature = "std"), target_arch = "asmjs", target_arch = "wasm32"))]
 pub use self::immediate::ImmediateWorker as PlatformWorker;
 
 use alloc::sync::Arc;

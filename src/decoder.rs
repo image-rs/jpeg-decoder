@@ -1256,7 +1256,7 @@ fn color_convert_line_ycbcr(data: &[Vec<u8>], output: &mut [u8]) {
     assert!(data.len() == 3, "wrong number of components for ycbcr");
     let [y, cb, cr]: &[_; 3] = data.try_into().unwrap();
 
-    #[cfg(not(feature = "platform_independent"))]
+    #[cfg(all(feature = "std", not(feature = "platform_independent")))]
     let arch_specific_pixels = {
         if let Some(ycbcr) = crate::arch::get_color_convert_line_ycbcr() {
             #[allow(unsafe_code)]
@@ -1268,7 +1268,7 @@ fn color_convert_line_ycbcr(data: &[Vec<u8>], output: &mut [u8]) {
         }
     };
 
-    #[cfg(feature = "platform_independent")]
+    #[cfg(any(not(feature = "std"), feature = "platform_independent"))]
     let arch_specific_pixels = 0;
 
     for (((chunk, y), cb), cr) in output

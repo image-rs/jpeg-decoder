@@ -28,7 +28,8 @@ name = "large_image"
 harness = false
 
 [features]
-default = ["rayon"]
+default = ["std", "rayon"]
+std = []
 platform_independent = []
 nightly_aarch64_neon = []
 
