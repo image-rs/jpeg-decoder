@@ -16,6 +16,11 @@ pub struct ImmediateWorker {
     quantization_tables: Vec<Option<Arc<[u16; 64]>>>,
 }
 
+pub fn with_immediate<T>(f: impl FnOnce(&mut dyn Worker) -> T) -> T {
+    let mut worker = ImmediateWorker::new_immediate();
+    f(&mut worker)
+}
+
 impl ImmediateWorker {
     pub fn new_immediate() -> ImmediateWorker {
         ImmediateWorker {
@@ -25,6 +30,7 @@ impl ImmediateWorker {
             quantization_tables: vec![None; MAX_COMPONENTS],
         }
     }
+
     pub fn start_immediate(&mut self, data: RowData) {
         assert!(self.results[data.index].is_empty());
 
@@ -33,6 +39,7 @@ impl ImmediateWorker {
         self.components[data.index] = Some(data.component);
         self.quantization_tables[data.index] = Some(data.quantization_table);
     }
+
     pub fn append_row_immediate(&mut self, (index, data): (usize, Vec<i16>)) {
         // Convert coefficients from a MCU row to samples.
 
@@ -55,15 +62,13 @@ impl ImmediateWorker {
 
         self.offsets[index] += block_count * component.dct_scale * component.dct_scale;
     }
+
     pub fn get_result_immediate(&mut self, index: usize) -> Vec<u8> {
         mem::take(&mut self.results[index])
     }
 }
 
 impl Worker for ImmediateWorker {
-    fn new() -> Result<Self> {
-        Ok(ImmediateWorker::new_immediate())
-    }
     fn start(&mut self, data: RowData) -> Result<()> {
         self.start_immediate(data);
         Ok(())
