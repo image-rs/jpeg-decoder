@@ -11,13 +11,7 @@ use super::{RowData, Worker};
 use super::immediate::ImmediateWorker;
 
 pub fn with_multithreading<T>(f: impl FnOnce(&mut dyn Worker) -> T) -> T {
-    #[cfg(not(feature = "rayon"))]
-    return self::enter_threads(f);
-
-    #[cfg(feature = "rayon")]
-    return jpeg_rayon::enter(|mut worker| {
-        f(&mut worker)
-    });
+    self::enter_threads(f)
 }
 
 enum WorkerMsg {
@@ -133,70 +127,3 @@ fn enter_threads<T>(f: impl FnOnce(&mut dyn Worker) -> T) -> T {
     let mut worker = StdThreadWorker(MpscWorker::default());
     f(&mut worker)
 }
-
-
-#[cfg(feature = "rayon")]
-mod jpeg_rayon {
-    use crate::error::Result;
-    use super::{MpscWorker, RowData};
-
-    pub struct Scoped<'r, 'scope> {
-        fifo: &'r rayon::ScopeFifo<'scope>,
-        inner: MpscWorker,
-    }
-
-    pub fn enter<T>(f: impl FnOnce(Scoped) -> T) -> T {
-        // Note: Must be at least two threads. Otherwise, we may deadlock, due to ordering
-        // constraints that we can not impose properly. Note that `append_row` creates a new task
-        // while in `get_result` we wait for all tasks of a component. The only way for rayon to
-        // impose this wait __and get a result__ is by ending an in_place_scope.
-        //
-        // However, the ordering of tasks is not as FIFO as the name would suggest. Indeed, even
-        // though tasks are spawned in `start` _before_ the task spawned in `get_result`, the
-        // `in_place_scope_fifo` will wait for ITS OWN results in fifo order. This implies, unless
-        // there is some other thread capable of stealing the worker the work task will in fact not
-        // get executed and the result will wait forever. It is impossible to otherwise schedule
-        // the worker tasks specifically (e.g. join handle would be cool *cough* if you read this
-        // and work on rayon) before while yielding from the current thread.
-        //
-        // So: we need at least one more worker thread that is _not_ occupied.
-        let threads = rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap();
-
-        threads.in_place_scope_fifo(|fifo| {
-            f(Scoped { fifo, inner: MpscWorker::default() })
-        })
-    }
-
-    impl super::Worker for Scoped<'_, '_> {
-        fn start(&mut self, row_data: RowData) -> Result<()> {
-            let fifo = &mut self.fifo;
-            self.inner.start_with(row_data, |_| {
-                let (tx, worker) = super::create_worker();
-                fifo.spawn_fifo(move |_| {
-                    worker()
-                });
-                Ok(tx)
-            })
-        }
-
-        fn append_row(&mut self, row: (usize, Vec<i16>)) -> Result<()> {
-            self.inner.append_row(row)
-        }
-
-        fn get_result(&mut self, index: usize) -> Result<Vec<u8>> {
-            self.inner.get_result_with(index, |rx| {
-                let mut result = vec![];
-                let deliver_result = &mut result;
-
-                rayon::in_place_scope_fifo(|scope| {
-                    scope.spawn_fifo(move |_| {
-                        *deliver_result = rx.recv().expect("jpeg-decoder worker thread error");
-                    });
-                });
-
-                result
-            })
-        }
-    }
-}
-

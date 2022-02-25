@@ -560,14 +560,17 @@ impl<R: Read> Decoder<R> {
                 let coefficients_per_mcu_row = usize::from(component.block_size.width)
                     * usize::from(component.vertical_sampling_factor)
                     * 64;
-                for mcu_y in 0..frame.mcu_size.height {
-                    let row_coefficients = {
-                        let offset = usize::from(mcu_y) * coefficients_per_mcu_row;
-                        self.coefficients[i][offset..offset + coefficients_per_mcu_row].to_vec()
-                    };
 
-                    worker.append_row((i, row_coefficients))?;
-                }
+                let mut tasks = (0..frame.mcu_size.height)
+                    .map(|mcu_y| {
+                        let offset = usize::from(mcu_y) * coefficients_per_mcu_row;
+                        let row_coefficients = self.coefficients[i][offset..offset + coefficients_per_mcu_row].to_vec();
+                        (i, row_coefficients)
+                    });
+
+                // FIXME: additional potential work stealing opportunities for rayon case if we
+                // also internally can parallelize over components.
+                worker.append_rows(&mut tasks)?;
                 planes[i] = worker.get_result(i)?;
             }
         }
@@ -871,6 +874,8 @@ impl<R: Read> Decoder<R> {
                         )
                     };
 
+                    // FIXME: additional potential work stealing opportunities for rayon case if we
+                    // also internally can parallelize over components.
                     worker.append_row((i, row_coefficients))?;
                 }
             }
