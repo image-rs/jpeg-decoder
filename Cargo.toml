@@ -45,3 +45,7 @@ required-features = ["rayon"]
 [[test]]
 name = "rayon-1"
 required-features = ["rayon"]
+
+[[test]]
+name = "rayon-2"
+required-features = ["rayon"]
