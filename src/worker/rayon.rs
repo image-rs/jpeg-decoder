@@ -1,11 +1,30 @@
 use core::convert::TryInto;
+
+use crate::decoder::MAX_COMPONENTS;
 use crate::error::Result;
 use crate::idct::dequantize_and_idct_block;
+use crate::parser::Component;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use super::{RowData, Worker};
-use crate::worker::immediate::ImmediateWorker;
+
+/// Technically similar to `immediate::ImmediateWorker` but we copy it since we may prefer
+/// different style of managing the memory allocation, something that multiple actors can access in
+/// parallel.
+#[derive(Default)]
+struct ImmediateWorker {
+    offsets: [usize; MAX_COMPONENTS],
+    results: [Vec<u8>; MAX_COMPONENTS],
+    components: [Option<Component>; MAX_COMPONENTS],
+    quantization_tables: [Option<Arc<[u16; 64]>>; MAX_COMPONENTS],
+}
+
+struct ComponentMetadata {
+    block_count: usize,
+    line_stride: usize,
+    dct_scale: usize,
+}
 
 pub struct Scoped {
     inner: Mutex<ImmediateWorker>,
@@ -13,12 +32,43 @@ pub struct Scoped {
 
 pub fn with_rayon<T>(f: impl FnOnce(&mut dyn Worker) -> T) -> T {
     rayon::in_place_scope(|_| {
-        let inner = ImmediateWorker::new_immediate();
-        f(&mut Scoped { inner: Mutex::new(inner) })
+        let inner = ImmediateWorker::default();
+        f(&mut Scoped {
+            inner: Mutex::new(inner),
+        })
     })
 }
 
-impl Scoped {
+impl ImmediateWorker {
+    pub fn start_immediate(&mut self, data: RowData) {
+        let elements = data.component.block_size.width as usize
+            * data.component.block_size.height as usize
+            * data.component.dct_scale
+            * data.component.dct_scale;
+        self.offsets[data.index] = 0;
+        self.results[data.index].resize(elements, 0u8);
+        self.components[data.index] = Some(data.component);
+        self.quantization_tables[data.index] = Some(data.quantization_table);
+    }
+
+    pub fn get_result_immediate(&mut self, index: usize) -> Vec<u8> {
+        core::mem::take(&mut self.results[index])
+    }
+
+    pub fn component_metadata(&self, index: usize) -> ComponentMetadata {
+        let component = self.components[index].as_ref().unwrap();
+        let block_size = component.block_size;
+        let block_count = block_size.width as usize * component.vertical_sampling_factor as usize;
+        let line_stride = block_size.width as usize * component.dct_scale;
+        let dct_scale = component.dct_scale;
+
+        ComponentMetadata {
+            block_count,
+            line_stride,
+            dct_scale,
+        }
+    }
+
     pub fn append_row_locked(
         mutex: &Mutex<ImmediateWorker>,
         (index, data): (usize, Vec<i16>),
@@ -33,13 +83,13 @@ impl Scoped {
 
         {
             let inner = mutex.lock().unwrap();
-            let component = inner.components[index].as_ref().unwrap();
             quantization_table = inner.quantization_tables[index].as_ref().unwrap().clone();
+            block_size = inner.components[index].as_ref().unwrap().block_size;
+            let metadata = inner.component_metadata(index);
 
-            block_size = component.block_size;
-            block_count = block_size.width as usize * component.vertical_sampling_factor as usize;
-            line_stride = block_size.width as usize * component.dct_scale;
-            dct_scale = component.dct_scale;
+            block_count = metadata.block_count;
+            line_stride = metadata.line_stride;
+            dct_scale = metadata.dct_scale;
         }
 
         assert_eq!(data.len(), block_count * 64);
@@ -52,7 +102,13 @@ impl Scoped {
             let coefficients: &[i16; 64] = &data[i * 64..(i + 1) * 64].try_into().unwrap();
 
             // Write to a temporary intermediate buffer, a 8x8 'image'.
-            dequantize_and_idct_block(dct_scale, coefficients, &*quantization_table, 8, &mut output_buffer);
+            dequantize_and_idct_block(
+                dct_scale,
+                coefficients,
+                &*quantization_table,
+                8,
+                &mut output_buffer,
+            );
 
             // Lock the mutex only for this write back, not the main computation.
             // FIXME: we are only copying image data. Can we use some atomic backing buffer and a
@@ -77,7 +133,18 @@ impl super::Worker for Scoped {
     }
 
     fn append_row(&mut self, row: (usize, Vec<i16>)) -> Result<()> {
-        self.inner.get_mut().unwrap().append_row_immediate(row);
+        let (index, data) = row;
+        let result_offset;
+
+        {
+            let mut inner = self.inner.get_mut().unwrap();
+            let metadata = inner.component_metadata(index);
+
+            result_offset = inner.offsets[index];
+            inner.offsets[index] += metadata.bytes_used();
+        }
+
+        ImmediateWorker::append_row_locked(&self.inner, (index, data), result_offset);
         Ok(())
     }
 
@@ -87,25 +154,19 @@ impl super::Worker for Scoped {
     }
 
     // Magic sauce, these _may_ run in parallel.
-    fn append_rows(&mut self, iter: &mut dyn Iterator<Item=(usize, Vec<i16>)>)
-        -> Result<()>
-    {
+    fn append_rows(&mut self, iter: &mut dyn Iterator<Item = (usize, Vec<i16>)>) -> Result<()> {
         rayon::in_place_scope(|scope| {
             let mut inner = self.inner.lock().unwrap();
             // First we schedule everything, making sure their index is right etc.
             for (index, data) in iter {
-                let component = inner.components[index].as_ref().unwrap();
-
-                let block_size = component.block_size;
-                let block_count = block_size.width as usize * component.vertical_sampling_factor as usize;
-                let dct_scale = component.dct_scale;
+                let metadata = inner.component_metadata(index);
 
                 let result_offset = inner.offsets[index];
-                inner.offsets[index] += block_count * dct_scale * dct_scale;
+                inner.offsets[index] += metadata.bytes_used();
 
                 let mutex = &self.inner;
                 scope.spawn(move |_| {
-                    Scoped::append_row_locked(mutex, (index, data), result_offset)
+                    ImmediateWorker::append_row_locked(mutex, (index, data), result_offset)
                 });
             }
 
@@ -113,5 +174,11 @@ impl super::Worker for Scoped {
         });
 
         Ok(())
+    }
+}
+
+impl ComponentMetadata {
+    fn bytes_used(&self) -> usize {
+        self.block_count * self.dct_scale * self.dct_scale
     }
 }
