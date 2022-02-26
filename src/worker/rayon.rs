@@ -31,11 +31,9 @@ pub struct Scoped {
 }
 
 pub fn with_rayon<T>(f: impl FnOnce(&mut dyn Worker) -> T) -> T {
-    rayon::in_place_scope(|_| {
-        let inner = ImmediateWorker::default();
-        f(&mut Scoped {
-            inner: Mutex::new(inner),
-        })
+    let inner = ImmediateWorker::default();
+    f(&mut Scoped {
+        inner: Mutex::new(inner),
     })
 }
 
