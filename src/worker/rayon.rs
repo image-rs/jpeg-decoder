@@ -20,7 +20,9 @@ struct ImmediateWorker {
     quantization_tables: [Option<Arc<[u16; 64]>>; MAX_COMPONENTS],
 }
 
+#[derive(Clone, Copy)]
 struct ComponentMetadata {
+    block_width: usize,
     block_count: usize,
     line_stride: usize,
     dct_scale: usize,
@@ -53,38 +55,39 @@ impl ImmediateWorker {
         core::mem::take(&mut self.results[index])
     }
 
-    pub fn component_metadata(&self, index: usize) -> ComponentMetadata {
-        let component = self.components[index].as_ref().unwrap();
+    pub fn component_metadata(&self, index: usize) -> Option<ComponentMetadata> {
+        let component = self.components[index].as_ref()?;
         let block_size = component.block_size;
+        let block_width = block_size.width as usize;
         let block_count = block_size.width as usize * component.vertical_sampling_factor as usize;
         let line_stride = block_size.width as usize * component.dct_scale;
         let dct_scale = component.dct_scale;
 
-        ComponentMetadata {
+        Some(ComponentMetadata {
+            block_width,
             block_count,
             line_stride,
             dct_scale,
-        }
+        })
     }
 
     pub fn append_row_locked(
-        mutex: &Mutex<ImmediateWorker>,
+        quantization_table: Arc<[u16; 64]>,
+        metadata: ComponentMetadata,
         (index, data): (usize, Vec<i16>),
         result_offset: usize,
+        result_block: &mut [u8],
     ) {
         // Convert coefficients from a MCU row to samples.
-        let quantization_table;
         let block_count;
         let line_stride;
-        let block_size;
+        let block_width;
         let dct_scale;
 
         {
-            let inner = mutex.lock().unwrap();
-            quantization_table = inner.quantization_tables[index].as_ref().unwrap().clone();
-            block_size = inner.components[index].as_ref().unwrap().block_size;
-            let metadata = inner.component_metadata(index);
+            let metadata = metadata;
 
+            block_width = metadata.block_width;
             block_count = metadata.block_count;
             line_stride = metadata.line_stride;
             dct_scale = metadata.dct_scale;
@@ -94,8 +97,8 @@ impl ImmediateWorker {
 
         let mut output_buffer = [0; 64];
         for i in 0..block_count {
-            let x = (i % block_size.width as usize) * dct_scale;
-            let y = (i / block_size.width as usize) * dct_scale;
+            let x = (i % block_width) * dct_scale;
+            let y = (i / block_width) * dct_scale;
 
             let coefficients: &[i16; 64] = &data[i * 64..(i + 1) * 64].try_into().unwrap();
 
@@ -111,8 +114,7 @@ impl ImmediateWorker {
             // Lock the mutex only for this write back, not the main computation.
             // FIXME: we are only copying image data. Can we use some atomic backing buffer and a
             // `Relaxed` write instead?
-            let mut write_back = mutex.lock().unwrap();
-            let write_back = &mut write_back.results[index][result_offset + y * line_stride + x..];
+            let write_back = &mut result_block[y * line_stride + x..];
 
             let buffered_lines = output_buffer.chunks_mut(8);
             let back_lines = write_back.chunks_mut(line_stride);
@@ -131,18 +133,29 @@ impl super::Worker for Scoped {
     }
 
     fn append_row(&mut self, row: (usize, Vec<i16>)) -> Result<()> {
+        let quantization_table;
+        let metadata;
         let (index, data) = row;
         let result_offset;
+        let result_block;
 
         {
             let mut inner = self.inner.get_mut().unwrap();
-            let metadata = inner.component_metadata(index);
+            quantization_table = inner.quantization_tables[index].as_ref().unwrap().clone();
+            metadata = inner.component_metadata(index).unwrap();
 
             result_offset = inner.offsets[index];
+            result_block = &mut inner.results[index][inner.offsets[index]..];
             inner.offsets[index] += metadata.bytes_used();
         }
 
-        ImmediateWorker::append_row_locked(&self.inner, (index, data), result_offset);
+        ImmediateWorker::append_row_locked(
+            quantization_table,
+            metadata,
+            (index, data),
+            result_offset,
+            result_block,
+        );
         Ok(())
     }
 
@@ -153,18 +166,47 @@ impl super::Worker for Scoped {
 
     // Magic sauce, these _may_ run in parallel.
     fn append_rows(&mut self, iter: &mut dyn Iterator<Item = (usize, Vec<i16>)>) -> Result<()> {
+        let inner = self.inner.get_mut().unwrap();
         rayon::in_place_scope(|scope| {
-            let mut inner = self.inner.lock().unwrap();
+            let metadatas = [
+                inner.component_metadata(0),
+                inner.component_metadata(1),
+                inner.component_metadata(2),
+                inner.component_metadata(3),
+            ];
+
+            let inner = &mut *inner;
+            let [res0, res1, res2, res3] = &mut inner.results;
+
+            // Lazily get the blocks. Note: if we've already collected results from a component
+            // then the result vector has already been deallocated/taken. But no more tasks should
+            // be created for it.
+            let mut result_blocks = [
+                res0.get_mut(inner.offsets[0]..).unwrap_or(&mut []),
+                res1.get_mut(inner.offsets[1]..).unwrap_or(&mut []),
+                res2.get_mut(inner.offsets[2]..).unwrap_or(&mut []),
+                res3.get_mut(inner.offsets[3]..).unwrap_or(&mut []),
+            ];
+
             // First we schedule everything, making sure their index is right etc.
             for (index, data) in iter {
-                let metadata = inner.component_metadata(index);
+                let metadata = metadatas[index].unwrap();
+                let quantization_table = inner.quantization_tables[index].as_ref().unwrap().clone();
 
                 let result_offset = inner.offsets[index];
+                let (result_block, tail) = core::mem::replace(&mut result_blocks[index], &mut [])
+                    .split_at_mut(metadata.bytes_used());
+                result_blocks[index] = tail;
                 inner.offsets[index] += metadata.bytes_used();
 
-                let mutex = &self.inner;
                 scope.spawn(move |_| {
-                    ImmediateWorker::append_row_locked(mutex, (index, data), result_offset)
+                    ImmediateWorker::append_row_locked(
+                        quantization_table,
+                        metadata,
+                        (index, data),
+                        result_offset,
+                        result_block,
+                    )
                 });
             }
 
