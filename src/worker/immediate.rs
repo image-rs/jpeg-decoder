@@ -10,10 +10,10 @@ use crate::parser::Component;
 use super::{RowData, Worker};
 
 pub struct ImmediateWorker {
-    pub(crate) offsets: [usize; MAX_COMPONENTS],
-    pub(crate) results: Vec<Vec<u8>>,
-    pub(crate) components: Vec<Option<Component>>,
-    pub(crate) quantization_tables: Vec<Option<Arc<[u16; 64]>>>,
+    offsets: [usize; MAX_COMPONENTS],
+    results: Vec<Vec<u8>>,
+    components: Vec<Option<Component>>,
+    quantization_tables: Vec<Option<Arc<[u16; 64]>>>,
 }
 
 pub fn with_immediate<T>(f: impl FnOnce(&mut dyn Worker) -> T) -> T {

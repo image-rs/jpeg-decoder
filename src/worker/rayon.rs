@@ -101,9 +101,6 @@ impl ImmediateWorker {
                 &mut output_buffer,
             );
 
-            // Lock the mutex only for this write back, not the main computation.
-            // FIXME: we are only copying image data. Can we use some atomic backing buffer and a
-            // `Relaxed` write instead?
             let write_back = &mut result_block[y * line_stride + x..];
 
             let buffered_lines = output_buffer.chunks_mut(8);
@@ -123,7 +120,7 @@ impl super::Worker for Scoped {
     }
 
     fn append_row(&mut self, row: (usize, Vec<i16>)) -> Result<()> {
-        let ref mut inner = self.inner;
+        let inner = &mut self.inner;
         let (index, data) = row;
 
         let quantization_table = inner.quantization_tables[index].as_ref().unwrap().clone();
@@ -142,7 +139,7 @@ impl super::Worker for Scoped {
 
     // Magic sauce, these _may_ run in parallel.
     fn append_rows(&mut self, iter: &mut dyn Iterator<Item = (usize, Vec<i16>)>) -> Result<()> {
-        let ref mut inner = self.inner;
+        let inner = &mut self.inner;
         rayon::in_place_scope(|scope| {
             let metadatas = [
                 inner.component_metadata(0),
@@ -151,7 +148,6 @@ impl super::Worker for Scoped {
                 inner.component_metadata(3),
             ];
 
-            let inner = &mut *inner;
             let [res0, res1, res2, res3] = &mut inner.results;
 
             // Lazily get the blocks. Note: if we've already collected results from a component
@@ -183,8 +179,6 @@ impl super::Worker for Scoped {
                     )
                 });
             }
-
-            // Then the mutex is released, allowing all tasks to run.
         });
 
         Ok(())

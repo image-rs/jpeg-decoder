@@ -11,7 +11,8 @@ use super::{RowData, Worker};
 use super::immediate::ImmediateWorker;
 
 pub fn with_multithreading<T>(f: impl FnOnce(&mut dyn Worker) -> T) -> T {
-    self::enter_threads(f)
+    let mut worker = MpscWorker::default();
+    f(&mut worker)
 }
 
 enum WorkerMsg {
@@ -24,8 +25,6 @@ enum WorkerMsg {
 pub struct MpscWorker {
     senders: [Option<Sender<WorkerMsg>>; MAX_COMPONENTS]
 }
-
-pub struct StdThreadWorker(MpscWorker);
 
 impl MpscWorker {
     fn start_with(
@@ -43,17 +42,15 @@ impl MpscWorker {
         // we do the "take out value and put it back in once we're done" dance here
         // and in all other message-passing methods because there's not that many rows
         // and this should be cheaper than spawning MAX_COMPONENTS many threads up front
-        let sender = mem::replace(&mut self.senders[component], None).unwrap();
+        let sender = self.senders[component].as_mut().unwrap();
         sender.send(WorkerMsg::Start(row_data)).expect("jpeg-decoder worker thread error");
-        self.senders[component] = Some(sender);
         Ok(())
     }
 
     fn append_row(&mut self, row: (usize, Vec<i16>)) -> Result<()> {
         let component = row.0;
-        let sender = mem::replace(&mut self.senders[component], None).unwrap();
+        let sender = self.senders[component].as_mut().unwrap();
         sender.send(WorkerMsg::AppendRow(row.1)).expect("jpeg-decoder worker thread error");
-        self.senders[component] = Some(sender);
         Ok(())
     }
 
@@ -63,21 +60,21 @@ impl MpscWorker {
         collect: impl FnOnce(Receiver<Vec<u8>>) -> Vec<u8>,
     ) -> Result<Vec<u8>> {
         let (tx, rx) = mpsc::channel();
-        let sender = mem::replace(&mut self.senders[index], None).unwrap();
+        let sender = mem::take(&mut self.senders[index]).unwrap();
         sender.send(WorkerMsg::GetResult(tx)).expect("jpeg-decoder worker thread error");
         Ok(collect(rx))
     }
 }
 
-impl Worker for StdThreadWorker {
+impl Worker for MpscWorker {
     fn start(&mut self, row_data: RowData) -> Result<()> {
-        self.0.start_with(row_data, spawn_worker_thread)
+        self.start_with(row_data, spawn_worker_thread)
     }
     fn append_row(&mut self, row: (usize, Vec<i16>)) -> Result<()> {
-        self.0.append_row(row)
+        MpscWorker::append_row(self, row)
     }
     fn get_result(&mut self, index: usize) -> Result<Vec<u8>> {
-        self.0.get_result_with(index, collect_worker_thread)
+        self.get_result_with(index, collect_worker_thread)
     }
 }
 
@@ -117,13 +114,6 @@ fn spawn_worker_thread(component: usize) -> Result<Sender<WorkerMsg>> {
     Ok(tx)
 }
 
-
 fn collect_worker_thread(rx: Receiver<Vec<u8>>) -> Vec<u8> {
     rx.recv().expect("jpeg-decoder worker thread error")
-}
-
-#[allow(dead_code)]
-fn enter_threads<T>(f: impl FnOnce(&mut dyn Worker) -> T) -> T {
-    let mut worker = StdThreadWorker(MpscWorker::default());
-    f(&mut worker)
 }
