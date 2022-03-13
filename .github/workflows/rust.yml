@@ -49,6 +49,7 @@ jobs:
     steps:
       - name: Installing emulator and linker
         run: |
+          sudo apt-get update
           sudo apt-get install qemu binfmt-support qemu-user-static gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
       - name: Installing Rust toolchain
