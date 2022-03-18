@@ -19,6 +19,13 @@ png = "0.16"
 walkdir = "2.0"
 criterion = "0.3"
 
+[features]
+default = ["rayon"]
+platform_independent = []
+nightly_aarch64_neon = []
+
+## Internal development configuration: testing and benchmarking
+
 [[bench]]
 name = "decoding_benchmark"
 harness = false
@@ -27,8 +34,18 @@ harness = false
 name = "large_image"
 harness = false
 
-[features]
-default = ["rayon"]
-platform_independent = []
-nightly_aarch64_neon = []
+[[test]]
+name = "rayon"
+required-features = ["rayon"]
 
+[[test]]
+name = "rayon-0"
+required-features = ["rayon"]
+
+[[test]]
+name = "rayon-1"
+required-features = ["rayon"]
+
+[[test]]
+name = "rayon-2"
+required-features = ["rayon"]

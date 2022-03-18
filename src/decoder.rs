@@ -17,7 +17,7 @@ use crate::parser::{
     IccChunk, ScanInfo,
 };
 use crate::upsampler::Upsampler;
-use crate::worker::{PlatformWorker, RowData, Worker};
+use crate::worker::{PreferWorkerKind, RowData, Worker, with_worker};
 
 pub const MAX_COMPONENTS: usize = 4;
 
@@ -191,7 +191,9 @@ impl<R: Read> Decoder<R> {
     ///
     /// If successful, the metadata can be obtained using the `info` method.
     pub fn read_info(&mut self) -> Result<()> {
-        self.decode_internal(true).map(|_| ())
+        with_worker(PreferWorkerKind::Multithreaded, |worker| {
+            self.decode_internal(true, worker)
+        }).map(|_| ())
     }
 
     /// Configure the decoder to scale the image during decoding.
@@ -219,10 +221,16 @@ impl<R: Read> Decoder<R> {
 
     /// Decodes the image and returns the decoded pixels if successful.
     pub fn decode(&mut self) -> Result<Vec<u8>> {
-        self.decode_internal(false)
+        with_worker(PreferWorkerKind::Multithreaded, |worker| {
+            self.decode_internal(false, worker)
+        })
     }
 
-    fn decode_internal(&mut self, stop_after_metadata: bool) -> Result<Vec<u8>> {
+    fn decode_internal(
+        &mut self,
+        stop_after_metadata: bool,
+        worker: &mut dyn Worker,
+    ) -> Result<Vec<u8>> {
         if stop_after_metadata && self.frame.is_some() {
             // The metadata has already been read.
             return Ok(Vec::new());
@@ -237,7 +245,6 @@ impl<R: Read> Decoder<R> {
 
         let mut previous_marker = Marker::SOI;
         let mut pending_marker = None;
-        let mut worker = None;
         let mut scans_processed = 0;
         let mut planes = vec![
             Vec::<u8>::new();
@@ -318,9 +325,6 @@ impl<R: Read> Decoder<R> {
                     if self.frame.is_none() {
                         return Err(Error::Format("scan encountered before frame".to_owned()));
                     }
-                    if worker.is_none() {
-                        worker = Some(PlatformWorker::new()?);
-                    }
 
                     let frame = self.frame.clone().unwrap();
                     let scan = parse_sos(&mut self.reader, &frame)?;
@@ -383,7 +387,7 @@ impl<R: Read> Decoder<R> {
                         }
 
                         let (marker, data) =
-                            self.decode_scan(&frame, &scan, worker.as_mut().unwrap(), &finished)?;
+                            self.decode_scan(&frame, &scan, worker, &finished)?;
 
                         if let Some(data) = data {
                             for (i, plane) in data
@@ -545,10 +549,6 @@ impl<R: Read> Decoder<R> {
                     };
 
                 // Get the worker prepared
-                if worker.is_none() {
-                    worker = Some(PlatformWorker::new()?);
-                }
-                let worker = worker.as_mut().unwrap();
                 let row_data = RowData {
                     index: i,
                     component: component.clone(),
@@ -560,14 +560,17 @@ impl<R: Read> Decoder<R> {
                 let coefficients_per_mcu_row = usize::from(component.block_size.width)
                     * usize::from(component.vertical_sampling_factor)
                     * 64;
-                for mcu_y in 0..frame.mcu_size.height {
-                    let row_coefficients = {
-                        let offset = usize::from(mcu_y) * coefficients_per_mcu_row;
-                        self.coefficients[i][offset..offset + coefficients_per_mcu_row].to_vec()
-                    };
 
-                    worker.append_row((i, row_coefficients))?;
-                }
+                let mut tasks = (0..frame.mcu_size.height)
+                    .map(|mcu_y| {
+                        let offset = usize::from(mcu_y) * coefficients_per_mcu_row;
+                        let row_coefficients = self.coefficients[i][offset..offset + coefficients_per_mcu_row].to_vec();
+                        (i, row_coefficients)
+                    });
+
+                // FIXME: additional potential work stealing opportunities for rayon case if we
+                // also internally can parallelize over components.
+                worker.append_rows(&mut tasks)?;
                 planes[i] = worker.get_result(i)?;
             }
         }
@@ -616,7 +619,7 @@ impl<R: Read> Decoder<R> {
         &mut self,
         frame: &FrameInfo,
         scan: &ScanInfo,
-        worker: &mut PlatformWorker,
+        worker: &mut dyn Worker,
         finished: &[bool; MAX_COMPONENTS],
     ) -> Result<(Option<Marker>, Option<Vec<Vec<u8>>>)> {
         assert!(scan.component_indices.len() <= MAX_COMPONENTS);
@@ -871,6 +874,8 @@ impl<R: Read> Decoder<R> {
                         )
                     };
 
+                    // FIXME: additional potential work stealing opportunities for rayon case if we
+                    // also internally can parallelize over components.
                     worker.append_row((i, row_coefficients))?;
                 }
             }
