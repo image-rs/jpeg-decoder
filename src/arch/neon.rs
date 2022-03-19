@@ -3,6 +3,7 @@ use core::arch::aarch64::*;
 
 #[cfg(all(feature = "nightly_aarch64_neon", target_arch = "aarch64"))]
 #[target_feature(enable = "neon")]
+#[target_feature(enable = "fp")]
 unsafe fn idct8(data: &mut [int16x8_t; 8]) {
     // The fixed-point constants here are obtained by taking the fractional part of the constants
     // from the non-SIMD implementation and scaling them up by 1<<15. This is because
@@ -83,6 +84,7 @@ unsafe fn idct8(data: &mut [int16x8_t; 8]) {
 
 #[cfg(all(feature = "nightly_aarch64_neon", target_arch = "aarch64"))]
 #[target_feature(enable = "neon")]
+#[target_feature(enable = "fp")]
 unsafe fn transpose8(data: &mut [int16x8_t; 8]) {
     // Use NEON's 2x2 matrix transposes (vtrn) to do the transposition in each 4x4 block, then
     // combine the 4x4 blocks.
@@ -110,6 +112,7 @@ unsafe fn transpose8(data: &mut [int16x8_t; 8]) {
 
 #[cfg(all(feature = "nightly_aarch64_neon", target_arch = "aarch64"))]
 #[target_feature(enable = "neon")]
+#[target_feature(enable = "fp")]
 pub unsafe fn dequantize_and_idct_block_8x8(
     coefficients: &[i16; 64],
     quantization_table: &[u16; 64],
@@ -168,6 +171,7 @@ pub unsafe fn dequantize_and_idct_block_8x8(
 
 #[cfg(all(feature = "nightly_aarch64_neon", target_arch = "aarch64"))]
 #[target_feature(enable = "neon")]
+#[target_feature(enable = "fp")]
 pub unsafe fn color_convert_line_ycbcr(y: &[u8], cb: &[u8], cr: &[u8], output: &mut [u8]) -> usize {
     assert!(output.len() % 3 == 0);
     let num = output.len() / 3;
