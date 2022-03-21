@@ -43,7 +43,7 @@ jobs:
 
     strategy:
       matrix:
-        rust: [nightly]
+        rust: [nightly-2022-03-24]
         features: ["", "rayon", "nightly_aarch64_neon"]
 
     steps:
