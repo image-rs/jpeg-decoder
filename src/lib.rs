@@ -29,10 +29,6 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 #![cfg_attr(feature = "platform_independent", forbid(unsafe_code))]
-#![cfg_attr(
-    all(feature = "nightly_aarch64_neon", target_arch = "aarch64"),
-    feature(aarch64_target_feature)
-)]
 
 extern crate alloc;
 extern crate core;
