@@ -464,7 +464,12 @@ impl<R: Read> Decoder<R> {
 
         let frame = self.frame.as_ref().unwrap();
 
-        if frame.output_size.width as u64 * frame.output_size.height as u64 * frame.components.len() as u64 > self.decoding_buffer_size_limit as u64 {
+        if {
+            let required_mem = frame.components.len()
+                .checked_mul(frame.output_size.width.into())
+                .and_then(|m| m.checked_mul(frame.output_size.height.into()));
+            required_mem.map_or(true, |m| self.decoding_buffer_size_limit < m)
+        } {
             return Err(Error::Format("size of decoded image exceeds maximum allowed size".to_owned()));
         }
 
