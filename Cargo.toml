@@ -1,6 +1,6 @@
 [package]
 name = "jpeg-decoder"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["The image-rs Developers"]
 description = "JPEG decoder"
 documentation = "https://docs.rs/jpeg-decoder"
@@ -8,7 +8,7 @@ repository = "https://github.com/image-rs/jpeg-decoder"
 readme = "README.md"
 keywords = ["jpeg", "jpg", "decoder", "image"]
 license = "MIT / Apache-2.0"
-exclude = ["tests/*"]
+exclude = ["/tests/*", "!/tests/*.rs"]
 edition = "2018"
 
 [dependencies]
@@ -22,6 +22,8 @@ criterion = "0.3"
 [features]
 default = ["rayon"]
 platform_independent = []
+# Opt-in, this depends on Rust nightly. Will be changed to a no-op feature when
+# the Rust feature is stabilized which is expected to be 1.61.
 nightly_aarch64_neon = []
 
 ## Internal development configuration: testing and benchmarking
