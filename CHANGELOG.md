@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.2.4 (2022-04-01)
+
+- Corrects minimal version requirements of dependency `rayon`.
+
 ## v0.2.3 (2022-02-14)
 
 - Added `Decoder::set_max_decoding_buffer_size` which limits the bytes
