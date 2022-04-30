@@ -37,13 +37,10 @@ pub enum PreferWorkerKind {
 
 /// Execute something with a worker system.
 pub fn with_worker<T>(prefer: PreferWorkerKind, f: impl FnOnce(&mut dyn Worker) -> T) -> T {
-    #[cfg(any(target_arch = "asmjs", target_arch = "wasm32"))]
-    {
-        return self::immediate::with_immediate(f);
-    }
     match prefer {
-        #[cfg(feature = "rayon")]
+        #[cfg(all(not(any(target_arch = "asmjs", target_arch = "wasm32")), feature = "rayon"))]
         PreferWorkerKind::Multithreaded => self::rayon::with_rayon(f),
+        #[cfg(not(any(target_arch = "asmjs", target_arch = "wasm32")))]
         PreferWorkerKind::Multithreaded => self::multithreaded::with_multithreading(f),
         _ => self::immediate::with_immediate(f),
     }
