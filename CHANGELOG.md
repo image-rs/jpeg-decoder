@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.2.5 (2022-05-02)
+
+- Fix single threaded usage in WASM target.
+
 ## v0.2.4 (2022-04-01)
 
 - Corrects minimal version requirements of dependency `rayon`.
