@@ -1,8 +1,3 @@
-#![cfg(all(
-    not(any(target_arch = "asmjs", target_arch = "wasm32")),
-    feature = "rayon"
-))]
-
 //! This module implements per-component parallelism.
 //! It should be possible to implement per-row parallelism as well,
 //! which should also boost performance of grayscale images
@@ -18,6 +13,7 @@ use std::{
     sync::mpsc::{self, Receiver, Sender},
 };
 
+#[allow(dead_code)]
 pub fn with_multithreading<T>(f: impl FnOnce(&mut dyn Worker) -> T) -> T {
     let mut worker = MpscWorker::default();
     f(&mut worker)
