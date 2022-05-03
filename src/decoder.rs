@@ -1,3 +1,14 @@
+use crate::error::{Error, Result, UnsupportedFeature};
+use crate::huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
+use crate::marker::Marker;
+use crate::parser::{
+    parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos,
+    AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
+    IccChunk, ScanInfo,
+};
+use crate::read_u8;
+use crate::upsampler::Upsampler;
+use crate::worker::{with_worker, PreferWorkerKind, RowData, Worker};
 use alloc::borrow::ToOwned;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -7,17 +18,6 @@ use core::mem;
 use core::ops::Range;
 use std::convert::TryInto;
 use std::io::Read;
-use crate::read_u8;
-use crate::error::{Error, Result, UnsupportedFeature};
-use crate::huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
-use crate::marker::Marker;
-use crate::parser::{
-    parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos,
-    AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
-    IccChunk, ScanInfo,
-};
-use crate::upsampler::Upsampler;
-use crate::worker::{PreferWorkerKind, RowData, Worker, with_worker};
 
 pub const MAX_COMPONENTS: usize = 4;
 
@@ -202,7 +202,8 @@ impl<R: Read> Decoder<R> {
     pub fn read_info(&mut self) -> Result<()> {
         with_worker(PreferWorkerKind::Multithreaded, |worker| {
             self.decode_internal(true, worker)
-        }).map(|_| ())
+        })
+        .map(|_| ())
     }
 
     /// Configure the decoder to scale the image during decoding.
@@ -395,8 +396,7 @@ impl<R: Read> Decoder<R> {
                             }
                         }
 
-                        let (marker, data) =
-                            self.decode_scan(&frame, &scan, worker, &finished)?;
+                        let (marker, data) = self.decode_scan(&frame, &scan, worker, &finished)?;
 
                         if let Some(data) = data {
                             for (i, plane) in data
@@ -542,12 +542,16 @@ impl<R: Read> Decoder<R> {
         let frame = self.frame.as_ref().unwrap();
 
         if {
-            let required_mem = frame.components.len()
+            let required_mem = frame
+                .components
+                .len()
                 .checked_mul(frame.output_size.width.into())
                 .and_then(|m| m.checked_mul(frame.output_size.height.into()));
             required_mem.map_or(true, |m| self.decoding_buffer_size_limit < m)
         } {
-            return Err(Error::Format("size of decoded image exceeds maximum allowed size".to_owned()));
+            return Err(Error::Format(
+                "size of decoded image exceeds maximum allowed size".to_owned(),
+            ));
         }
 
         // If we're decoding a progressive jpeg and a component is unfinished, render what we've got
@@ -579,12 +583,12 @@ impl<R: Read> Decoder<R> {
                     * usize::from(component.vertical_sampling_factor)
                     * 64;
 
-                let mut tasks = (0..frame.mcu_size.height)
-                    .map(|mcu_y| {
-                        let offset = usize::from(mcu_y) * coefficients_per_mcu_row;
-                        let row_coefficients = self.coefficients[i][offset..offset + coefficients_per_mcu_row].to_vec();
-                        (i, row_coefficients)
-                    });
+                let mut tasks = (0..frame.mcu_size.height).map(|mcu_y| {
+                    let offset = usize::from(mcu_y) * coefficients_per_mcu_row;
+                    let row_coefficients =
+                        self.coefficients[i][offset..offset + coefficients_per_mcu_row].to_vec();
+                    (i, row_coefficients)
+                });
 
                 // FIXME: additional potential work stealing opportunities for rayon case if we
                 // also internally can parallelize over components.
@@ -825,7 +829,9 @@ impl<R: Read> Decoder<R> {
                                 &mut mcu_row_coefficients[i][block_offset..block_offset + 64]
                             } else {
                                 &mut dummy_block[..64]
-                            }.try_into().unwrap();
+                            }
+                            .try_into()
+                            .unwrap();
 
                             if scan.successive_approximation_high == 0 {
                                 decode_block(
@@ -1174,7 +1180,10 @@ fn compute_image(
     }
 }
 
-#[cfg(feature = "rayon")]
+#[cfg(all(
+    not(any(target_arch = "asmjs", target_arch = "wasm32")),
+    feature = "rayon"
+))]
 fn compute_image_parallel(
     components: &[Component],
     data: Vec<Vec<u8>>,
@@ -1206,7 +1215,10 @@ fn compute_image_parallel(
     Ok(image)
 }
 
-#[cfg(not(feature = "rayon"))]
+#[cfg(any(
+    any(target_arch = "asmjs", target_arch = "wasm32"),
+    not(feature = "rayon")
+))]
 fn compute_image_parallel(
     components: &[Component],
     data: Vec<Vec<u8>>,
@@ -1255,7 +1267,7 @@ fn choose_color_convert_func(
                 None => {
                     // Assume CMYK because no APP14 marker was found
                     Ok(color_convert_line_cmyk)
-                },
+                }
             }
         }
         _ => panic!(),
