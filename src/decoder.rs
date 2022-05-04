@@ -8,7 +8,7 @@ use crate::parser::{
 };
 use crate::read_u8;
 use crate::upsampler::Upsampler;
-use crate::worker::{with_worker, PreferWorkerKind, RowData, Worker};
+use crate::worker::{compute_image_parallel, with_worker, PreferWorkerKind, RowData, Worker};
 use alloc::borrow::ToOwned;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -1180,71 +1180,7 @@ fn compute_image(
     }
 }
 
-#[cfg(all(
-    not(any(target_arch = "asmjs", target_arch = "wasm32")),
-    feature = "rayon"
-))]
-fn compute_image_parallel(
-    components: &[Component],
-    data: Vec<Vec<u8>>,
-    output_size: Dimensions,
-    is_jfif: bool,
-    color_transform: Option<AdobeColorTransform>,
-) -> Result<Vec<u8>> {
-    use rayon::prelude::*;
-
-    let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
-    let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
-    let line_size = output_size.width as usize * components.len();
-    let mut image = vec![0u8; line_size * output_size.height as usize];
-
-    image
-        .par_chunks_mut(line_size)
-        .with_max_len(1)
-        .enumerate()
-        .for_each(|(row, line)| {
-            upsampler.upsample_and_interleave_row(
-                &data,
-                row,
-                output_size.width as usize,
-                line,
-                color_convert_func,
-            );
-        });
-
-    Ok(image)
-}
-
-#[cfg(any(
-    any(target_arch = "asmjs", target_arch = "wasm32"),
-    not(feature = "rayon")
-))]
-fn compute_image_parallel(
-    components: &[Component],
-    data: Vec<Vec<u8>>,
-    output_size: Dimensions,
-    is_jfif: bool,
-    color_transform: Option<AdobeColorTransform>,
-) -> Result<Vec<u8>> {
-    let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
-    let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
-    let line_size = output_size.width as usize * components.len();
-    let mut image = vec![0u8; line_size * output_size.height as usize];
-
-    for (row, line) in image.chunks_mut(line_size).enumerate() {
-        upsampler.upsample_and_interleave_row(
-            &data,
-            row,
-            output_size.width as usize,
-            line,
-            color_convert_func,
-        );
-    }
-
-    Ok(image)
-}
-
-fn choose_color_convert_func(
+pub(crate) fn choose_color_convert_func(
     component_count: usize,
     _is_jfif: bool,
     color_transform: Option<AdobeColorTransform>,

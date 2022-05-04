@@ -1,9 +1,14 @@
 use core::convert::TryInto;
 
-use crate::decoder::MAX_COMPONENTS;
+use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use rayon::slice::ParallelSliceMut;
+
+use crate::decoder::choose_color_convert_func;
 use crate::error::Result;
 use crate::idct::dequantize_and_idct_block;
-use crate::parser::Component;
+use crate::parser::{AdobeColorTransform, Component};
+use crate::upsampler::Upsampler;
+use crate::{decoder::MAX_COMPONENTS, parser::Dimensions};
 
 use std::sync::Arc;
 
@@ -166,8 +171,8 @@ impl super::Worker for Scoped {
                 let quantization_table = inner.quantization_tables[index].as_ref().unwrap().clone();
 
                 inner.offsets[index] += metadata.bytes_used();
-                let (result_block, tail) = core::mem::take(&mut result_blocks[index])
-                    .split_at_mut(metadata.bytes_used());
+                let (result_block, tail) =
+                    core::mem::take(&mut result_blocks[index]).split_at_mut(metadata.bytes_used());
                 result_blocks[index] = tail;
 
                 scope.spawn(move |_| {
@@ -189,4 +194,33 @@ impl ComponentMetadata {
     fn bytes_used(&self) -> usize {
         self.block_count * self.dct_scale * self.dct_scale
     }
+}
+
+pub fn compute_image_parallel(
+    components: &[Component],
+    data: Vec<Vec<u8>>,
+    output_size: Dimensions,
+    is_jfif: bool,
+    color_transform: Option<AdobeColorTransform>,
+) -> Result<Vec<u8>> {
+    let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
+    let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
+    let line_size = output_size.width as usize * components.len();
+    let mut image = vec![0u8; line_size * output_size.height as usize];
+
+    image
+        .par_chunks_mut(line_size)
+        .with_max_len(1)
+        .enumerate()
+        .for_each(|(row, line)| {
+            upsampler.upsample_and_interleave_row(
+                &data,
+                row,
+                output_size.width as usize,
+                line,
+                color_convert_func,
+            );
+        });
+
+    Ok(image)
 }
