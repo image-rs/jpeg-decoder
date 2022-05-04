@@ -4,12 +4,16 @@
 //! and allow scaling to more cores.
 //! However, that would be more complex, so we use this as a starting point.
 
-use std::{mem, sync::mpsc::{self, Receiver, Sender}};
+use super::immediate::ImmediateWorker;
+use super::{RowData, Worker};
 use crate::decoder::MAX_COMPONENTS;
 use crate::error::Result;
-use super::{RowData, Worker};
-use super::immediate::ImmediateWorker;
+use std::{
+    mem,
+    sync::mpsc::{self, Receiver, Sender},
+};
 
+#[allow(dead_code)]
 pub fn with_multithreading<T>(f: impl FnOnce(&mut dyn Worker) -> T) -> T {
     let mut worker = MpscWorker::default();
     f(&mut worker)
@@ -23,7 +27,7 @@ enum WorkerMsg {
 
 #[derive(Default)]
 pub struct MpscWorker {
-    senders: [Option<Sender<WorkerMsg>>; MAX_COMPONENTS]
+    senders: [Option<Sender<WorkerMsg>>; MAX_COMPONENTS],
 }
 
 impl MpscWorker {
@@ -43,14 +47,18 @@ impl MpscWorker {
         // and in all other message-passing methods because there's not that many rows
         // and this should be cheaper than spawning MAX_COMPONENTS many threads up front
         let sender = self.senders[component].as_mut().unwrap();
-        sender.send(WorkerMsg::Start(row_data)).expect("jpeg-decoder worker thread error");
+        sender
+            .send(WorkerMsg::Start(row_data))
+            .expect("jpeg-decoder worker thread error");
         Ok(())
     }
 
     fn append_row(&mut self, row: (usize, Vec<i16>)) -> Result<()> {
         let component = row.0;
         let sender = self.senders[component].as_mut().unwrap();
-        sender.send(WorkerMsg::AppendRow(row.1)).expect("jpeg-decoder worker thread error");
+        sender
+            .send(WorkerMsg::AppendRow(row.1))
+            .expect("jpeg-decoder worker thread error");
         Ok(())
     }
 
@@ -61,7 +69,9 @@ impl MpscWorker {
     ) -> Result<Vec<u8>> {
         let (tx, rx) = mpsc::channel();
         let sender = mem::take(&mut self.senders[index]).unwrap();
-        sender.send(WorkerMsg::GetResult(tx)).expect("jpeg-decoder worker thread error");
+        sender
+            .send(WorkerMsg::GetResult(tx))
+            .expect("jpeg-decoder worker thread error");
         Ok(collect(rx))
     }
 }
@@ -91,14 +101,14 @@ fn create_worker() -> (Sender<WorkerMsg>, impl FnOnce() + 'static) {
                     // to attempt to access nonexistent components
                     data.index = 0;
                     worker.start_immediate(data);
-                },
+                }
                 WorkerMsg::AppendRow(row) => {
                     worker.append_row_immediate((0, row));
-                },
+                }
                 WorkerMsg::GetResult(chan) => {
                     let _ = chan.send(worker.get_result_immediate(0));
                     break;
-                },
+                }
             }
         }
     };
