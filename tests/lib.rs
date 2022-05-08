@@ -10,6 +10,27 @@ mod crashtest;
 mod reftest;
 
 #[test]
+#[wasm_bindgen_test::wasm_bindgen_test]
+fn included_file() {
+    const FILE: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/reftest/images/mozilla/jpg-progressive.jpg"));
+
+    let mut data = FILE;
+    let mut decoder = jpeg::Decoder::new(&mut data);
+    let ref_data = decoder.decode().unwrap();
+    let ref_info = decoder.info().unwrap();
+
+    let mut data = FILE;
+    decoder = jpeg::Decoder::new(&mut data);
+    decoder.read_info().unwrap();
+    let info = decoder.info().unwrap();
+    let data = decoder.decode().unwrap();
+
+    assert_eq!(info, decoder.info().unwrap());
+    assert_eq!(info, ref_info);
+    assert_eq!(data, ref_data);
+}
+
+#[test]
 fn read_info() {
     let path = Path::new("tests").join("reftest").join("images").join("mozilla").join("jpg-progressive.jpg");
 
