@@ -2,6 +2,11 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.2.6 (2022-05-09)
+
+- Another fix to allow usage in WASM target.
+- Decoding in the WASM target is now actively tested in CI.
+
 ## v0.2.5 (2022-05-02)
 
 - Fix single threaded usage in WASM target.
