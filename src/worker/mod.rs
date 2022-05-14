@@ -10,6 +10,8 @@ use crate::decoder::choose_color_convert_func;
 use crate::error::Result;
 use crate::parser::{AdobeColorTransform, Component, Dimensions};
 use crate::upsampler::Upsampler;
+
+use core::cell::RefCell;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
@@ -38,18 +40,59 @@ pub enum PreferWorkerKind {
     Multithreaded,
 }
 
-/// Execute something with a worker system.
-pub fn with_worker<T>(prefer: PreferWorkerKind, f: impl FnOnce(&mut dyn Worker) -> T) -> T {
-    match prefer {
-        #[cfg(all(
-            not(any(target_arch = "asmjs", target_arch = "wasm32")),
-            feature = "rayon"
-        ))]
-        PreferWorkerKind::Multithreaded => self::rayon::with_rayon(f),
-        #[allow(unreachable_patterns)]
-        #[cfg(not(any(target_arch = "asmjs", target_arch = "wasm32")))]
-        PreferWorkerKind::Multithreaded => self::multithreaded::with_multithreading(f),
-        _ => self::immediate::with_immediate(f),
+#[derive(Default)]
+pub struct WorkerScope {
+    inner: core::cell::RefCell<Option<WorkerScopeInner>>,
+}
+
+enum WorkerScopeInner {
+    #[cfg(all(
+        not(any(target_arch = "asmjs", target_arch = "wasm32")),
+        feature = "rayon"
+    ))]
+    Rayon(rayon::Scoped),
+    #[cfg(not(any(target_arch = "asmjs", target_arch = "wasm32")))]
+    Multithreaded(multithreaded::MpscWorker),
+    Immediate(immediate::ImmediateWorker),
+}
+
+impl WorkerScope {
+    pub fn with<T>(with: impl FnOnce(&Self) -> T) -> T {
+        with(&WorkerScope {
+            inner: RefCell::default(),
+        })
+    }
+
+    pub fn get_or_init_worker<T>(
+        &self,
+        prefer: PreferWorkerKind,
+        f: impl FnOnce(&mut dyn Worker) -> T
+    ) -> T {
+        let mut inner = self.inner.borrow_mut();
+        let inner = inner.get_or_insert_with(move || {
+            match prefer {
+                #[cfg(all(
+                    not(any(target_arch = "asmjs", target_arch = "wasm32")),
+                    feature = "rayon"
+                ))]
+                PreferWorkerKind::Multithreaded => WorkerScopeInner::Rayon(Default::default()),
+                #[allow(unreachable_patterns)]
+                #[cfg(not(any(target_arch = "asmjs", target_arch = "wasm32")))]
+                PreferWorkerKind::Multithreaded => WorkerScopeInner::Multithreaded(Default::default()),
+                _ => WorkerScopeInner::Immediate(Default::default()),
+            }
+        });
+
+        f(match &mut *inner {
+            #[cfg(all(
+                not(any(target_arch = "asmjs", target_arch = "wasm32")),
+                feature = "rayon"
+            ))]
+            WorkerScopeInner::Rayon(worker) => worker,
+            #[cfg(not(any(target_arch = "asmjs", target_arch = "wasm32")))]
+            WorkerScopeInner::Multithreaded(worker) => worker,
+            WorkerScopeInner::Immediate(worker) => worker,
+        })
     }
 }
 

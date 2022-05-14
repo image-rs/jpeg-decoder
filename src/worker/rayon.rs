@@ -33,13 +33,9 @@ struct ComponentMetadata {
     dct_scale: usize,
 }
 
+#[derive(Default)]
 pub struct Scoped {
     inner: ImmediateWorker,
-}
-
-pub fn with_rayon<T>(f: impl FnOnce(&mut dyn Worker) -> T) -> T {
-    let inner = ImmediateWorker::default();
-    f(&mut Scoped { inner })
 }
 
 impl ImmediateWorker {
@@ -118,7 +114,7 @@ impl ImmediateWorker {
     }
 }
 
-impl super::Worker for Scoped {
+impl Worker for Scoped {
     fn start(&mut self, row_data: RowData) -> Result<()> {
         self.inner.start_immediate(row_data);
         Ok(())

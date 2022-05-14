@@ -13,12 +13,6 @@ use std::{
     sync::mpsc::{self, Receiver, Sender},
 };
 
-#[allow(dead_code)]
-pub fn with_multithreading<T>(f: impl FnOnce(&mut dyn Worker) -> T) -> T {
-    let mut worker = MpscWorker::default();
-    f(&mut worker)
-}
-
 enum WorkerMsg {
     Start(RowData),
     AppendRow(Vec<i16>),
@@ -91,7 +85,7 @@ impl Worker for MpscWorker {
 fn create_worker() -> (Sender<WorkerMsg>, impl FnOnce() + 'static) {
     let (tx, rx) = mpsc::channel();
     let closure = move || {
-        let mut worker = ImmediateWorker::new_immediate();
+        let mut worker = ImmediateWorker::default();
 
         while let Ok(message) = rx.recv() {
             match message {

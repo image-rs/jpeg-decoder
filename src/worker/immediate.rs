@@ -16,13 +16,8 @@ pub struct ImmediateWorker {
     quantization_tables: Vec<Option<Arc<[u16; 64]>>>,
 }
 
-pub fn with_immediate<T>(f: impl FnOnce(&mut dyn Worker) -> T) -> T {
-    let mut worker = ImmediateWorker::new_immediate();
-    f(&mut worker)
-}
-
-impl ImmediateWorker {
-    pub fn new_immediate() -> ImmediateWorker {
+impl Default for ImmediateWorker {
+    fn default() -> Self {
         ImmediateWorker {
             offsets: [0; MAX_COMPONENTS],
             results: vec![Vec::new(); MAX_COMPONENTS],
@@ -30,7 +25,9 @@ impl ImmediateWorker {
             quantization_tables: vec![None; MAX_COMPONENTS],
         }
     }
+}
 
+impl ImmediateWorker {
     pub fn start_immediate(&mut self, data: RowData) {
         assert!(self.results[data.index].is_empty());
 
