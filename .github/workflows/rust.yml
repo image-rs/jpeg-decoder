@@ -61,12 +61,12 @@ jobs:
       - uses: actions/checkout@v2
       - name: build
         run: >
-          cargo build --verbose --no-default-features --target aarch64-unknown-linux-musl --features "$FEATURES"
+          cargo build --verbose --no-default-features --release --target aarch64-unknown-linux-musl --features "$FEATURES"
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
       - name: test
         run: >
-          cargo test --tests --benches --no-default-features --target aarch64-unknown-linux-musl --features "$FEATURES"
+          cargo test --tests --benches --no-default-features --release --target aarch64-unknown-linux-musl --features "$FEATURES"
         env:
           FEATURES: ${{ matrix.features }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
