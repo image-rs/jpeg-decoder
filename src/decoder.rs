@@ -199,15 +199,14 @@ impl<R: Read> Decoder<R> {
     /// Heuristic to avoid starting thread, synchronization if we expect a small amount of
     /// parallelism to be utilized.
     fn select_worker(frame: &FrameInfo, worker_preference: PreferWorkerKind) -> PreferWorkerKind {
-        // TODO: figure out the exact value.
-        const PARALLELISM_THRESHOLD: u64 = 1024 * 1024;
+        const PARALLELISM_THRESHOLD: u64 = 128 * 128;
 
         match worker_preference {
             PreferWorkerKind::Immediate => PreferWorkerKind::Immediate,
             PreferWorkerKind::Multithreaded => {
                 let width: u64 = frame.output_size.width.into();
                 let height: u64 = frame.output_size.width.into();
-                if width * height * frame.components.len() as u64 > PARALLELISM_THRESHOLD {
+                if width * height > PARALLELISM_THRESHOLD {
                     PreferWorkerKind::Multithreaded
                 } else {
                     PreferWorkerKind::Immediate
