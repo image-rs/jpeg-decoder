@@ -8,7 +8,7 @@ use crate::parser::{
 };
 use crate::read_u8;
 use crate::upsampler::Upsampler;
-use crate::worker::{compute_image_parallel, with_worker, PreferWorkerKind, RowData, Worker};
+use crate::worker::{compute_image_parallel, PreferWorkerKind, RowData, Worker, WorkerScope};
 use alloc::borrow::ToOwned;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -196,11 +196,30 @@ impl<R: Read> Decoder<R> {
         Some(data)
     }
 
+    /// Heuristic to avoid starting thread, synchronization if we expect a small amount of
+    /// parallelism to be utilized.
+    fn select_worker(frame: &FrameInfo, worker_preference: PreferWorkerKind) -> PreferWorkerKind {
+        const PARALLELISM_THRESHOLD: u64 = 128 * 128;
+
+        match worker_preference {
+            PreferWorkerKind::Immediate => PreferWorkerKind::Immediate,
+            PreferWorkerKind::Multithreaded => {
+                let width: u64 = frame.output_size.width.into();
+                let height: u64 = frame.output_size.width.into();
+                if width * height > PARALLELISM_THRESHOLD {
+                    PreferWorkerKind::Multithreaded
+                } else {
+                    PreferWorkerKind::Immediate
+                }
+            },
+        }
+    }
+
     /// Tries to read metadata from the image without decoding it.
     ///
     /// If successful, the metadata can be obtained using the `info` method.
     pub fn read_info(&mut self) -> Result<()> {
-        with_worker(PreferWorkerKind::Multithreaded, |worker| {
+        WorkerScope::with(|worker| {
             self.decode_internal(true, worker)
         })
         .map(|_| ())
@@ -231,7 +250,7 @@ impl<R: Read> Decoder<R> {
 
     /// Decodes the image and returns the decoded pixels if successful.
     pub fn decode(&mut self) -> Result<Vec<u8>> {
-        with_worker(PreferWorkerKind::Multithreaded, |worker| {
+        WorkerScope::with(|worker| {
             self.decode_internal(false, worker)
         })
     }
@@ -239,7 +258,7 @@ impl<R: Read> Decoder<R> {
     fn decode_internal(
         &mut self,
         stop_after_metadata: bool,
-        worker: &mut dyn Worker,
+        worker_scope: &WorkerScope,
     ) -> Result<Vec<u8>> {
         if stop_after_metadata && self.frame.is_some() {
             // The metadata has already been read.
@@ -396,7 +415,11 @@ impl<R: Read> Decoder<R> {
                             }
                         }
 
-                        let (marker, data) = self.decode_scan(&frame, &scan, worker, &finished)?;
+                        let preference = Self::select_worker(&frame, PreferWorkerKind::Multithreaded);
+
+                        let (marker, data) = worker_scope.get_or_init_worker(
+                            preference,
+                            |worker| self.decode_scan(&frame, &scan, worker, &finished))?;
 
                         if let Some(data) = data {
                             for (i, plane) in data
@@ -409,6 +432,7 @@ impl<R: Read> Decoder<R> {
                                 }
                             }
                         }
+
                         pending_marker = marker;
                     }
 
@@ -533,6 +557,27 @@ impl<R: Read> Decoder<R> {
             previous_marker = marker;
         }
 
+        if self.frame.is_none() {
+            return Err(Error::Format(
+                "end of image encountered before frame".to_owned(),
+            ));
+        }
+
+        let frame = self.frame.as_ref().unwrap();
+        let preference = Self::select_worker(&frame, PreferWorkerKind::Multithreaded);
+
+        worker_scope.get_or_init_worker(
+            preference,
+            |worker| self.decode_planes(worker, planes, planes_u16)
+        )
+    }
+
+    fn decode_planes(
+        &mut self,
+        worker: &mut dyn Worker,
+        mut planes: Vec<Vec<u8>>,
+        planes_u16: Vec<Vec<u16>>,
+    ) -> Result<Vec<u8>> {
         if self.frame.is_none() {
             return Err(Error::Format(
                 "end of image encountered before frame".to_owned(),
