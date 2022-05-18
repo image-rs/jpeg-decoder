@@ -28,26 +28,27 @@ fn main() {
         jpeg::PixelFormat::L16 => {
             encoder.set_depth(png::BitDepth::Sixteen);
             encoder.set_color(png::ColorType::Grayscale);
-        },
-        jpeg::PixelFormat::RGB24  => {
+        }
+        jpeg::PixelFormat::RGB24 => {
             encoder.set_depth(png::BitDepth::Eight);
             encoder.set_color(png::ColorType::RGB);
-        },
+        }
         jpeg::PixelFormat::CMYK32 => {
             data = cmyk_to_rgb(&mut data);
             encoder.set_depth(png::BitDepth::Eight);
             encoder.set_color(png::ColorType::RGB)
-        },
+        }
         jpeg::PixelFormat::L8 => {
             encoder.set_depth(png::BitDepth::Eight);
             encoder.set_color(png::ColorType::Grayscale);
-        },
+        }
     }
-    
-    encoder.write_header()
-           .expect("writing png header failed")
-           .write_image_data(&data)
-           .expect("png encoding failed");
+
+    encoder
+        .write_header()
+        .expect("writing png header failed")
+        .write_image_data(&data)
+        .expect("png encoding failed");
 }
 
 fn cmyk_to_rgb(input: &[u8]) -> Vec<u8> {

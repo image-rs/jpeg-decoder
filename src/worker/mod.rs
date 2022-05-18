@@ -11,9 +11,9 @@ use crate::error::Result;
 use crate::parser::{AdobeColorTransform, Component, Dimensions};
 use crate::upsampler::Upsampler;
 
-use core::cell::RefCell;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::cell::RefCell;
 
 pub struct RowData {
     pub index: usize,
@@ -66,21 +66,19 @@ impl WorkerScope {
     pub fn get_or_init_worker<T>(
         &self,
         prefer: PreferWorkerKind,
-        f: impl FnOnce(&mut dyn Worker) -> T
+        f: impl FnOnce(&mut dyn Worker) -> T,
     ) -> T {
         let mut inner = self.inner.borrow_mut();
-        let inner = inner.get_or_insert_with(move || {
-            match prefer {
-                #[cfg(all(
-                    not(any(target_arch = "asmjs", target_arch = "wasm32")),
-                    feature = "rayon"
-                ))]
-                PreferWorkerKind::Multithreaded => WorkerScopeInner::Rayon(Default::default()),
-                #[allow(unreachable_patterns)]
-                #[cfg(not(any(target_arch = "asmjs", target_arch = "wasm32")))]
-                PreferWorkerKind::Multithreaded => WorkerScopeInner::Multithreaded(Default::default()),
-                _ => WorkerScopeInner::Immediate(Default::default()),
-            }
+        let inner = inner.get_or_insert_with(move || match prefer {
+            #[cfg(all(
+                not(any(target_arch = "asmjs", target_arch = "wasm32")),
+                feature = "rayon"
+            ))]
+            PreferWorkerKind::Multithreaded => WorkerScopeInner::Rayon(Default::default()),
+            #[allow(unreachable_patterns)]
+            #[cfg(not(any(target_arch = "asmjs", target_arch = "wasm32")))]
+            PreferWorkerKind::Multithreaded => WorkerScopeInner::Multithreaded(Default::default()),
+            _ => WorkerScopeInner::Immediate(Default::default()),
         });
 
         f(match &mut *inner {

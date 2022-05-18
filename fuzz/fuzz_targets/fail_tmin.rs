@@ -3,8 +3,8 @@ use libfuzzer_sys::fuzz_target;
 use std::io::{Error, Read, Write};
 use std::process::{Command, Stdio};
 
-use jpeg_decoder::Decoder;
 use image::ImageDecoder;
+use jpeg_decoder::Decoder;
 use mozjpeg::decompress::Decompress;
 
 // Try to check the image, never panic.
@@ -12,21 +12,18 @@ fn soft_check(data: &[u8]) -> Result<Vec<u8>, Error> {
     let decompress = Decompress::new_mem(data)?;
     let mut rgb = decompress.rgb()?;
     // Yikes. That method is unsound. But we don't care, we just don't use it with UB.
-    let lines = rgb.read_scanlines::<[u8; 3]>()
+    let lines = rgb
+        .read_scanlines::<[u8; 3]>()
         .ok_or_else(|| Error::from(std::io::ErrorKind::Other))?;
-    let lines = unsafe {
-        core::slice::from_raw_parts(
-            lines.as_ptr() as *const u8,
-            lines.len()*3)
-    }.to_owned();
+    let lines =
+        unsafe { core::slice::from_raw_parts(lines.as_ptr() as *const u8, lines.len() * 3) }
+            .to_owned();
     Ok(lines)
 }
 
 fn roughly(data: &[u8], reference: &[u8]) -> bool {
-    data.len() == reference.len() && data
-        .iter()
-        .zip(reference)
-        .all(|(&o, &r)| {
+    data.len() == reference.len()
+        && data.iter().zip(reference).all(|(&o, &r)| {
             // Not the same criterion as in ref test. For some reason, mozjpeg disagrees with both
             // our output _and_ the output of djpeg/libjpeg-turbo. Let's not question this too
             // much.
@@ -61,7 +58,7 @@ fuzz_target!(|data: &[u8]| {
     // The case must have previously failed to decode, or failed reftest
     match wrong {
         Some(data) if roughly(&data, &reference) => return,
-        _ => {},
+        _ => {}
     }
 
     panic!("Success")

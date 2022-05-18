@@ -2,8 +2,8 @@ extern crate jpeg_decoder as jpeg;
 extern crate png;
 extern crate walkdir;
 
-use std::path::Path;
 use std::fs::File;
+use std::path::Path;
 
 mod common;
 mod crashtest;
@@ -12,7 +12,10 @@ mod reftest;
 #[test]
 #[wasm_bindgen_test::wasm_bindgen_test]
 fn included_file() {
-    const FILE: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/reftest/images/mozilla/jpg-progressive.jpg"));
+    const FILE: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/reftest/images/mozilla/jpg-progressive.jpg"
+    ));
 
     let mut data = FILE;
     let mut decoder = jpeg::Decoder::new(&mut data);
@@ -32,7 +35,11 @@ fn included_file() {
 
 #[test]
 fn read_info() {
-    let path = Path::new("tests").join("reftest").join("images").join("mozilla").join("jpg-progressive.jpg");
+    let path = Path::new("tests")
+        .join("reftest")
+        .join("images")
+        .join("mozilla")
+        .join("jpg-progressive.jpg");
 
     let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
     let ref_data = decoder.decode().unwrap();
@@ -67,9 +74,7 @@ fn read_icc_profile() {
 // Test if chunks are concatenated in the correct order
 #[test]
 fn read_icc_profile_random_order() {
-    let path = Path::new("tests")
-        .join("icc")
-        .join("icc_chunk_order.jpeg");
+    let path = Path::new("tests").join("icc").join("icc_chunk_order.jpeg");
 
     let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
     decoder.decode().unwrap();
