@@ -70,6 +70,7 @@ jobs:
         env:
           FEATURES: ${{ matrix.features }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
+
   cross_compile_wasm:
     runs-on: ubuntu-latest
     steps:
@@ -96,3 +97,29 @@ jobs:
         run: cargo test -vv --target wasm32-unknown-unknown
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
+
+  rustfmt:
+    name: Check Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      # Check the main crate
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+      # Check the fuzz crates
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --manifest-path fuzz/Cargo.toml -- --check
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --manifest-path fuzz-afl/Cargo.toml -- --check
