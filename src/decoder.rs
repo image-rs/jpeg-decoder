@@ -211,7 +211,7 @@ impl<R: Read> Decoder<R> {
                 } else {
                     PreferWorkerKind::Immediate
                 }
-            },
+            }
         }
     }
 
@@ -219,10 +219,7 @@ impl<R: Read> Decoder<R> {
     ///
     /// If successful, the metadata can be obtained using the `info` method.
     pub fn read_info(&mut self) -> Result<()> {
-        WorkerScope::with(|worker| {
-            self.decode_internal(true, worker)
-        })
-        .map(|_| ())
+        WorkerScope::with(|worker| self.decode_internal(true, worker)).map(|_| ())
     }
 
     /// Configure the decoder to scale the image during decoding.
@@ -250,9 +247,7 @@ impl<R: Read> Decoder<R> {
 
     /// Decodes the image and returns the decoded pixels if successful.
     pub fn decode(&mut self) -> Result<Vec<u8>> {
-        WorkerScope::with(|worker| {
-            self.decode_internal(false, worker)
-        })
+        WorkerScope::with(|worker| self.decode_internal(false, worker))
     }
 
     fn decode_internal(
@@ -415,11 +410,13 @@ impl<R: Read> Decoder<R> {
                             }
                         }
 
-                        let preference = Self::select_worker(&frame, PreferWorkerKind::Multithreaded);
+                        let preference =
+                            Self::select_worker(&frame, PreferWorkerKind::Multithreaded);
 
-                        let (marker, data) = worker_scope.get_or_init_worker(
-                            preference,
-                            |worker| self.decode_scan(&frame, &scan, worker, &finished))?;
+                        let (marker, data) = worker_scope
+                            .get_or_init_worker(preference, |worker| {
+                                self.decode_scan(&frame, &scan, worker, &finished)
+                            })?;
 
                         if let Some(data) = data {
                             for (i, plane) in data
@@ -566,10 +563,9 @@ impl<R: Read> Decoder<R> {
         let frame = self.frame.as_ref().unwrap();
         let preference = Self::select_worker(&frame, PreferWorkerKind::Multithreaded);
 
-        worker_scope.get_or_init_worker(
-            preference,
-            |worker| self.decode_planes(worker, planes, planes_u16)
-        )
+        worker_scope.get_or_init_worker(preference, |worker| {
+            self.decode_planes(worker, planes, planes_u16)
+        })
     }
 
     fn decode_planes(
@@ -1236,6 +1232,8 @@ pub(crate) fn choose_color_convert_func(
             // Unknown means the data is RGB, so we don't need to perform any color conversion on it.
             if color_transform == Some(AdobeColorTransform::Unknown) {
                 Ok(color_convert_line_rgb)
+            } else if color_transform.is_none() {
+                Ok(color_no_convert)
             } else {
                 Ok(color_convert_line_ycbcr)
             }
@@ -1247,7 +1245,7 @@ pub(crate) fn choose_color_convert_func(
                 Some(_) => Ok(color_convert_line_ycck),
                 None => {
                     // Assume CMYK because no APP14 marker was found
-                    Ok(color_convert_line_cmyk)
+                    Ok(color_no_convert)
                 }
             }
         }
@@ -1337,6 +1335,16 @@ fn color_convert_line_cmyk(data: &[Vec<u8>], output: &mut [u8]) {
         chunk[1] = 255 - m;
         chunk[2] = 255 - y;
         chunk[3] = 255 - k;
+    }
+}
+
+fn color_no_convert(data: &[Vec<u8>], output: &mut [u8]) {
+    let mut output_iter = output.iter_mut();
+
+    for pixel in data {
+        for d in pixel {
+            *(output_iter.next().unwrap()) = *d;
+        }
     }
 }
 
