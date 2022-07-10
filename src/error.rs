@@ -30,7 +30,6 @@ pub enum UnsupportedFeature {
 }
 
 /// Errors that can occur while decoding a JPEG image.
-#[derive(Debug)]
 pub enum Error {
     /// The image is not formatted properly. The string contains detailed information about the
     /// error.
@@ -41,6 +40,13 @@ pub enum Error {
     Io(IoError),
     /// An internal error occurred while decoding the image.
     Internal(Box<dyn StdError + Send + Sync + 'static>), //TODO: not used, can be removed with the next version bump
+    /// An error that occurred during the decode, but allows for incomplete image pixel data to be returned with `try_recover()`
+    Recoverable {
+        /// Error occurred while decoding the image
+        err: Box<Self>,
+        /// Incomplete pixel data of the image
+        pixels: Vec<u8>
+    }
 }
 
 impl fmt::Display for Error {
@@ -50,6 +56,19 @@ impl fmt::Display for Error {
             Error::Unsupported(ref feat) => write!(f, "unsupported JPEG feature: {:?}", feat),
             Error::Io(ref err)           => err.fmt(f),
             Error::Internal(ref err)     => err.fmt(f),
+            Error::Recoverable { ref err, .. } => err.fmt(f),
+        }
+    }
+}
+
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Format(err) => f.debug_tuple("Format").field(err).finish(),
+            Self::Unsupported(err) => f.debug_tuple("Unsupported").field(err).finish(),
+            Self::Io(err) => f.debug_tuple("Io").field(err).finish(),
+            Self::Internal(err) => f.debug_tuple("Internal").field(err).finish(),
+            Self::Recoverable { ref err, .. } => f.debug_tuple("Recoverable").field(err).finish(),
         }
     }
 }
@@ -67,5 +86,22 @@ impl StdError for Error {
 impl From<IoError> for Error {
     fn from(err: IoError) -> Error {
         Error::Io(err)
+    }
+}
+
+/// A trait that, if supported, returns incomplete image pixel data
+pub trait TryRecover {
+    /// Returns incomplete image pixel data if supported. Otherwise, simply passes through the original value.
+    fn try_recover(self) -> Self;
+}
+
+impl TryRecover for Result<Vec<u8>> {
+    fn try_recover(self) -> Self {
+        self.or_else(|err| match err {
+            Error::Recoverable { pixels, .. } => {
+                Ok(pixels)
+            },
+            _ => Err(err),
+        })
     }
 }
