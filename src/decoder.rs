@@ -272,6 +272,7 @@ impl<R: Read> Decoder<R> {
             ));
         }
 
+        let mut recoverable_error = None;
         let mut previous_marker = Marker::SOI;
         let mut pending_marker = None;
         let mut scans_processed = 0;
@@ -291,7 +292,13 @@ impl<R: Read> Decoder<R> {
         loop {
             let marker = match pending_marker.take() {
                 Some(m) => m,
-                None => self.read_marker()?,
+                None => match self.read_marker() {
+                    Err(e) => {
+                        recoverable_error = Some(e);
+                        break;
+                    },
+                    Ok(v) => v,
+                },
             };
 
             match marker {
@@ -566,10 +573,16 @@ impl<R: Read> Decoder<R> {
         let frame = self.frame.as_ref().unwrap();
         let preference = Self::select_worker(&frame, PreferWorkerKind::Multithreaded);
 
-        worker_scope.get_or_init_worker(
+        let pixels = worker_scope.get_or_init_worker(
             preference,
             |worker| self.decode_planes(worker, planes, planes_u16)
-        )
+        )?;
+
+        if let Some(error) = recoverable_error {
+            Err(Error::Recoverable { err: Box::new(error), pixels: pixels })
+        } else {
+            Ok(pixels)
+        }
     }
 
     fn decode_planes(

@@ -37,7 +37,7 @@ extern crate core;
 extern crate rayon;
 
 pub use decoder::{Decoder, ImageInfo, PixelFormat};
-pub use error::{Error, UnsupportedFeature};
+pub use error::{Error, UnsupportedFeature, TryRecover};
 pub use parser::CodingProcess;
 
 use std::io;
