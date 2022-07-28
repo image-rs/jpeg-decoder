@@ -76,6 +76,7 @@ pub struct ImageInfo {
 
 /// Describes the colour transform to apply before binary data is returned
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum ColorTransform {
     /// No transform should be applied and the data is returned as-is.
     None,
