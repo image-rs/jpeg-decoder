@@ -74,6 +74,31 @@ pub struct ImageInfo {
     pub coding_process: CodingProcess,
 }
 
+/// Describes the colour transform to apply before binary data is returned
+#[derive(Debug, Clone, Copy)]
+pub enum ColorTransform {
+    /// No transform should be applied and the data is returned as-is.
+    None,
+    /// Default colour transform should be applied. If there are 3 channels then YCbCr and if there are 4 then YCCK.
+    Default,
+    /// RGB transform should be applied.
+    RGB,
+    /// YCbCr transform should be applied.
+    YCbCr,
+    /// CMYK transform should be applied.
+    CMYK,
+    /// YCCK transform should be applied.
+    YCCK,
+    /// Use the colour transform specified in the Adobe extended tag
+    AdobeColorTransform(AdobeColorTransform),
+}
+
+impl Default for ColorTransform {
+    fn default() -> Self {
+        ColorTransform::Default
+    }
+}
+
 /// JPEG decoder
 pub struct Decoder<R> {
     reader: R,
@@ -84,7 +109,7 @@ pub struct Decoder<R> {
     quantization_tables: [Option<Arc<[u16; 64]>>; 4],
 
     restart_interval: u16,
-    color_transform: Option<AdobeColorTransform>,
+    color_transform: ColorTransform,
     is_jfif: bool,
     is_mjpeg: bool,
 
@@ -111,7 +136,8 @@ impl<R: Read> Decoder<R> {
             ac_huffman_tables: vec![None, None, None, None],
             quantization_tables: [None, None, None, None],
             restart_interval: 0,
-            color_transform: None,
+            // Set the default transform as unknown. This can be overriden using `set_color_transform`
+            color_transform: ColorTransform::default(),
             is_jfif: false,
             is_mjpeg: false,
             icc_markers: Vec::new(),
@@ -120,6 +146,11 @@ impl<R: Read> Decoder<R> {
             coefficients_finished: [0; MAX_COMPONENTS],
             decoding_buffer_size_limit: usize::MAX,
         }
+    }
+
+    /// Sets the colour transform to be applied before returning the data.
+    pub fn set_color_transform(&mut self, transform: ColorTransform) {
+        self.color_transform = transform;
     }
 
     /// Set maximum buffer size allowed for decoded images
@@ -489,7 +520,8 @@ impl<R: Read> Decoder<R> {
                     if let Some(data) = parse_app(&mut self.reader, marker)? {
                         match data {
                             AppData::Adobe(color_transform) => {
-                                self.color_transform = Some(color_transform)
+                                self.color_transform =
+                                    ColorTransform::AdobeColorTransform(color_transform)
                             }
                             AppData::Jfif => {
                                 // From the JFIF spec:
@@ -1187,7 +1219,7 @@ fn compute_image(
     mut data: Vec<Vec<u8>>,
     output_size: Dimensions,
     is_jfif: bool,
-    color_transform: Option<AdobeColorTransform>,
+    color_transform: ColorTransform,
 ) -> Result<Vec<u8>> {
     if data.is_empty() || data.iter().any(Vec::is_empty) {
         return Err(Error::Format("not all components have data".to_owned()));
@@ -1224,28 +1256,50 @@ fn compute_image(
 pub(crate) fn choose_color_convert_func(
     component_count: usize,
     _is_jfif: bool,
-    color_transform: Option<AdobeColorTransform>,
+    color_transform: ColorTransform,
 ) -> Result<fn(&[Vec<u8>], &mut [u8])> {
     match component_count {
         3 => {
-            // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-            // Unknown means the data is RGB, so we don't need to perform any color conversion on it.
-            if color_transform == Some(AdobeColorTransform::Unknown) {
-                Ok(color_convert_line_rgb)
-            } else if color_transform.is_none() {
-                Ok(color_no_convert)
-            } else {
-                Ok(color_convert_line_ycbcr)
+            match color_transform {
+                ColorTransform::None => Ok(color_no_convert),
+                ColorTransform::Default => Ok(color_convert_line_ycbcr),
+                ColorTransform::RGB => Ok(color_convert_line_rgb),
+                ColorTransform::YCbCr => Ok(color_convert_line_ycbcr),
+                ColorTransform::CMYK => Err(Error::Format(
+                    "Invalid number of channels (3) for CMYK data".to_string(),
+                )),
+                ColorTransform::YCCK => Err(Error::Format(
+                    "Invalid number of channels (3) for YCCK data".to_string(),
+                )),
+                ColorTransform::AdobeColorTransform(adobe_transform) => {
+                    // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
+                    // Unknown means the data is RGB, so we don't need to perform any color conversion on it.
+                    if adobe_transform == AdobeColorTransform::Unknown {
+                        Ok(color_convert_line_rgb)
+                    } else {
+                        Ok(color_convert_line_ycbcr)
+                    }
+                }
             }
         }
         4 => {
-            // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
             match color_transform {
-                Some(AdobeColorTransform::Unknown) => Ok(color_convert_line_cmyk),
-                Some(_) => Ok(color_convert_line_ycck),
-                None => {
-                    // Assume CMYK because no APP14 marker was found
-                    Ok(color_no_convert)
+                ColorTransform::None => Ok(color_no_convert),
+                ColorTransform::Default => Ok(color_convert_line_cmyk),
+                ColorTransform::RGB => Err(Error::Format(
+                    "Invalid number of channels (4) for RGB data".to_string(),
+                )),
+                ColorTransform::YCbCr => Err(Error::Format(
+                    "Invalid number of channels (4) for YCbCr data".to_string(),
+                )),
+                ColorTransform::CMYK => Ok(color_convert_line_cmyk),
+                ColorTransform::YCCK => Ok(color_convert_line_ycck),
+                ColorTransform::AdobeColorTransform(adobe_transform) => {
+                    // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
+                    match adobe_transform {
+                        AdobeColorTransform::Unknown => Ok(color_convert_line_cmyk),
+                        _ => Ok(color_convert_line_ycck),
+                    }
                 }
             }
         }
