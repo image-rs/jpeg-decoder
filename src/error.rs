@@ -10,7 +10,7 @@ pub type Result<T> = result::Result<T, Error>;
 /// An enumeration over JPEG features (currently) unsupported by this library.
 ///
 /// Support for features listed here may be included in future versions of this library.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnsupportedFeature {
     /// Hierarchical JPEG.
     Hierarchical,
