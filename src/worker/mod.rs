@@ -98,19 +98,17 @@ pub fn compute_image_parallel(
     components: &[Component],
     data: Vec<Vec<u8>>,
     output_size: Dimensions,
-    is_jfif: bool,
     color_transform: ColorTransform,
 ) -> Result<Vec<u8>> {
     #[cfg(all(
         not(any(target_arch = "asmjs", target_arch = "wasm32")),
         feature = "rayon"
     ))]
-    return rayon::compute_image_parallel(components, data, output_size, is_jfif, color_transform);
+    return rayon::compute_image_parallel(components, data, output_size, color_transform);
 
     #[allow(unreachable_code)]
     {
-        let color_convert_func =
-            choose_color_convert_func(components.len(), is_jfif, color_transform)?;
+        let color_convert_func = choose_color_convert_func(components.len(), color_transform)?;
         let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
         let line_size = output_size.width as usize * components.len();
         let mut image = vec![0u8; line_size * output_size.height as usize];

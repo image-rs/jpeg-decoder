@@ -685,7 +685,6 @@ impl<R: Read> Decoder<R> {
                 &frame.components,
                 planes,
                 frame.output_size,
-                self.is_jfif,
                 self.determine_color_transform(),
             )
         }
@@ -1294,7 +1293,6 @@ fn compute_image(
     components: &[Component],
     mut data: Vec<Vec<u8>>,
     output_size: Dimensions,
-    is_jfif: bool,
     color_transform: ColorTransform,
 ) -> Result<Vec<u8>> {
     if data.is_empty() || data.iter().any(Vec::is_empty) {
@@ -1325,13 +1323,12 @@ fn compute_image(
         decoded.resize(size, 0);
         Ok(decoded)
     } else {
-        compute_image_parallel(components, data, output_size, is_jfif, color_transform)
+        compute_image_parallel(components, data, output_size, color_transform)
     }
 }
 
 pub(crate) fn choose_color_convert_func(
     component_count: usize,
-    _is_jfif: bool,
     color_transform: ColorTransform,
 ) -> Result<fn(&[Vec<u8>], &mut [u8])> {
     match component_count {
