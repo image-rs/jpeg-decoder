@@ -75,13 +75,15 @@ pub struct ImageInfo {
 }
 
 /// Describes the colour transform to apply before binary data is returned
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum ColorTransform {
     /// No transform should be applied and the data is returned as-is.
     None,
-    /// Default colour transform should be applied. If there are 3 channels then YCbCr and if there are 4 then YCCK.
-    Default,
+    /// Unknown colour transformation
+    Unknown,
+    /// Grayscale transform should be applied (expects 1 channel)
+    Grayscale,
     /// RGB transform should be applied.
     RGB,
     /// YCbCr transform should be applied.
@@ -90,14 +92,10 @@ pub enum ColorTransform {
     CMYK,
     /// YCCK transform should be applied.
     YCCK,
-    /// Use the colour transform specified in the Adobe extended tag
-    AdobeColorTransform(AdobeColorTransform),
-}
-
-impl Default for ColorTransform {
-    fn default() -> Self {
-        ColorTransform::Default
-    }
+    /// big gamut Y/Cb/Cr, bg-sYCC
+    JcsBgYcc,
+    /// big gamut red/green/blue, bg-sRGB
+    JcsBgRgb,
 }
 
 /// JPEG decoder
@@ -110,8 +108,10 @@ pub struct Decoder<R> {
     quantization_tables: [Option<Arc<[u16; 64]>>; 4],
 
     restart_interval: u16,
-    fallback_color_transform: ColorTransform,
+
+    adobe_color_transform: Option<AdobeColorTransform>,
     color_transform: Option<ColorTransform>,
+
     is_jfif: bool,
     is_mjpeg: bool,
 
@@ -138,8 +138,7 @@ impl<R: Read> Decoder<R> {
             ac_huffman_tables: vec![None, None, None, None],
             quantization_tables: [None, None, None, None],
             restart_interval: 0,
-            // Set the fallback transform as unknown. This can be overriden using `set_color_transform`
-            fallback_color_transform: ColorTransform::default(),
+            adobe_color_transform: None,
             color_transform: None,
             is_jfif: false,
             is_mjpeg: false,
@@ -149,11 +148,6 @@ impl<R: Read> Decoder<R> {
             coefficients_finished: [0; MAX_COMPONENTS],
             decoding_buffer_size_limit: usize::MAX,
         }
-    }
-
-    /// Colour transform to use if one is not set using `set_color_transform` or found in app segments.
-    pub fn set_fallback_color_transform(&mut self, transform: ColorTransform) {
-        self.fallback_color_transform = transform;
     }
 
     /// Colour transform to use when decoding the image. App segments relating to colour transforms
@@ -529,12 +523,7 @@ impl<R: Read> Decoder<R> {
                     if let Some(data) = parse_app(&mut self.reader, marker)? {
                         match data {
                             AppData::Adobe(color_transform) => {
-                                // Set the colour transform if it has not already been set by the user
-                                // calling `set_color_transform`
-                                if self.color_transform.is_none() {
-                                    self.color_transform =
-                                        Some(ColorTransform::AdobeColorTransform(color_transform))
-                                }
+                                self.adobe_color_transform = Some(color_transform)
                             }
                             AppData::Jfif => {
                                 // From the JFIF spec:
@@ -687,18 +676,82 @@ impl<R: Read> Decoder<R> {
             compute_image_lossless(frame, planes_u16)
         } else {
             // Check whether a colour transform has been set - if not use the fallback
-            let color_transform = match self.color_transform {
-                Some(color_transform) => color_transform,
-                None => self.fallback_color_transform,
-            };
+            // let color_transform = match self.color_transform {
+            //     Some(color_transform) => color_transform,
+            //     None => self.fallback_color_transform,
+            // };
 
             compute_image(
                 &frame.components,
                 planes,
                 frame.output_size,
                 self.is_jfif,
-                color_transform,
+                self.determine_color_transform(),
             )
+        }
+    }
+
+    fn determine_color_transform(&self) -> ColorTransform {
+        if let Some(color_transform) = self.color_transform {
+            return color_transform;
+        }
+
+        let frame = self.frame.as_ref().unwrap();
+
+        if frame.components.len() == 1 {
+            return ColorTransform::Grayscale;
+        }
+
+        // Using logic for determining colour as described here: https://entropymine.wordpress.com/2018/10/22/how-is-a-jpeg-images-color-type-determined/
+
+        if frame.components.len() == 3 {
+            match (
+                frame.components[0].identifier,
+                frame.components[1].identifier,
+                frame.components[2].identifier,
+            ) {
+                (1, 2, 3) => {
+                    return ColorTransform::YCbCr;
+                }
+                (1, 34, 35) => {
+                    return ColorTransform::JcsBgYcc;
+                }
+                (82, 71, 66) => {
+                    return ColorTransform::RGB;
+                }
+                (114, 103, 98) => {
+                    return ColorTransform::JcsBgRgb;
+                }
+                _ => {}
+            }
+
+            if self.is_jfif {
+                return ColorTransform::YCbCr;
+            }
+        }
+
+        if let Some(colour_transform) = self.adobe_color_transform {
+            match colour_transform {
+                AdobeColorTransform::Unknown => {
+                    if frame.components.len() == 3 {
+                        return ColorTransform::RGB;
+                    } else if frame.components.len() == 4 {
+                        return ColorTransform::CMYK;
+                    }
+                }
+                AdobeColorTransform::YCbCr => {
+                    return ColorTransform::YCbCr;
+                }
+                AdobeColorTransform::YCCK => {
+                    return ColorTransform::YCCK;
+                }
+            }
+        }
+
+        if frame.components.len() == 4 {
+            ColorTransform::YCCK
+        } else {
+            ColorTransform::Unknown
         }
     }
 
@@ -1278,50 +1331,49 @@ pub(crate) fn choose_color_convert_func(
     color_transform: ColorTransform,
 ) -> Result<fn(&[Vec<u8>], &mut [u8])> {
     match component_count {
-        3 => {
-            match color_transform {
-                ColorTransform::None => Ok(color_no_convert),
-                ColorTransform::Default => Ok(color_convert_line_ycbcr),
-                ColorTransform::RGB => Ok(color_convert_line_rgb),
-                ColorTransform::YCbCr => Ok(color_convert_line_ycbcr),
-                ColorTransform::CMYK => Err(Error::Format(
-                    "Invalid number of channels (3) for CMYK data".to_string(),
-                )),
-                ColorTransform::YCCK => Err(Error::Format(
-                    "Invalid number of channels (3) for YCCK data".to_string(),
-                )),
-                ColorTransform::AdobeColorTransform(adobe_transform) => {
-                    // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-                    // Unknown means the data is RGB, so we don't need to perform any color conversion on it.
-                    if adobe_transform == AdobeColorTransform::Unknown {
-                        Ok(color_convert_line_rgb)
-                    } else {
-                        Ok(color_convert_line_ycbcr)
-                    }
-                }
-            }
-        }
-        4 => {
-            match color_transform {
-                ColorTransform::None => Ok(color_no_convert),
-                ColorTransform::Default => Ok(color_convert_line_cmyk),
-                ColorTransform::RGB => Err(Error::Format(
-                    "Invalid number of channels (4) for RGB data".to_string(),
-                )),
-                ColorTransform::YCbCr => Err(Error::Format(
-                    "Invalid number of channels (4) for YCbCr data".to_string(),
-                )),
-                ColorTransform::CMYK => Ok(color_convert_line_cmyk),
-                ColorTransform::YCCK => Ok(color_convert_line_ycck),
-                ColorTransform::AdobeColorTransform(adobe_transform) => {
-                    // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-                    match adobe_transform {
-                        AdobeColorTransform::Unknown => Ok(color_convert_line_cmyk),
-                        _ => Ok(color_convert_line_ycck),
-                    }
-                }
-            }
-        }
+        3 => match color_transform {
+            ColorTransform::None => Ok(color_no_convert),
+            ColorTransform::RGB => Ok(color_convert_line_rgb),
+            ColorTransform::YCbCr => Ok(color_convert_line_ycbcr),
+            ColorTransform::CMYK => Err(Error::Format(
+                "Invalid number of channels (3) for CMYK data".to_string(),
+            )),
+            ColorTransform::YCCK => Err(Error::Format(
+                "Invalid number of channels (3) for YCCK data".to_string(),
+            )),
+            ColorTransform::JcsBgYcc => Err(Error::Unsupported(
+                UnsupportedFeature::ColorTransform(ColorTransform::JcsBgYcc),
+            )),
+            ColorTransform::JcsBgRgb => Err(Error::Unsupported(
+                UnsupportedFeature::ColorTransform(ColorTransform::JcsBgRgb),
+            )),
+            ColorTransform::Unknown => Err(Error::Format("Unknown colour transform".to_string())),
+            ColorTransform::Grayscale => Err(Error::Unsupported(
+                UnsupportedFeature::ColorTransform(ColorTransform::Grayscale),
+            )),
+        },
+        4 => match color_transform {
+            ColorTransform::None => Ok(color_no_convert),
+            ColorTransform::RGB => Err(Error::Format(
+                "Invalid number of channels (4) for RGB data".to_string(),
+            )),
+            ColorTransform::YCbCr => Err(Error::Format(
+                "Invalid number of channels (4) for YCbCr data".to_string(),
+            )),
+            ColorTransform::CMYK => Ok(color_convert_line_cmyk),
+            ColorTransform::YCCK => Ok(color_convert_line_ycck),
+
+            ColorTransform::JcsBgYcc => Err(Error::Unsupported(
+                UnsupportedFeature::ColorTransform(ColorTransform::JcsBgYcc),
+            )),
+            ColorTransform::JcsBgRgb => Err(Error::Unsupported(
+                UnsupportedFeature::ColorTransform(ColorTransform::JcsBgRgb),
+            )),
+            ColorTransform::Unknown => Err(Error::Format("Unknown colour transform".to_string())),
+            ColorTransform::Grayscale => Err(Error::Unsupported(
+                UnsupportedFeature::ColorTransform(ColorTransform::Grayscale),
+            )),
+        },
         _ => panic!(),
     }
 }

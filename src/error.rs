@@ -27,6 +27,8 @@ pub enum UnsupportedFeature {
     SubsamplingRatio,
     /// A subsampling ratio not representable as an integer.
     NonIntegerSubsamplingRatio,
+    /// Colour transform
+    ColorTransform(ColorTransform),
 }
 
 /// Errors that can occur while decoding a JPEG image.
