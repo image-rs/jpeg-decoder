@@ -5,6 +5,8 @@ use core::result;
 use std::error::Error as StdError;
 use std::io::Error as IoError;
 
+use crate::ColorTransform;
+
 pub type Result<T> = result::Result<T, Error>;
 
 /// An enumeration over JPEG features (currently) unsupported by this library.
