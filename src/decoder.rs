@@ -752,6 +752,8 @@ impl<R: Read> Decoder<R> {
 
         if frame.components.len() == 4 {
             ColorTransform::YCCK
+        } else if frame.components.len() == 3 {
+            ColorTransform::YCbCr
         } else {
             ColorTransform::Unknown
         }
