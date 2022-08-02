@@ -110,7 +110,8 @@ pub struct Decoder<R> {
     quantization_tables: [Option<Arc<[u16; 64]>>; 4],
 
     restart_interval: u16,
-    color_transform: ColorTransform,
+    fallback_color_transform: ColorTransform,
+    color_transform: Option<ColorTransform>,
     is_jfif: bool,
     is_mjpeg: bool,
 
@@ -137,8 +138,9 @@ impl<R: Read> Decoder<R> {
             ac_huffman_tables: vec![None, None, None, None],
             quantization_tables: [None, None, None, None],
             restart_interval: 0,
-            // Set the default transform as unknown. This can be overriden using `set_color_transform`
-            color_transform: ColorTransform::default(),
+            // Set the fallback transform as unknown. This can be overriden using `set_color_transform`
+            fallback_color_transform: ColorTransform::default(),
+            color_transform: None,
             is_jfif: false,
             is_mjpeg: false,
             icc_markers: Vec::new(),
@@ -149,9 +151,15 @@ impl<R: Read> Decoder<R> {
         }
     }
 
-    /// Sets the colour transform to be applied before returning the data.
+    /// Colour transform to use if one is not set using `set_color_transform` or found in app segments.
+    pub fn set_fallback_color_transform(&mut self, transform: ColorTransform) {
+        self.fallback_color_transform = transform;
+    }
+
+    /// Colour transform to use when decoding the image. App segments relating to colour transforms
+    /// will be ignored.
     pub fn set_color_transform(&mut self, transform: ColorTransform) {
-        self.color_transform = transform;
+        self.color_transform = Some(transform);
     }
 
     /// Set maximum buffer size allowed for decoded images
@@ -521,8 +529,12 @@ impl<R: Read> Decoder<R> {
                     if let Some(data) = parse_app(&mut self.reader, marker)? {
                         match data {
                             AppData::Adobe(color_transform) => {
-                                self.color_transform =
-                                    ColorTransform::AdobeColorTransform(color_transform)
+                                // Set the colour transform if it has not already been set by the user
+                                // calling `set_color_transform`
+                                if self.color_transform.is_none() {
+                                    self.color_transform =
+                                        Some(ColorTransform::AdobeColorTransform(color_transform))
+                                }
                             }
                             AppData::Jfif => {
                                 // From the JFIF spec:
@@ -674,12 +686,18 @@ impl<R: Read> Decoder<R> {
         if frame.coding_process == CodingProcess::Lossless {
             compute_image_lossless(frame, planes_u16)
         } else {
+            // Check whether a colour transform has been set - if not use the fallback
+            let color_transform = match self.color_transform {
+                Some(color_transform) => color_transform,
+                None => self.fallback_color_transform,
+            };
+
             compute_image(
                 &frame.components,
                 planes,
                 frame.output_size,
                 self.is_jfif,
-                self.color_transform,
+                color_transform,
             )
         }
     }
