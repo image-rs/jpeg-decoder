@@ -1333,6 +1333,9 @@ pub(crate) fn choose_color_convert_func(
     match component_count {
         3 => match color_transform {
             ColorTransform::None => Ok(color_no_convert),
+            ColorTransform::Grayscale => Err(Error::Format(
+                "Invalid number of channels (3) for Grayscale data".to_string(),
+            )),
             ColorTransform::RGB => Ok(color_convert_line_rgb),
             ColorTransform::YCbCr => Ok(color_convert_line_ycbcr),
             ColorTransform::CMYK => Err(Error::Format(
@@ -1348,12 +1351,12 @@ pub(crate) fn choose_color_convert_func(
                 UnsupportedFeature::ColorTransform(ColorTransform::JcsBgRgb),
             )),
             ColorTransform::Unknown => Err(Error::Format("Unknown colour transform".to_string())),
-            ColorTransform::Grayscale => Err(Error::Unsupported(
-                UnsupportedFeature::ColorTransform(ColorTransform::Grayscale),
-            )),
         },
         4 => match color_transform {
             ColorTransform::None => Ok(color_no_convert),
+            ColorTransform::Grayscale => Err(Error::Format(
+                "Invalid number of channels (4) for Grayscale data".to_string(),
+            )),
             ColorTransform::RGB => Err(Error::Format(
                 "Invalid number of channels (4) for RGB data".to_string(),
             )),
@@ -1370,9 +1373,6 @@ pub(crate) fn choose_color_convert_func(
                 UnsupportedFeature::ColorTransform(ColorTransform::JcsBgRgb),
             )),
             ColorTransform::Unknown => Err(Error::Format("Unknown colour transform".to_string())),
-            ColorTransform::Grayscale => Err(Error::Unsupported(
-                UnsupportedFeature::ColorTransform(ColorTransform::Grayscale),
-            )),
         },
         _ => panic!(),
     }
