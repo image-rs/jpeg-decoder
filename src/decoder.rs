@@ -675,12 +675,6 @@ impl<R: Read> Decoder<R> {
         if frame.coding_process == CodingProcess::Lossless {
             compute_image_lossless(frame, planes_u16)
         } else {
-            // Check whether a colour transform has been set - if not use the fallback
-            // let color_transform = match self.color_transform {
-            //     Some(color_transform) => color_transform,
-            //     None => self.fallback_color_transform,
-            // };
-
             compute_image(
                 &frame.components,
                 planes,
