@@ -746,6 +746,8 @@ impl<R: Read> Decoder<R> {
                     return ColorTransform::YCCK;
                 }
             }
+        } else if frame.components.len() == 4 {
+            return ColorTransform::CMYK;
         }
 
         if frame.components.len() == 4 {
