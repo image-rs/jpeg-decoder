@@ -198,7 +198,11 @@ fn predict(
 ) -> i32 {
     if (ix == 0 && iy == 0) || restart {
         // start of first line or restart
-        1 << (input_precision - point_transform - 1)
+        if input_precision > 1 + point_transform {
+            1 << (input_precision - point_transform - 1)
+        } else {
+            0
+        }
     } else if iy == 0 {
         // rest of first line
         ra
