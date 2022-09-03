@@ -93,6 +93,9 @@ jobs:
           target: wasm32-unknown-unknown
       - uses: actions/checkout@v2
       - name: Test
-        run: cargo test -vv --target wasm32-unknown-unknown
+        run: |
+          cargo update
+          cargo update -p wasm-bindgen --precise 0.2.80
+          cargo test -vv --target wasm32-unknown-unknown
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
