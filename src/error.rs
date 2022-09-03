@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
-use alloc::string::String;
 use alloc::fmt;
+use alloc::string::String;
 use core::result;
 use std::error::Error as StdError;
 use std::io::Error as IoError;
@@ -10,7 +10,7 @@ pub type Result<T> = result::Result<T, Error>;
 /// An enumeration over JPEG features (currently) unsupported by this library.
 ///
 /// Support for features listed here may be included in future versions of this library.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnsupportedFeature {
     /// Hierarchical JPEG.
     Hierarchical,
@@ -46,10 +46,10 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Error::Format(ref desc)      => write!(f, "invalid JPEG format: {}", desc),
+            Error::Format(ref desc) => write!(f, "invalid JPEG format: {}", desc),
             Error::Unsupported(ref feat) => write!(f, "unsupported JPEG feature: {:?}", feat),
-            Error::Io(ref err)           => err.fmt(f),
-            Error::Internal(ref err)     => err.fmt(f),
+            Error::Io(ref err) => err.fmt(f),
+            Error::Internal(ref err) => err.fmt(f),
         }
     }
 }
