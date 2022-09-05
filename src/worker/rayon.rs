@@ -3,10 +3,10 @@ use core::convert::TryInto;
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 use rayon::slice::ParallelSliceMut;
 
-use crate::decoder::choose_color_convert_func;
+use crate::decoder::{choose_color_convert_func, ColorTransform};
 use crate::error::Result;
 use crate::idct::dequantize_and_idct_block;
-use crate::parser::{AdobeColorTransform, Component};
+use crate::parser::Component;
 use crate::upsampler::Upsampler;
 use crate::{decoder::MAX_COMPONENTS, parser::Dimensions};
 
@@ -196,10 +196,9 @@ pub fn compute_image_parallel(
     components: &[Component],
     data: Vec<Vec<u8>>,
     output_size: Dimensions,
-    is_jfif: bool,
-    color_transform: Option<AdobeColorTransform>,
+    color_transform: ColorTransform,
 ) -> Result<Vec<u8>> {
-    let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
+    let color_convert_func = choose_color_convert_func(components.len(), color_transform)?;
     let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
     let mut image = vec![0u8; line_size * output_size.height as usize];

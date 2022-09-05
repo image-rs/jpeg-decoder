@@ -74,6 +74,30 @@ pub struct ImageInfo {
     pub coding_process: CodingProcess,
 }
 
+/// Describes the colour transform to apply before binary data is returned
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ColorTransform {
+    /// No transform should be applied and the data is returned as-is.
+    None,
+    /// Unknown colour transformation
+    Unknown,
+    /// Grayscale transform should be applied (expects 1 channel)
+    Grayscale,
+    /// RGB transform should be applied.
+    RGB,
+    /// YCbCr transform should be applied.
+    YCbCr,
+    /// CMYK transform should be applied.
+    CMYK,
+    /// YCCK transform should be applied.
+    YCCK,
+    /// big gamut Y/Cb/Cr, bg-sYCC
+    JcsBgYcc,
+    /// big gamut red/green/blue, bg-sRGB
+    JcsBgRgb,
+}
+
 /// JPEG decoder
 pub struct Decoder<R> {
     reader: R,
@@ -84,7 +108,10 @@ pub struct Decoder<R> {
     quantization_tables: [Option<Arc<[u16; 64]>>; 4],
 
     restart_interval: u16,
-    color_transform: Option<AdobeColorTransform>,
+
+    adobe_color_transform: Option<AdobeColorTransform>,
+    color_transform: Option<ColorTransform>,
+
     is_jfif: bool,
     is_mjpeg: bool,
 
@@ -111,6 +138,7 @@ impl<R: Read> Decoder<R> {
             ac_huffman_tables: vec![None, None, None, None],
             quantization_tables: [None, None, None, None],
             restart_interval: 0,
+            adobe_color_transform: None,
             color_transform: None,
             is_jfif: false,
             is_mjpeg: false,
@@ -120,6 +148,12 @@ impl<R: Read> Decoder<R> {
             coefficients_finished: [0; MAX_COMPONENTS],
             decoding_buffer_size_limit: usize::MAX,
         }
+    }
+
+    /// Colour transform to use when decoding the image. App segments relating to colour transforms
+    /// will be ignored.
+    pub fn set_color_transform(&mut self, transform: ColorTransform) {
+        self.color_transform = Some(transform);
     }
 
     /// Set maximum buffer size allowed for decoded images
@@ -211,7 +245,7 @@ impl<R: Read> Decoder<R> {
                 } else {
                     PreferWorkerKind::Immediate
                 }
-            },
+            }
         }
     }
 
@@ -219,10 +253,7 @@ impl<R: Read> Decoder<R> {
     ///
     /// If successful, the metadata can be obtained using the `info` method.
     pub fn read_info(&mut self) -> Result<()> {
-        WorkerScope::with(|worker| {
-            self.decode_internal(true, worker)
-        })
-        .map(|_| ())
+        WorkerScope::with(|worker| self.decode_internal(true, worker)).map(|_| ())
     }
 
     /// Configure the decoder to scale the image during decoding.
@@ -250,9 +281,7 @@ impl<R: Read> Decoder<R> {
 
     /// Decodes the image and returns the decoded pixels if successful.
     pub fn decode(&mut self) -> Result<Vec<u8>> {
-        WorkerScope::with(|worker| {
-            self.decode_internal(false, worker)
-        })
+        WorkerScope::with(|worker| self.decode_internal(false, worker))
     }
 
     fn decode_internal(
@@ -415,11 +444,13 @@ impl<R: Read> Decoder<R> {
                             }
                         }
 
-                        let preference = Self::select_worker(&frame, PreferWorkerKind::Multithreaded);
+                        let preference =
+                            Self::select_worker(&frame, PreferWorkerKind::Multithreaded);
 
-                        let (marker, data) = worker_scope.get_or_init_worker(
-                            preference,
-                            |worker| self.decode_scan(&frame, &scan, worker, &finished))?;
+                        let (marker, data) = worker_scope
+                            .get_or_init_worker(preference, |worker| {
+                                self.decode_scan(&frame, &scan, worker, &finished)
+                            })?;
 
                         if let Some(data) = data {
                             for (i, plane) in data
@@ -492,7 +523,7 @@ impl<R: Read> Decoder<R> {
                     if let Some(data) = parse_app(&mut self.reader, marker)? {
                         match data {
                             AppData::Adobe(color_transform) => {
-                                self.color_transform = Some(color_transform)
+                                self.adobe_color_transform = Some(color_transform)
                             }
                             AppData::Jfif => {
                                 // From the JFIF spec:
@@ -566,10 +597,9 @@ impl<R: Read> Decoder<R> {
         let frame = self.frame.as_ref().unwrap();
         let preference = Self::select_worker(&frame, PreferWorkerKind::Multithreaded);
 
-        worker_scope.get_or_init_worker(
-            preference,
-            |worker| self.decode_planes(worker, planes, planes_u16)
-        )
+        worker_scope.get_or_init_worker(preference, |worker| {
+            self.decode_planes(worker, planes, planes_u16)
+        })
     }
 
     fn decode_planes(
@@ -649,9 +679,76 @@ impl<R: Read> Decoder<R> {
                 &frame.components,
                 planes,
                 frame.output_size,
-                self.is_jfif,
-                self.color_transform,
+                self.determine_color_transform(),
             )
+        }
+    }
+
+    fn determine_color_transform(&self) -> ColorTransform {
+        if let Some(color_transform) = self.color_transform {
+            return color_transform;
+        }
+
+        let frame = self.frame.as_ref().unwrap();
+
+        if frame.components.len() == 1 {
+            return ColorTransform::Grayscale;
+        }
+
+        // Using logic for determining colour as described here: https://entropymine.wordpress.com/2018/10/22/how-is-a-jpeg-images-color-type-determined/
+
+        if frame.components.len() == 3 {
+            match (
+                frame.components[0].identifier,
+                frame.components[1].identifier,
+                frame.components[2].identifier,
+            ) {
+                (1, 2, 3) => {
+                    return ColorTransform::YCbCr;
+                }
+                (1, 34, 35) => {
+                    return ColorTransform::JcsBgYcc;
+                }
+                (82, 71, 66) => {
+                    return ColorTransform::RGB;
+                }
+                (114, 103, 98) => {
+                    return ColorTransform::JcsBgRgb;
+                }
+                _ => {}
+            }
+
+            if self.is_jfif {
+                return ColorTransform::YCbCr;
+            }
+        }
+
+        if let Some(colour_transform) = self.adobe_color_transform {
+            match colour_transform {
+                AdobeColorTransform::Unknown => {
+                    if frame.components.len() == 3 {
+                        return ColorTransform::RGB;
+                    } else if frame.components.len() == 4 {
+                        return ColorTransform::CMYK;
+                    }
+                }
+                AdobeColorTransform::YCbCr => {
+                    return ColorTransform::YCbCr;
+                }
+                AdobeColorTransform::YCCK => {
+                    return ColorTransform::YCCK;
+                }
+            }
+        } else if frame.components.len() == 4 {
+            return ColorTransform::CMYK;
+        }
+
+        if frame.components.len() == 4 {
+            ColorTransform::YCCK
+        } else if frame.components.len() == 3 {
+            ColorTransform::YCbCr
+        } else {
+            ColorTransform::Unknown
         }
     }
 
@@ -1190,8 +1287,7 @@ fn compute_image(
     components: &[Component],
     mut data: Vec<Vec<u8>>,
     output_size: Dimensions,
-    is_jfif: bool,
-    color_transform: Option<AdobeColorTransform>,
+    color_transform: ColorTransform,
 ) -> Result<Vec<u8>> {
     if data.is_empty() || data.iter().any(Vec::is_empty) {
         return Err(Error::Format("not all components have data".to_owned()));
@@ -1221,36 +1317,58 @@ fn compute_image(
         decoded.resize(size, 0);
         Ok(decoded)
     } else {
-        compute_image_parallel(components, data, output_size, is_jfif, color_transform)
+        compute_image_parallel(components, data, output_size, color_transform)
     }
 }
 
 pub(crate) fn choose_color_convert_func(
     component_count: usize,
-    _is_jfif: bool,
-    color_transform: Option<AdobeColorTransform>,
+    color_transform: ColorTransform,
 ) -> Result<fn(&[Vec<u8>], &mut [u8])> {
     match component_count {
-        3 => {
-            // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-            // Unknown means the data is RGB, so we don't need to perform any color conversion on it.
-            if color_transform == Some(AdobeColorTransform::Unknown) {
-                Ok(color_convert_line_rgb)
-            } else {
-                Ok(color_convert_line_ycbcr)
-            }
-        }
-        4 => {
-            // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-            match color_transform {
-                Some(AdobeColorTransform::Unknown) => Ok(color_convert_line_cmyk),
-                Some(_) => Ok(color_convert_line_ycck),
-                None => {
-                    // Assume CMYK because no APP14 marker was found
-                    Ok(color_convert_line_cmyk)
-                }
-            }
-        }
+        3 => match color_transform {
+            ColorTransform::None => Ok(color_no_convert),
+            ColorTransform::Grayscale => Err(Error::Format(
+                "Invalid number of channels (3) for Grayscale data".to_string(),
+            )),
+            ColorTransform::RGB => Ok(color_convert_line_rgb),
+            ColorTransform::YCbCr => Ok(color_convert_line_ycbcr),
+            ColorTransform::CMYK => Err(Error::Format(
+                "Invalid number of channels (3) for CMYK data".to_string(),
+            )),
+            ColorTransform::YCCK => Err(Error::Format(
+                "Invalid number of channels (3) for YCCK data".to_string(),
+            )),
+            ColorTransform::JcsBgYcc => Err(Error::Unsupported(
+                UnsupportedFeature::ColorTransform(ColorTransform::JcsBgYcc),
+            )),
+            ColorTransform::JcsBgRgb => Err(Error::Unsupported(
+                UnsupportedFeature::ColorTransform(ColorTransform::JcsBgRgb),
+            )),
+            ColorTransform::Unknown => Err(Error::Format("Unknown colour transform".to_string())),
+        },
+        4 => match color_transform {
+            ColorTransform::None => Ok(color_no_convert),
+            ColorTransform::Grayscale => Err(Error::Format(
+                "Invalid number of channels (4) for Grayscale data".to_string(),
+            )),
+            ColorTransform::RGB => Err(Error::Format(
+                "Invalid number of channels (4) for RGB data".to_string(),
+            )),
+            ColorTransform::YCbCr => Err(Error::Format(
+                "Invalid number of channels (4) for YCbCr data".to_string(),
+            )),
+            ColorTransform::CMYK => Ok(color_convert_line_cmyk),
+            ColorTransform::YCCK => Ok(color_convert_line_ycck),
+
+            ColorTransform::JcsBgYcc => Err(Error::Unsupported(
+                UnsupportedFeature::ColorTransform(ColorTransform::JcsBgYcc),
+            )),
+            ColorTransform::JcsBgRgb => Err(Error::Unsupported(
+                UnsupportedFeature::ColorTransform(ColorTransform::JcsBgRgb),
+            )),
+            ColorTransform::Unknown => Err(Error::Format("Unknown colour transform".to_string())),
+        },
         _ => panic!(),
     }
 }
@@ -1337,6 +1455,16 @@ fn color_convert_line_cmyk(data: &[Vec<u8>], output: &mut [u8]) {
         chunk[1] = 255 - m;
         chunk[2] = 255 - y;
         chunk[3] = 255 - k;
+    }
+}
+
+fn color_no_convert(data: &[Vec<u8>], output: &mut [u8]) {
+    let mut output_iter = output.iter_mut();
+
+    for pixel in data {
+        for d in pixel {
+            *(output_iter.next().unwrap()) = *d;
+        }
     }
 }
 

@@ -5,6 +5,8 @@ use core::result;
 use std::error::Error as StdError;
 use std::io::Error as IoError;
 
+use crate::ColorTransform;
+
 pub type Result<T> = result::Result<T, Error>;
 
 /// An enumeration over JPEG features (currently) unsupported by this library.
@@ -27,6 +29,8 @@ pub enum UnsupportedFeature {
     SubsamplingRatio,
     /// A subsampling ratio not representable as an integer.
     NonIntegerSubsamplingRatio,
+    /// Colour transform
+    ColorTransform(ColorTransform),
 }
 
 /// Errors that can occur while decoding a JPEG image.
