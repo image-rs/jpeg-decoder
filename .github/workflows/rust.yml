@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        rust: ["1.56.0", stable, beta, nightly]
+        rust: ["1.61.0", stable, beta, nightly]
         features: ["", "rayon"]
         command: [test, benchmark]
 
@@ -29,12 +29,12 @@ jobs:
       - name: test
         run: >
           cargo test --tests --benches --no-default-features --features "$FEATURES"
-        if: ${{ matrix.command == 'test' && matrix.rust != '1.56.0' }}
+        if: ${{ matrix.command == 'test' && matrix.rust != '1.61.0' }}
         env:
           FEATURES: ${{ matrix.features }}
       - name: benchmark
         run: cargo bench --bench decoding_benchmark --no-default-features --features "$FEATURES" -- --warm-up-time 1 --measurement-time 1 --sample-size 25
-        if: ${{ matrix.command == 'benchmark' && matrix.rust != '1.56.0' }}
+        if: ${{ matrix.command == 'benchmark' && matrix.rust != '1.61.0' }}
         env:
           FEATURES: ${{ matrix.features }}
 
