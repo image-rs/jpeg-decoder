@@ -21,6 +21,10 @@ fn main() {
     let mut data = decoder.decode().expect("Decoding failed. If other software can successfully decode the specified JPEG image, then it's likely that there is a bug in jpeg-decoder");
     let info = decoder.info().unwrap();
 
+    eprintln!("{:?}", info);
+    eprintln!("Exif: {}", decoder.exif_data().is_some());
+    eprintln!("ICC: {}", decoder.icc_profile().is_some());
+
     let output_file = File::create(output_path).unwrap();
     let mut encoder = png::Encoder::new(output_file, info.width as u32, info.height as u32);
 
