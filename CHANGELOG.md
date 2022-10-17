@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.3.0 (2022-10-17)
+
+- The MSRV policy is now managed by the `rust-version` field in `Cargo.toml`.
+- The color transform can now be overridden as well as hinted with
+  `Decoder::set_color_transform`.
+
 ## v0.2.6 (2022-05-09)
 
 - Another fix to allow usage in WASM target.

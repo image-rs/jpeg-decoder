@@ -1,15 +1,20 @@
 [package]
 name = "jpeg-decoder"
-version = "0.2.6"
-authors = ["The image-rs Developers"]
+version = "0.3.0"
+edition = "2018"
+resolver = "2"
+
+rust-version = "1.61.0"
+
+license = "MIT / Apache-2.0"
 description = "JPEG decoder"
+authors = ["The image-rs Developers"]
+readme = "README.md"
+
 documentation = "https://docs.rs/jpeg-decoder"
 repository = "https://github.com/image-rs/jpeg-decoder"
-readme = "README.md"
 keywords = ["jpeg", "jpg", "decoder", "image"]
-license = "MIT / Apache-2.0"
 exclude = ["/tests/*", "!/tests/*.rs"]
-edition = "2018"
 
 [dependencies]
 rayon = { version = "1.5.1", optional = true }
@@ -19,6 +24,7 @@ png = "0.16"
 walkdir = "2.0"
 criterion = "0.3"
 wasm-bindgen-test = "0.3"
+wasm-bindgen = "=0.2.83"
 
 [features]
 default = ["rayon"]

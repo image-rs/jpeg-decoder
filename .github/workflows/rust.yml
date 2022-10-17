@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        rust: ["1.56.0", stable, beta, nightly]
+        rust: ["1.61.0", stable, beta, nightly]
         features: ["", "rayon"]
         command: [test, benchmark]
 
@@ -29,12 +29,12 @@ jobs:
       - name: test
         run: >
           cargo test --tests --benches --no-default-features --features "$FEATURES"
-        if: ${{ matrix.command == 'test' && matrix.rust != '1.56.0' }}
+        if: ${{ matrix.command == 'test' && matrix.rust != '1.61.0' }}
         env:
           FEATURES: ${{ matrix.features }}
       - name: benchmark
         run: cargo bench --bench decoding_benchmark --no-default-features --features "$FEATURES" -- --warm-up-time 1 --measurement-time 1 --sample-size 25
-        if: ${{ matrix.command == 'benchmark' && matrix.rust != '1.56.0' }}
+        if: ${{ matrix.command == 'benchmark' && matrix.rust != '1.61.0' }}
         env:
           FEATURES: ${{ matrix.features }}
 
@@ -81,10 +81,10 @@ jobs:
       - name: Install wasm-bindgen
         run: >
           curl -L "$WASMBINDGEN_UPSTREAM"
-          | tar xzf - --strip-components=1 wasm-bindgen-0.2.82-x86_64-unknown-linux-musl/wasm-bindgen-test-runner
+          | tar xzf - --strip-components=1 wasm-bindgen-0.2.83-x86_64-unknown-linux-musl/wasm-bindgen-test-runner
           && sudo mv wasm-bindgen-test-runner /usr/bin/wasm-bindgen-test-runner
         env:
-          WASMBINDGEN_UPSTREAM: https://github.com/rustwasm/wasm-bindgen/releases/download/0.2.82/wasm-bindgen-0.2.82-x86_64-unknown-linux-musl.tar.gz
+          WASMBINDGEN_UPSTREAM: https://github.com/rustwasm/wasm-bindgen/releases/download/0.2.83/wasm-bindgen-0.2.83-x86_64-unknown-linux-musl.tar.gz
       - name: Installing Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -95,7 +95,7 @@ jobs:
       - name: Test
         run: |
           cargo update
-          cargo update -p wasm-bindgen --precise 0.2.82
+          cargo update -p wasm-bindgen --precise 0.2.83
           cargo test -vv --target wasm32-unknown-unknown
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
