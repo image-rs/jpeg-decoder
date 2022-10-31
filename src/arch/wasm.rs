@@ -172,6 +172,8 @@ pub fn dequantize_and_idct_block_8x8(
 
         let data_with_offset = i16x8_add_sat(data[i], i16x8_splat(OFFSET + ROUNDING_BIAS));
 
+        // SAFETY: the assert at the start of this function ensures
+        // `output_linestride * i + 7` < output.len(), so all accesses are in-bounds.
         unsafe {
             v128_store64_lane::<0>(
                 u8x16_narrow_i16x8(
@@ -187,6 +189,7 @@ pub fn dequantize_and_idct_block_8x8(
 #[cfg(target_arch = "wasm32")]
 #[target_feature(enable = "simd128")]
 pub fn color_convert_line_ycbcr(y_slice: &[u8], cb_slice: &[u8], cr_slice: &[u8], output: &mut [u8]) -> usize {
+
     assert!(output.len() % 3 == 0);
     let num = output.len() / 3;
     assert!(num <= y_slice.len());
@@ -201,6 +204,8 @@ pub fn color_convert_line_ycbcr(y_slice: &[u8], cb_slice: &[u8], cr_slice: &[u8]
         let y: v128;
         let cb: v128;
         let cr: v128;
+        // SAFETY: i is at most `num / 8 - 8`, so the highest v128_load64_zero reads from
+        // [num - 8, num). The above asserts ensure this is in-bounds.
         unsafe {
             y = v128_load64_zero(y_slice.as_ptr().wrapping_add(i * 8) as *const _);
             cb = v128_load64_zero(cb_slice.as_ptr().wrapping_add(i * 8) as *const _);
@@ -260,6 +265,8 @@ pub fn color_convert_line_ycbcr(y_slice: &[u8], cb_slice: &[u8], cr_slice: &[u8]
                                       0,  0,  0,       // --, --, --
                                       0>(rg_lanes, b); // --
 
+        // SAFETY: i is at most `output.len() / 24 - 1` so the highest possible write is to
+        // `output.len() - 1`.
         unsafe {
             v128_store(output.as_mut_ptr().wrapping_add(24 * i) as *mut _, rgb_low);
             v128_store64_lane::<0>(rgb_hi, output.as_mut_ptr().wrapping_add(24 * i + 16) as *mut _);
