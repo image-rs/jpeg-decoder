@@ -2,7 +2,7 @@
 
 [![Rust CI](https://github.com/image-rs/jpeg-decoder/workflows/Rust%20CI/badge.svg)](https://github.com/image-rs/jpeg-decoder/actions)
 [![AppVeyor Build Status](https://ci.appveyor.com/api/projects/status/k65rrkd0f8yb4o9w/branch/master?svg=true)](https://ci.appveyor.com/project/kaksmet/jpeg-decoder/branch/master)
-[![Crates.io](https://img.shields.io/crates/v/jpeg-decoder.svg)](https://crates.io/crates/jpeg-decoder)
+[![crates.io](https://img.shields.io/crates/v/jpeg-decoder.svg)](https://crates.io/crates/jpeg-decoder)
 
 A Rust library for decoding JPEGs.
 
@@ -13,7 +13,7 @@ A Rust library for decoding JPEGs.
 Cargo.toml:
 ```toml
 [dependencies]
-jpeg-decoder = "0.2"
+jpeg-decoder = "0.3"
 ```
 
 main.rs:
@@ -33,6 +33,6 @@ fn main() {
 
 ## Requirements
 
-This crate compiles with rust >= 1.48. Minimum Supported Rust Version:
-- All releases `0.1.*` compile with rust >= 1.36.
-- The releases `0.2.*` may bump Rust Version requirements (TBD).
+This crate compiles with Rust >= 1.61. Minimum supported Rust version:
+- All releases `0.1.*` compile with Rust >= 1.36.
+- All releases `0.2.*` compile with Rust >= 1.48.
