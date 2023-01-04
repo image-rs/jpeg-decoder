@@ -95,6 +95,7 @@ pub enum AppData {
     Avi1,
     Icc(IccChunk),
     Exif(Vec<u8>),
+    Unknown(Vec<u8>),
 }
 
 // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
@@ -623,19 +624,16 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
         }
         // Exif Data
         APP(1) => {
-            if length >= 6 {
-                let mut buffer = [0u8; 6];
-                reader.read_exact(&mut buffer)?;
-                bytes_read = buffer.len();
+            let mut data = vec![0u8; length];
+            reader.read_exact(&mut data)?;
+            bytes_read += length;
 
-                // https://web.archive.org/web/20190624045241if_/http://www.cipa.jp:80/std/documents/e/DC-008-Translation-2019-E.pdf
-                // 4.5.4 Basic Structure of JPEG Compressed Data
-                if buffer == *b"Exif\x00\x00" {
-                    let mut data = vec![0; length - bytes_read];
-                    reader.read_exact(&mut data)?;
-                    bytes_read += data.len();
-                    result = Some(AppData::Exif(data));
-                }
+            // https://web.archive.org/web/20190624045241if_/http://www.cipa.jp:80/std/documents/e/DC-008-Translation-2019-E.pdf
+            // 4.5.4 Basic Structure of JPEG Compressed Data
+            if &data[0..6] == *b"Exif\x00\x00" {
+                result = Some(AppData::Exif(data[6..].to_vec()));
+            } else {
+                result = Some(AppData::Unknown(data))
             }
         }
         APP(2) => {

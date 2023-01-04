@@ -153,3 +153,18 @@ fn read_exif_data() {
     // exif data start as a TIFF header
     assert_eq!(&exif_data[0..8], b"\x49\x49\x2A\x00\x08\x00\x00\x00");
 }
+
+#[test]
+fn read_unknown_data() {
+    let path = Path::new("tests")
+        .join("reftest")
+        .join("images")
+        .join("unknown_app1.jpg");
+
+    let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
+    decoder.decode().unwrap();
+
+    let unknown_data = decoder.unknown_data();
+    // read first line of xmp data
+    assert_eq!(&unknown_data[0][0..28], b"http://ns.adobe.com/xap/1.0/");
+}
