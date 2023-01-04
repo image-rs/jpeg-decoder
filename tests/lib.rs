@@ -164,7 +164,7 @@ fn read_unknown_data() {
     let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
     decoder.decode().unwrap();
 
-    let unknown_data = decoder.unknown_data();
+    let mut unknown_data = decoder.unknown_data();
     // read first line of xmp data
-    assert_eq!(&unknown_data[0][0..28], b"http://ns.adobe.com/xap/1.0/");
+    assert!(unknown_data.nth(0).unwrap().starts_with(b"http://ns.adobe.com/xap/1.0/"));
 }

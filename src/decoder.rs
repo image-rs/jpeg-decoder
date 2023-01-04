@@ -200,8 +200,8 @@ impl<R: Read> Decoder<R> {
     }
 
     /// Returns collection of raw app data that couldn't be recognized
-    pub fn unknown_data(&self) -> &Vec<Vec<u8>> {
-        &self.unknown_data
+    pub fn unknown_data(&self) -> impl Iterator<Item=&'_ [u8]> + '_ {
+        self.unknown_data.iter().map(|v| { v.as_slice() })
     }
 
     /// Returns the embeded icc profile if the image contains one.
