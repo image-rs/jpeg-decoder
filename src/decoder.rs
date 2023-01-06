@@ -4,7 +4,7 @@ use crate::marker::Marker;
 use crate::parser::{
     parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos,
     AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
-    IccChunk, ScanInfo,
+    IccChunk, ScanInfo, AppSegment,
 };
 use crate::read_u8;
 use crate::upsampler::Upsampler;
@@ -118,7 +118,7 @@ pub struct Decoder<R> {
     icc_markers: Vec<IccChunk>,
 
     exif_data: Option<Vec<u8>>,
-    unknown_data: Vec<Vec<u8>>,
+    app_segments: Vec<AppSegment>,
 
     // Used for progressive JPEGs.
     coefficients: Vec<Vec<i16>>,
@@ -145,7 +145,7 @@ impl<R: Read> Decoder<R> {
             is_mjpeg: false,
             icc_markers: Vec::new(),
             exif_data: None,
-            unknown_data: Vec::new(),
+            app_segments: Vec::new(),
             coefficients: Vec::new(),
             coefficients_finished: [0; MAX_COMPONENTS],
             decoding_buffer_size_limit: usize::MAX,
@@ -199,9 +199,9 @@ impl<R: Read> Decoder<R> {
         self.exif_data.as_deref()
     }
 
-    /// Returns collection of raw app data that couldn't be recognized
-    pub fn unknown_data(&self) -> impl Iterator<Item=&'_ [u8]> + '_ {
-        self.unknown_data.iter().map(|v| { v.as_slice() })
+    /// Returns collection of all captured app segments
+    pub fn app_segments(&self) -> &[AppSegment] {
+        self.app_segments.as_slice()
     }
 
     /// Returns the embeded icc profile if the image contains one.
@@ -527,7 +527,10 @@ impl<R: Read> Decoder<R> {
                 }
                 // Application data
                 Marker::APP(..) => {
-                    if let Some(data) = parse_app(&mut self.reader, marker)? {
+                    let (app_segment, app_data) = parse_app(&mut self.reader, marker)?;
+                    self.app_segments.push(app_segment);
+
+                    if let Some(data) = app_data {
                         match data {
                             AppData::Adobe(color_transform) => {
                                 self.adobe_color_transform = Some(color_transform)
@@ -549,7 +552,6 @@ impl<R: Read> Decoder<R> {
                             AppData::Avi1 => self.is_mjpeg = true,
                             AppData::Icc(icc) => self.icc_markers.push(icc),
                             AppData::Exif(data) => self.exif_data = Some(data),
-                            AppData::Unknown(data) => self.unknown_data.push(data),
                         }
                     }
                 }

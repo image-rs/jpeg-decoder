@@ -155,7 +155,7 @@ fn read_exif_data() {
 }
 
 #[test]
-fn read_unknown_data() {
+fn read_app_segments() {
     let path = Path::new("tests")
         .join("reftest")
         .join("images")
@@ -164,7 +164,13 @@ fn read_unknown_data() {
     let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
     decoder.decode().unwrap();
 
-    let mut unknown_data = decoder.unknown_data();
-    // read first line of xmp data
-    assert!(unknown_data.nth(0).unwrap().starts_with(b"http://ns.adobe.com/xap/1.0/"));
+    let segments = decoder.app_segments();
+
+    // search for xmp data
+    assert!(segments
+        .into_iter()
+        .find(|segment| { segment.kind == 1 && segment.data.starts_with(b"http://ns.adobe.com/xap/1.0/") })
+        .is_some()
+    );
+    assert_eq!(segments.len(), 5);
 }
