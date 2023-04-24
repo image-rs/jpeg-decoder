@@ -560,7 +560,8 @@ fn dequantize_and_idct_block_1x1(
 ) {
     debug_assert_eq!(coefficients.len(), 64);
 
-    let s0 = (Wrapping(coefficients[0] as i32 * quantization_table[0] as i32) + Wrapping(128 * 8)) / Wrapping(8);
+    let s0 = (Wrapping(coefficients[0] as i32 * quantization_table[0] as i32) + Wrapping(128 * 8))
+        / Wrapping(8);
     output[0] = stbi_clamp(s0);
 }
 

@@ -8,7 +8,7 @@ fuzz_target!(|data: &[u8]| {
     // The case should now be fixed.
     match jpeg_decoder::Decoder::new(data).decode() {
         Err(_) => return,
-        Ok(_) => {},
+        Ok(_) => {}
     }
 
     // And error/fail on previous.
