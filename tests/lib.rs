@@ -154,3 +154,17 @@ fn read_exif_data() {
     // exif data start as a TIFF header
     assert_eq!(&exif_data[0..8], b"\x49\x49\x2A\x00\x08\x00\x00\x00");
 }
+
+#[test]
+fn read_xmp_data() {
+    let path = Path::new("tests")
+        .join("reftest")
+        .join("images")
+        .join("ycck.jpg");
+
+    let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
+    decoder.decode().unwrap();
+
+    let xmp_data = decoder.xmp_data().unwrap();
+    assert_eq!(&xmp_data[0..9], b"<?xpacket");
+}

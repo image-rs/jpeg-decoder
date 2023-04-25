@@ -95,6 +95,8 @@ pub enum AppData {
     Avi1,
     Icc(IccChunk),
     Exif(Vec<u8>),
+    Xmp(Vec<u8>),
+    Psir(Vec<u8>),
 }
 
 // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
@@ -621,21 +623,20 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
                 }
             }
         }
-        // Exif Data
         APP(1) => {
-            if length >= 6 {
-                let mut buffer = [0u8; 6];
-                reader.read_exact(&mut buffer)?;
-                bytes_read = buffer.len();
+            let mut buffer = vec![0u8; length];
+            reader.read_exact(&mut buffer)?;
+            bytes_read = buffer.len();
 
-                // https://web.archive.org/web/20190624045241if_/http://www.cipa.jp:80/std/documents/e/DC-008-Translation-2019-E.pdf
-                // 4.5.4 Basic Structure of JPEG Compressed Data
-                if buffer == *b"Exif\x00\x00" {
-                    let mut data = vec![0; length - bytes_read];
-                    reader.read_exact(&mut data)?;
-                    bytes_read += data.len();
-                    result = Some(AppData::Exif(data));
-                }
+            // https://web.archive.org/web/20190624045241if_/http://www.cipa.jp:80/std/documents/e/DC-008-Translation-2019-E.pdf
+            // 4.5.4 Basic Structure of JPEG Compressed Data
+            if length >= 6 && buffer[0..6] == *b"Exif\x00\x00" {
+                result = Some(AppData::Exif(buffer[6..].to_vec()));
+            }
+            // XMP packet
+            // https://github.com/adobe/XMP-Toolkit-SDK/blob/main/docs/XMPSpecificationPart3.pdf
+            else if length >= 29 && buffer[0..29] == *b"http://ns.adobe.com/xap/1.0/\0" {
+                result = Some(AppData::Xmp(buffer[29..].to_vec()));
             }
         }
         APP(2) => {
@@ -655,6 +656,22 @@ pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppDa
                         num_markers: buffer[13],
                         data,
                     }));
+                }
+            }
+        }
+        APP(13) => {
+            if length >= 14 {
+                let mut buffer = [0u8; 14];
+                reader.read_exact(&mut buffer)?;
+                bytes_read = buffer.len();
+
+                // PSIR (Photoshop)
+                // https://github.com/adobe/XMP-Toolkit-SDK/blob/main/docs/XMPSpecificationPart3.pdf
+                if buffer[0..14] == *b"Photoshop 3.0\0" {
+                    let mut data = vec![0; length - bytes_read];
+                    reader.read_exact(&mut data)?;
+                    bytes_read += data.len();
+                    result = Some(AppData::Psir(data));
                 }
             }
         }
