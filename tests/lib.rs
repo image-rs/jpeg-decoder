@@ -159,7 +159,7 @@ fn read_app_segments() {
     let path = Path::new("tests")
         .join("reftest")
         .join("images")
-        .join("unknown_app1.jpg");
+        .join("ycck.jpg");
 
     let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
     decoder.decode().unwrap();
@@ -172,5 +172,5 @@ fn read_app_segments() {
         .find(|segment| { segment.kind == 1 && segment.data.starts_with(b"http://ns.adobe.com/xap/1.0/") })
         .is_some()
     );
-    assert_eq!(segments.len(), 5);
+    assert_eq!(segments.len(), 22);
 }

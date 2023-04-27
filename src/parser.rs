@@ -2,7 +2,7 @@ use alloc::borrow::ToOwned;
 use alloc::{format, vec};
 use alloc::vec::Vec;
 use core::ops::{self, Range};
-use std::io::{self, Read};
+use std::io::Read;
 use crate::{read_u16_from_be, read_u8};
 use crate::error::{Error, Result, UnsupportedFeature};
 use crate::huffman::{HuffmanTable, HuffmanTableClass};
@@ -147,17 +147,6 @@ fn read_length<R: Read>(reader: &mut R, marker: Marker) -> Result<usize> {
     }
 
     Ok(length - 2)
-}
-
-fn skip_bytes<R: Read>(reader: &mut R, length: usize) -> Result<()> {
-    let length = length as u64;
-    let to_skip = &mut reader.by_ref().take(length);
-    let copied = io::copy(to_skip, &mut io::sink())?;
-    if copied < length {
-        Err(Error::Io(io::ErrorKind::UnexpectedEof.into()))
-    } else {
-        Ok(())
-    }
 }
 
 // Section B.2.2
