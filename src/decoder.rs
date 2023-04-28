@@ -595,7 +595,7 @@ impl<R: Read> Decoder<R> {
         }
 
         let frame = self.frame.as_ref().unwrap();
-        let preference = Self::select_worker(&frame, PreferWorkerKind::Multithreaded);
+        let preference = Self::select_worker(frame, PreferWorkerKind::Multithreaded);
 
         worker_scope.get_or_init_worker(preference, |worker| {
             self.decode_planes(worker, planes, planes_u16)
