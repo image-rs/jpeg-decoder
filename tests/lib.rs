@@ -10,6 +10,7 @@ mod crashtest;
 mod reftest;
 
 #[test]
+#[cfg(all(target_family="wasm", target_os="unknown"))]
 #[wasm_bindgen_test::wasm_bindgen_test]
 fn included_file() {
     const FILE: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/reftest/images/mozilla/jpg-progressive.jpg"));

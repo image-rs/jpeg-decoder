@@ -2,6 +2,7 @@
 
 mod neon;
 mod ssse3;
+mod wasm;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use std::is_x86_feature_detected;
@@ -22,6 +23,10 @@ pub fn get_color_convert_line_ycbcr() -> Option<unsafe fn(&[u8], &[u8], &[u8], &
     {
         return Some(neon::color_convert_line_ycbcr);
     }
+    #[cfg(all(target_feature = "simd128", target_arch = "wasm32"))]
+    {
+        return Some(wasm::color_convert_line_ycbcr);
+    }
     #[allow(unreachable_code)]
     None
 }
@@ -40,6 +45,10 @@ pub fn get_dequantize_and_idct_block_8x8(
     #[cfg(all(feature = "nightly_aarch64_neon", target_arch = "aarch64"))]
     {
         return Some(neon::dequantize_and_idct_block_8x8);
+    }
+    #[cfg(all(target_feature = "simd128", target_arch = "wasm32"))]
+    {
+        return Some(wasm::dequantize_and_idct_block_8x8);
     }
     #[allow(unreachable_code)]
     None
