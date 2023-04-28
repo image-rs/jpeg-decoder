@@ -579,7 +579,7 @@ fn stbi_fsh(x: Wrapping<i32>) -> Wrapping<i32> {
 
 #[test]
 fn test_dequantize_and_idct_block_8x8() {
-    #[cfg_attr(rustfmt, rustfmt_skip)]
+    #[rustfmt::skip]
     let coefficients: [i16; 8 * 8] = [
         -14, -39, 58, -2, 3, 3, 0, 1,
         11, 27, 4, -3, 3, 0, 1, 0,
@@ -591,7 +591,7 @@ fn test_dequantize_and_idct_block_8x8() {
         0, 0, 0, 0, 0, 0, 0, 0
     ];
 
-    #[cfg_attr(rustfmt, rustfmt_skip)]
+    #[rustfmt::skip]
     let quantization_table: [u16; 8 * 8] = [
         8, 6, 5, 8, 12, 20, 26, 31,
         6, 6, 7, 10, 13, 29, 30, 28,
@@ -610,7 +610,7 @@ fn test_dequantize_and_idct_block_8x8() {
         output_linestride,
         &mut output,
     );
-    #[cfg_attr(rustfmt, rustfmt_skip)]
+    #[rustfmt::skip]
     let expected_output = [
         118, 92, 110, 83, 77, 93, 144, 198,
         172, 116, 114, 87, 78, 93, 146, 191,
@@ -642,7 +642,7 @@ fn test_dequantize_and_idct_block_8x8_saturated() {
     }
     let mut output = [0u8; 8 * 8];
     dequantize_and_idct_block_8x8(&[i16::MAX; 8 * 8], &[u16::MAX; 8 * 8], 8, &mut output);
-    #[cfg_attr(rustfmt, rustfmt_skip)]
+    #[rustfmt::skip]
     let expected = [
         0, 0, 0, 255, 255, 0, 0, 255,
         0, 0, 215, 0, 0, 255, 255, 0,

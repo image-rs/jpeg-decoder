@@ -24,7 +24,7 @@ pub const MAX_COMPONENTS: usize = 4;
 mod lossless;
 use self::lossless::compute_image_lossless;
 
-#[cfg_attr(rustfmt, rustfmt_skip)]
+#[rustfmt::skip]
 static UNZIGZAG: [u8; 64] = [
      0,  1,  8, 16,  9,  2,  3, 10,
     17, 24, 32, 25, 18, 11,  4,  5,
