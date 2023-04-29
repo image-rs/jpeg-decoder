@@ -98,6 +98,7 @@ pub enum AppData {
 }
 
 // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AdobeColorTransform {
     // RGB or CMYK
@@ -523,6 +524,7 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
 }
 
 // Section B.2.4.2
+#[allow(clippy::type_complexity)]
 pub fn parse_dht<R: Read>(reader: &mut R, is_baseline: Option<bool>) -> Result<(Vec<Option<HuffmanTable>>, Vec<Option<HuffmanTable>>)> {
     let mut length = read_length(reader, DHT)?;
     let mut dc_tables = vec![None, None, None, None];

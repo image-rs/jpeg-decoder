@@ -50,7 +50,7 @@ enum WorkerScopeInner {
         not(any(target_arch = "asmjs", target_arch = "wasm32")),
         feature = "rayon"
     ))]
-    Rayon(rayon::Scoped),
+    Rayon(Box<rayon::Scoped>),
     #[cfg(not(any(target_arch = "asmjs", target_arch = "wasm32")))]
     Multithreaded(multithreaded::MpscWorker),
     Immediate(immediate::ImmediateWorker),
@@ -86,7 +86,7 @@ impl WorkerScope {
                 not(any(target_arch = "asmjs", target_arch = "wasm32")),
                 feature = "rayon"
             ))]
-            WorkerScopeInner::Rayon(worker) => worker,
+            WorkerScopeInner::Rayon(worker) => worker.as_mut(),
             #[cfg(not(any(target_arch = "asmjs", target_arch = "wasm32")))]
             WorkerScopeInner::Multithreaded(worker) => worker,
             WorkerScopeInner::Immediate(worker) => worker,
