@@ -24,7 +24,7 @@ pub const MAX_COMPONENTS: usize = 4;
 mod lossless;
 use self::lossless::compute_image_lossless;
 
-#[cfg_attr(rustfmt, rustfmt_skip)]
+#[rustfmt::skip]
 static UNZIGZAG: [u8; 64] = [
      0,  1,  8, 16,  9,  2,  3, 10,
     17, 24, 32, 25, 18, 11,  4,  5,
@@ -595,7 +595,7 @@ impl<R: Read> Decoder<R> {
         }
 
         let frame = self.frame.as_ref().unwrap();
-        let preference = Self::select_worker(&frame, PreferWorkerKind::Multithreaded);
+        let preference = Self::select_worker(frame, PreferWorkerKind::Multithreaded);
 
         worker_scope.get_or_init_worker(preference, |worker| {
             self.decode_planes(worker, planes, planes_u16)
@@ -616,14 +616,13 @@ impl<R: Read> Decoder<R> {
 
         let frame = self.frame.as_ref().unwrap();
 
-        if {
-            let required_mem = frame
-                .components
-                .len()
-                .checked_mul(frame.output_size.width.into())
-                .and_then(|m| m.checked_mul(frame.output_size.height.into()));
-            required_mem.map_or(true, |m| self.decoding_buffer_size_limit < m)
-        } {
+        if frame
+            .components
+            .len()
+            .checked_mul(frame.output_size.width.into())
+            .and_then(|m| m.checked_mul(frame.output_size.height.into()))
+            .map_or(true, |m| self.decoding_buffer_size_limit < m)
+        {
             return Err(Error::Format(
                 "size of decoded image exceeds maximum allowed size".to_owned(),
             ));
@@ -779,6 +778,7 @@ impl<R: Read> Decoder<R> {
         }
     }
 
+#[allow(clippy::type_complexity)]
     fn decode_scan(
         &mut self,
         frame: &FrameInfo,
@@ -1009,10 +1009,11 @@ impl<R: Read> Decoder<R> {
                     // In the event of non-interleaved streams, if we're still building the buffer out,
                     // keep going; don't send it yet. We also need to ensure we don't skip over the last
                     // row(s) of the image.
-                    if !is_interleaved && (mcu_y + 1) * 8 < frame.image_size.height {
-                        if (mcu_y + 1) % component.vertical_sampling_factor as u16 > 0 {
-                            continue;
-                        }
+                    if !is_interleaved
+                        && (mcu_y + 1) * 8 < frame.image_size.height
+                        && (mcu_y + 1) % component.vertical_sampling_factor as u16 > 0
+                    {
+                        continue;
                     }
 
                     let coefficients_per_mcu_row = component.block_size.width as usize
@@ -1069,6 +1070,7 @@ impl<R: Read> Decoder<R> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn decode_block<R: Read>(
     reader: &mut R,
     coefficients: &mut [i16; 64],
@@ -1321,6 +1323,7 @@ fn compute_image(
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub(crate) fn choose_color_convert_func(
     component_count: usize,
     color_transform: ColorTransform,

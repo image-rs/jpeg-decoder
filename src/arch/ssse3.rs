@@ -148,8 +148,8 @@ pub unsafe fn dequantize_and_idct_block_8x8(
 
     // Read the DCT coefficients, scale them up and dequantize them.
     let mut data = [_mm_setzero_si128(); 8];
-    for i in 0..8 {
-        data[i] = _mm_slli_epi16(
+    for (i, item) in data.iter_mut().enumerate() {
+        *item = _mm_slli_epi16(
             _mm_mullo_epi16(
                 _mm_loadu_si128(coefficients.as_ptr().wrapping_add(i * 8) as *const _),
                 _mm_loadu_si128(quantization_table.as_ptr().wrapping_add(i * 8) as *const _),
@@ -164,7 +164,7 @@ pub unsafe fn dequantize_and_idct_block_8x8(
     idct8(&mut data);
     transpose8(&mut data);
 
-    for i in 0..8 {
+    for (i, item) in data.iter_mut().enumerate() {
         let mut buf = [0u8; 16];
         // The two passes of the IDCT algorithm give us a factor of 8, so the shift here is
         // increased by 3.
@@ -174,7 +174,7 @@ pub unsafe fn dequantize_and_idct_block_8x8(
         // We want rounding right shift, so we should add (1/2) << (SHIFT+3) before shifting.
         const ROUNDING_BIAS: i16 = (1 << (SHIFT + 3)) >> 1;
 
-        let data_with_offset = _mm_adds_epi16(data[i], _mm_set1_epi16(OFFSET + ROUNDING_BIAS));
+        let data_with_offset = _mm_adds_epi16(*item, _mm_set1_epi16(OFFSET + ROUNDING_BIAS));
 
         _mm_storeu_si128(
             buf.as_mut_ptr() as *mut _,

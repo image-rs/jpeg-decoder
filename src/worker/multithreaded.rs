@@ -32,7 +32,7 @@ impl MpscWorker {
     ) -> Result<()> {
         // if there is no worker thread for this component yet, start one
         let component = row_data.index;
-        if let None = self.senders[component] {
+        if self.senders[component].is_none() {
             let sender = spawn_worker(component)?;
             self.senders[component] = Some(sender);
         }

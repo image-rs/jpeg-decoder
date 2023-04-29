@@ -1,10 +1,10 @@
-use std::io::Read;
 use crate::decoder::{Decoder, MAX_COMPONENTS};
 use crate::error::{Error, Result};
 use crate::huffman::HuffmanDecoder;
 use crate::marker::Marker;
 use crate::parser::Predictor;
 use crate::parser::{Component, FrameInfo, ScanInfo};
+use std::io::Read;
 
 impl<R: Read> Decoder<R> {
     /// decode_scan_lossless
@@ -185,6 +185,7 @@ impl<R: Read> Decoder<R> {
 }
 
 /// H.1.2.1
+#[allow(clippy::too_many_arguments)]
 fn predict(
     ra: i32,
     rb: i32,

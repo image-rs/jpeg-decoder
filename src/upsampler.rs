@@ -84,29 +84,27 @@ fn choose_upsampler(sampling_factors: (u8, u8),
 
     if h1 && v1 {
         Ok(Box::new(UpsamplerH1V1))
-    }
-    else if h2 && v1 {
+    } else if h2 && v1 {
         Ok(Box::new(UpsamplerH2V1))
-    }
-    else if h1 && v2 {
+    } else if h1 && v2 {
         Ok(Box::new(UpsamplerH1V2))
-    }
-    else if h2 && v2 {
+    } else if h2 && v2 {
         Ok(Box::new(UpsamplerH2V2))
-    }
-    else {
-        if max_sampling_factors.0 % sampling_factors.0 != 0 || max_sampling_factors.1 % sampling_factors.1 != 0 {
-            Err(Error::Unsupported(UnsupportedFeature::NonIntegerSubsamplingRatio))
-        }
-        else {
-            Ok(Box::new(UpsamplerGeneric {
-                horizontal_scaling_factor: max_sampling_factors.0 / sampling_factors.0,
-                vertical_scaling_factor: max_sampling_factors.1 / sampling_factors.1
-            }))
-        }
+    } else if max_sampling_factors.0 % sampling_factors.0 != 0
+        || max_sampling_factors.1 % sampling_factors.1 != 0
+    {
+        Err(Error::Unsupported(
+            UnsupportedFeature::NonIntegerSubsamplingRatio,
+        ))
+    } else {
+        Ok(Box::new(UpsamplerGeneric {
+            horizontal_scaling_factor: max_sampling_factors.0 / sampling_factors.0,
+            vertical_scaling_factor: max_sampling_factors.1 / sampling_factors.1,
+        }))
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 trait Upsample {
     fn upsample_row(&self,
                     input: &[u8],
