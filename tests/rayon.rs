@@ -1,9 +1,13 @@
-use std::{fs::File, path::Path};
 use jpeg_decoder::Decoder;
+use std::{fs::File, path::Path};
 
 #[test]
 fn decoding_in_limited_threadpool_does_not_deadlock() {
-    let path = Path::new("tests").join("reftest").join("images").join("mozilla").join("jpg-progressive.jpg");
+    let path = Path::new("tests")
+        .join("reftest")
+        .join("images")
+        .join("mozilla")
+        .join("jpg-progressive.jpg");
 
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(1)

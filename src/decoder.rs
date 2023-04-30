@@ -778,7 +778,7 @@ impl<R: Read> Decoder<R> {
         }
     }
 
-#[allow(clippy::type_complexity)]
+    #[allow(clippy::type_complexity)]
     fn decode_scan(
         &mut self,
         frame: &FrameInfo,
