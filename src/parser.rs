@@ -2,7 +2,7 @@ use alloc::borrow::ToOwned;
 use alloc::{format, vec};
 use alloc::vec::Vec;
 use core::ops::{self, Range};
-use std::io::{self, Read};
+use std::io::Read;
 use crate::{read_u16_from_be, read_u8};
 use crate::error::{Error, Result, UnsupportedFeature};
 use crate::huffman::{HuffmanTable, HuffmanTableClass};
@@ -89,6 +89,12 @@ pub struct Component {
 }
 
 #[derive(Debug)]
+pub struct AppSegment {
+    pub kind: u8,
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug)]
 pub enum AppData {
     Adobe(AdobeColorTransform),
     Jfif,
@@ -142,17 +148,6 @@ fn read_length<R: Read>(reader: &mut R, marker: Marker) -> Result<usize> {
     }
 
     Ok(length - 2)
-}
-
-fn skip_bytes<R: Read>(reader: &mut R, length: usize) -> Result<()> {
-    let length = length as u64;
-    let to_skip = &mut reader.by_ref().take(length);
-    let copied = io::copy(to_skip, &mut io::sink())?;
-    if copied < length {
-        Err(Error::Io(io::ErrorKind::UnexpectedEof.into()))
-    } else {
-        Ok(())
-    }
 }
 
 // Section B.2.2
@@ -602,86 +597,66 @@ pub fn parse_com<R: Read>(reader: &mut R) -> Result<Vec<u8>> {
 }
 
 // Section B.2.4.6
-pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<Option<AppData>> {
+pub fn parse_app<R: Read>(reader: &mut R, marker: Marker) -> Result<(AppSegment, Option<AppData>)> {
     let length = read_length(reader, marker)?;
-    let mut bytes_read = 0;
+    let mut data = vec![0u8; length];
+
+    reader.read_exact(&mut data)?;
+
     let mut result = None;
 
     match marker {
         APP(0) => {
-            if length >= 5 {
-                let mut buffer = [0u8; 5];
-                reader.read_exact(&mut buffer)?;
-                bytes_read = buffer.len();
-
-                // http://www.w3.org/Graphics/JPEG/jfif3.pdf
-                if buffer[0..5] == *b"JFIF\0" {
-                    result = Some(AppData::Jfif);
-                // https://sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#AVI1
-                } else if buffer[0..5] == *b"AVI1\0" {
-                    result = Some(AppData::Avi1);
-                }
+            // http://www.w3.org/Graphics/JPEG/jfif3.pdf
+            if length >= 5 && data[0..5] == *b"JFIF\0" {
+                result = Some(AppData::Jfif);
+            // https://sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#AVI1
+            } else if length >= 5 && data[0..5] == *b"AVI1\0" {
+                result = Some(AppData::Avi1);
             }
         }
         // Exif Data
         APP(1) => {
-            if length >= 6 {
-                let mut buffer = [0u8; 6];
-                reader.read_exact(&mut buffer)?;
-                bytes_read = buffer.len();
-
-                // https://web.archive.org/web/20190624045241if_/http://www.cipa.jp:80/std/documents/e/DC-008-Translation-2019-E.pdf
-                // 4.5.4 Basic Structure of JPEG Compressed Data
-                if buffer == *b"Exif\x00\x00" {
-                    let mut data = vec![0; length - bytes_read];
-                    reader.read_exact(&mut data)?;
-                    bytes_read += data.len();
-                    result = Some(AppData::Exif(data));
-                }
+            // https://web.archive.org/web/20190624045241if_/http://www.cipa.jp:80/std/documents/e/DC-008-Translation-2019-E.pdf
+            // 4.5.4 Basic Structure of JPEG Compressed Data
+            if length >= 6 && &data[0..6] == *b"Exif\x00\x00" {
+                result = Some(AppData::Exif(data[6..].to_vec()));
             }
         }
         APP(2) => {
-            if length > 14 {
-                let mut buffer = [0u8; 14];
-                reader.read_exact(&mut buffer)?;
-                bytes_read = buffer.len();
-
-                // http://www.color.org/ICC_Minor_Revision_for_Web.pdf
-                // B.4 Embedding ICC profiles in JFIF files
-                if buffer[0..12] == *b"ICC_PROFILE\0" {
-                    let mut data = vec![0; length - bytes_read];
-                    reader.read_exact(&mut data)?;
-                    bytes_read += data.len();
-                    result = Some(AppData::Icc(IccChunk {
-                        seq_no: buffer[12],
-                        num_markers: buffer[13],
-                        data,
-                    }));
-                }
+            // http://www.color.org/ICC_Minor_Revision_for_Web.pdf
+            // B.4 Embedding ICC profiles in JFIF files
+            if length >= 12 && &data[0..12] == *b"ICC_PROFILE\0" {
+                result = Some(AppData::Icc(IccChunk {
+                    seq_no: data[12],
+                    num_markers: data[13],
+                    data: data[14..].to_vec(),
+                }));
             }
         }
         APP(14) => {
-            if length >= 12 {
-                let mut buffer = [0u8; 12];
-                reader.read_exact(&mut buffer)?;
-                bytes_read = buffer.len();
-
+            if length >= 12 && &data[0..6] == *b"Adobe\0" {
                 // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-                if buffer[0 .. 6] == *b"Adobe\0" {
-                    let color_transform = match buffer[11] {
-                        0 => AdobeColorTransform::Unknown,
-                        1 => AdobeColorTransform::YCbCr,
-                        2 => AdobeColorTransform::YCCK,
-                        _ => return Err(Error::Format("invalid color transform in adobe app segment".to_owned())),
-                    };
+                let color_transform = match &data[11] {
+                    0 => AdobeColorTransform::Unknown,
+                    1 => AdobeColorTransform::YCbCr,
+                    2 => AdobeColorTransform::YCCK,
+                    _ => return Err(Error::Format("invalid color transform in adobe app segment".to_owned())),
+                };
 
-                    result = Some(AppData::Adobe(color_transform));
-                }
+                result = Some(AppData::Adobe(color_transform));
             }
         },
         _ => {},
     }
 
-    skip_bytes(reader, length - bytes_read)?;
-    Ok(result)
+    let app_segment = AppSegment {
+        kind: match marker {
+            APP(kind) => kind,
+            _ => return Err(Error::Format("non APP marker".to_owned()))
+        },
+        data
+    };
+
+    Ok((app_segment, result))
 }

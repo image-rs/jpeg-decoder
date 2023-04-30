@@ -154,3 +154,24 @@ fn read_exif_data() {
     // exif data start as a TIFF header
     assert_eq!(&exif_data[0..8], b"\x49\x49\x2A\x00\x08\x00\x00\x00");
 }
+
+#[test]
+fn read_app_segments() {
+    let path = Path::new("tests")
+        .join("reftest")
+        .join("images")
+        .join("ycck.jpg");
+
+    let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
+    decoder.decode().unwrap();
+
+    let segments = decoder.app_segments();
+
+    // search for xmp data
+    assert!(segments
+        .into_iter()
+        .find(|segment| { segment.kind == 1 && segment.data.starts_with(b"http://ns.adobe.com/xap/1.0/") })
+        .is_some()
+    );
+    assert_eq!(segments.len(), 22);
+}
