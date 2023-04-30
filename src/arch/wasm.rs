@@ -175,13 +175,9 @@ pub fn dequantize_and_idct_block_8x8(
 
         // SAFETY: the assert at the start of this function ensures
         // `output_linestride * i + 7` < output.len(), so all accesses are in-bounds.
-        #[rustfmt::skip]
         unsafe {
             v128_store64_lane::<0>(
-                u8x16_narrow_i16x8(
-                    i16x8_shr(data_with_offset, SHIFT + 3),
-                    i16x8_splat(0),
-                ),
+                u8x16_narrow_i16x8(i16x8_shr(data_with_offset, SHIFT + 3), i16x8_splat(0)),
                 output.as_mut_ptr().wrapping_add(output_linestride * i) as *mut _,
             );
         }
