@@ -118,6 +118,8 @@ pub struct Decoder<R> {
     icc_markers: Vec<IccChunk>,
 
     exif_data: Option<Vec<u8>>,
+    xmp_data: Option<Vec<u8>>,
+    psir_data: Option<Vec<u8>>,
 
     // Used for progressive JPEGs.
     coefficients: Vec<Vec<i16>>,
@@ -144,6 +146,8 @@ impl<R: Read> Decoder<R> {
             is_mjpeg: false,
             icc_markers: Vec::new(),
             exif_data: None,
+            xmp_data: None,
+            psir_data: None,
             coefficients: Vec::new(),
             coefficients_finished: [0; MAX_COMPONENTS],
             decoding_buffer_size_limit: usize::MAX,
@@ -195,6 +199,13 @@ impl<R: Read> Decoder<R> {
     /// The returned value will be `None` until a call to `decode` has returned `Ok`.    
     pub fn exif_data(&self) -> Option<&[u8]> {
         self.exif_data.as_deref()
+    }
+
+    /// Returns the raw XMP packet if there is any.
+    ///
+    /// The returned value will be `None` until a call to `decode` has returned `Ok`.
+    pub fn xmp_data(&self) -> Option<&[u8]> {
+        self.xmp_data.as_deref()
     }
 
     /// Returns the embeded icc profile if the image contains one.
@@ -542,6 +553,8 @@ impl<R: Read> Decoder<R> {
                             AppData::Avi1 => self.is_mjpeg = true,
                             AppData::Icc(icc) => self.icc_markers.push(icc),
                             AppData::Exif(data) => self.exif_data = Some(data),
+                            AppData::Xmp(data) => self.xmp_data = Some(data),
+                            AppData::Psir(data) => self.psir_data = Some(data),
                         }
                     }
                 }

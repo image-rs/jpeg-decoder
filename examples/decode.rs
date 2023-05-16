@@ -23,6 +23,7 @@ fn main() {
 
     eprintln!("{:?}", info);
     eprintln!("Exif: {}", decoder.exif_data().is_some());
+    eprintln!("XMP: {}", decoder.xmp_data().is_some());
     eprintln!("ICC: {}", decoder.icc_profile().is_some());
 
     let output_file = File::create(output_path).unwrap();
