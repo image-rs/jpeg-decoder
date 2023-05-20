@@ -83,6 +83,7 @@ fn idct8(data: &mut [v128; 8]) {
 
 #[cfg(target_arch = "wasm32")]
 #[target_feature(enable = "simd128")]
+#[rustfmt::skip]
 fn transpose8(data: &mut [v128; 8]) {
     // Transpose a 8x8 matrix with a sequence of interleaving operations.
     // Naming: dABl contains elements from the *l*ower halves of vectors A and B, interleaved, i.e.
@@ -176,10 +177,7 @@ pub fn dequantize_and_idct_block_8x8(
         // `output_linestride * i + 7` < output.len(), so all accesses are in-bounds.
         unsafe {
             v128_store64_lane::<0>(
-                u8x16_narrow_i16x8(
-                    i16x8_shr(data_with_offset, SHIFT + 3),
-                    i16x8_splat(0),
-                ),
+                u8x16_narrow_i16x8(i16x8_shr(data_with_offset, SHIFT + 3), i16x8_splat(0)),
                 output.as_mut_ptr().wrapping_add(output_linestride * i) as *mut _,
             );
         }
@@ -188,8 +186,12 @@ pub fn dequantize_and_idct_block_8x8(
 
 #[cfg(target_arch = "wasm32")]
 #[target_feature(enable = "simd128")]
-pub fn color_convert_line_ycbcr(y_slice: &[u8], cb_slice: &[u8], cr_slice: &[u8], output: &mut [u8]) -> usize {
-
+pub fn color_convert_line_ycbcr(
+    y_slice: &[u8],
+    cb_slice: &[u8],
+    cr_slice: &[u8],
+    output: &mut [u8],
+) -> usize {
     assert!(output.len() % 3 == 0);
     let num = output.len() / 3;
     assert!(num <= y_slice.len());
@@ -241,7 +243,7 @@ pub fn color_convert_line_ycbcr(y_slice: &[u8], cb_slice: &[u8], cr_slice: &[u8]
         let b = u8x16_narrow_i16x8(i16x8_shr(b, SHIFT), zero);
 
         // Shuffle rrrrrrrrggggggggbbbbbbbb to rgbrgbrgb...
-
+        #[rustfmt::skip]
         let rg_lanes = i8x16_shuffle::<0, 16,
                                        1, 17,
                                        2, 18,
@@ -251,6 +253,7 @@ pub fn color_convert_line_ycbcr(y_slice: &[u8], cb_slice: &[u8], cr_slice: &[u8]
                                        6, 22,
                                        7, 23>(r, g);
 
+        #[rustfmt::skip]
         let rgb_low = i8x16_shuffle::<0, 1, 16,         // r0, g0, b0
                                       2, 3, 17,         // r1, g1, b1
                                       4, 5, 18,         // r2, g2, b2
@@ -258,6 +261,7 @@ pub fn color_convert_line_ycbcr(y_slice: &[u8], cb_slice: &[u8], cr_slice: &[u8]
                                       8, 9, 20,         // r4, g4, b4
                                       10>(rg_lanes, b); // r5
 
+        #[rustfmt::skip]
         let rgb_hi = i8x16_shuffle::<11, 21, 12,       // g5, b5, r6
                                      13, 22, 14,       // g6, b6, r7
                                      15, 23,  0,       // g7, b7, --
@@ -269,7 +273,10 @@ pub fn color_convert_line_ycbcr(y_slice: &[u8], cb_slice: &[u8], cr_slice: &[u8]
         // `output.len() - 1`.
         unsafe {
             v128_store(output.as_mut_ptr().wrapping_add(24 * i) as *mut _, rgb_low);
-            v128_store64_lane::<0>(rgb_hi, output.as_mut_ptr().wrapping_add(24 * i + 16) as *mut _);
+            v128_store64_lane::<0>(
+                rgb_hi,
+                output.as_mut_ptr().wrapping_add(24 * i + 16) as *mut _,
+            );
         }
     }
 
