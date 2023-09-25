@@ -35,7 +35,7 @@ fn main() {
     }));
     
     c.bench_function("decode a 3072x2048 RGB Lossless JPEG", |b| b.iter(|| {
-        read_image(include_bytes!("../tests/reftest/images/lossless/jpeg_lossless_sel1-rgb.jpg"))
+        read_image(include_bytes!("../tests/reftest/images/lossless/1/jpeg_lossless_sel1-rgb.jpg"))
     }));
     c.final_summary();
 }
