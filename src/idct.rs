@@ -9,7 +9,7 @@
 #![allow(clippy::erasing_op)]
 #![allow(clippy::identity_op)]
 use crate::parser::Dimensions;
-use core::{convert::TryFrom, num::Wrapping};
+use core::num::Wrapping;
 
 pub(crate) fn choose_idct_size(full_size: Dimensions, requested_size: Dimensions) -> usize {
     fn scaled(len: u16, scale: usize) -> u16 {
@@ -234,7 +234,7 @@ pub(crate) fn dequantize_and_idct_block(
             output_linestride,
             output,
         ),
-        _ => panic!("Unsupported IDCT scale {}/8", scale),
+        _ => panic!("Unsupported IDCT scale {scale}/8"),
     }
 }
 

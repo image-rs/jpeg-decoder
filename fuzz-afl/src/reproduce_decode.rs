@@ -12,6 +12,6 @@ fn main() {
     let data = utils::read_file_from_args();
     match decode(&data) {
         Ok(bytes) => println!("Decoded {} bytes", bytes.len()),
-        Err(e) => println!("Decoder returned an error: {:?}\nNote: Not a panic, this is fine.", e),
+        Err(e) => println!("Decoder returned an error: {e:?}\nNote: Not a panic, this is fine."),
     };
 }
