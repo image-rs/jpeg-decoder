@@ -1,5 +1,5 @@
 #[cfg(target_arch = "wasm32")]
-use std::arch::wasm32::*;
+use core::arch::wasm32::*;
 
 #[cfg(target_arch = "wasm32")]
 #[target_feature(enable = "simd128")]

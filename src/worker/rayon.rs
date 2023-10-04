@@ -10,7 +10,9 @@ use crate::parser::Component;
 use crate::upsampler::Upsampler;
 use crate::{decoder::MAX_COMPONENTS, parser::Dimensions};
 
-use std::sync::Arc;
+use alloc::sync::Arc;
+use alloc::vec;
+use alloc::vec::Vec;
 
 use super::{RowData, Worker};
 

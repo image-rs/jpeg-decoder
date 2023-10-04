@@ -1,6 +1,6 @@
 use jpeg;
 use png;
-use std::cmp;
+use core::cmp;
 use std::fs::File;
 use std::path::Path;
 

@@ -4,14 +4,14 @@
 //! and allow scaling to more cores.
 //! However, that would be more complex, so we use this as a starting point.
 
+use alloc::format;
+use alloc::vec::Vec;
+use core::mem;
 use super::immediate::ImmediateWorker;
 use super::{RowData, Worker};
 use crate::decoder::MAX_COMPONENTS;
 use crate::error::Result;
-use std::{
-    mem,
-    sync::mpsc::{self, Receiver, Sender},
-};
+use std::sync::mpsc::{self, Receiver, Sender};
 
 enum WorkerMsg {
     Start(RowData),

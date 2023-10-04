@@ -16,7 +16,7 @@ use alloc::{format, vec};
 use core::cmp;
 use core::mem;
 use core::ops::Range;
-use std::convert::TryInto;
+use core::convert::TryInto;
 use std::io::Read;
 
 pub const MAX_COMPONENTS: usize = 4;

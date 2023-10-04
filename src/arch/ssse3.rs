@@ -1,7 +1,8 @@
+use core::ptr;
 #[cfg(target_arch = "x86")]
-use std::arch::x86::*;
+use core::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
-use std::arch::x86_64::*;
+use core::arch::x86_64::*;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "ssse3")]
@@ -139,11 +140,6 @@ pub unsafe fn dequantize_and_idct_block_8x8(
                 .unwrap()
     );
 
-    #[cfg(target_arch = "x86")]
-    use std::arch::x86::*;
-    #[cfg(target_arch = "x86_64")]
-    use std::arch::x86_64::*;
-
     const SHIFT: i32 = 3;
 
     // Read the DCT coefficients, scale them up and dequantize them.
@@ -183,7 +179,7 @@ pub unsafe fn dequantize_and_idct_block_8x8(
                 _mm_setzero_si128(),
             ),
         );
-        std::ptr::copy_nonoverlapping::<u8>(
+        ptr::copy_nonoverlapping::<u8>(
             buf.as_ptr(),
             output.as_mut_ptr().wrapping_add(output_linestride * i) as *mut _,
             8,
@@ -277,7 +273,7 @@ pub unsafe fn color_convert_line_ycbcr(y: &[u8], cb: &[u8], cr: &[u8], output: &
         let mut data = [0u8; 32];
         _mm_storeu_si128(data.as_mut_ptr() as *mut _, rgb_low);
         _mm_storeu_si128(data.as_mut_ptr().wrapping_add(16) as *mut _, rgb_hi);
-        std::ptr::copy_nonoverlapping::<u8>(
+        ptr::copy_nonoverlapping::<u8>(
             data.as_ptr(),
             output.as_mut_ptr().wrapping_add(24 * i),
             24,

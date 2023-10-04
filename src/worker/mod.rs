@@ -11,7 +11,9 @@ use crate::error::Result;
 use crate::parser::{Component, Dimensions};
 use crate::upsampler::Upsampler;
 
+use alloc::boxed::Box;
 use alloc::sync::Arc;
+use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 

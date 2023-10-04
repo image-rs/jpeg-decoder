@@ -1,3 +1,5 @@
+use alloc::{format, vec};
+use alloc::vec::Vec;
 use crate::decoder::{Decoder, MAX_COMPONENTS};
 use crate::error::{Error, Result};
 use crate::huffman::HuffmanDecoder;
