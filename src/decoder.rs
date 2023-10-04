@@ -418,7 +418,7 @@ impl<R: Read> Decoder<R> {
                         for (i, plane) in data
                             .into_iter()
                             .enumerate()
-                            .filter(|&(_, ref plane)| !plane.is_empty())
+                            .filter(|(_, plane)| !plane.is_empty())
                         {
                             planes_u16[i] = plane;
                         }
@@ -467,7 +467,7 @@ impl<R: Read> Decoder<R> {
                             for (i, plane) in data
                                 .into_iter()
                                 .enumerate()
-                                .filter(|&(_, ref plane)| !plane.is_empty())
+                                .filter(|(_, plane)| !plane.is_empty())
                             {
                                 if self.coefficients_finished[i] == !0 {
                                     planes[i] = plane;
@@ -506,14 +506,14 @@ impl<R: Read> Decoder<R> {
                     let current_dc_tables = mem::take(&mut self.dc_huffman_tables);
                     self.dc_huffman_tables = dc_tables
                         .into_iter()
-                        .zip(current_dc_tables.into_iter())
+                        .zip(current_dc_tables)
                         .map(|(a, b)| a.or(b))
                         .collect();
 
                     let current_ac_tables = mem::take(&mut self.ac_huffman_tables);
                     self.ac_huffman_tables = ac_tables
                         .into_iter()
-                        .zip(current_ac_tables.into_iter())
+                        .zip(current_ac_tables)
                         .map(|(a, b)| a.or(b))
                         .collect();
                 }
