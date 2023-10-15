@@ -1,7 +1,6 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use core::mem;
-use core::convert::TryInto;
 use crate::decoder::MAX_COMPONENTS;
 use crate::error::Result;
 use crate::idct::dequantize_and_idct_block;

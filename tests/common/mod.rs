@@ -28,7 +28,7 @@ pub fn test_files(test_dir: &Path) -> Vec<PathBuf> {
             let path = test_dir.join(Path::new(&line));
 
             if !test_files.contains(&path) {
-                panic!("The file {:?} specified in {:?} could not be found among the files being tested", line, test_dir.join("disabled.txt"));
+                panic!("The file {line:?} specified in {:?} could not be found among the files being tested", test_dir.join("disabled.txt"));
             }
 
             let position = test_files.iter().position(|p| p == &path).unwrap();

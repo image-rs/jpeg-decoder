@@ -116,7 +116,7 @@ fn reftest_decoder<T: std::io::Read>(mut decoder: jpeg::Decoder<T>, path: &Path,
         encoder.set_color(ref_pixel_format);
         encoder.write_header().expect("png failed to write header").write_image_data(&pixels).expect("png failed to write data");
 
-        panic!("decoding difference: {:?}, maximum difference was {}", output_path, max_diff);
+        panic!("decoding difference: {output_path:?}, maximum difference was {max_diff}");
     }
 }
 
