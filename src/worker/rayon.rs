@@ -95,7 +95,7 @@ impl ImmediateWorker {
             dequantize_and_idct_block(
                 dct_scale,
                 coefficients,
-                &*quantization_table,
+                &quantization_table,
                 8,
                 &mut output_buffer,
             );
