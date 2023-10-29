@@ -173,8 +173,8 @@ impl<R: Read> Decoder<R> {
             Some(ref frame) => {
                 let pixel_format = match frame.components.len() {
                     1 => match frame.precision {
-                        8 => PixelFormat::L8,
-                        16 => PixelFormat::L16,
+                        2..=8 => PixelFormat::L8,
+                        9..=16 => PixelFormat::L16,
                         _ => panic!(),
                     },
                     3 => PixelFormat::RGB24,
@@ -360,7 +360,7 @@ impl<R: Read> Decoder<R> {
                             frame.precision,
                         )));
                     }
-                    if frame.precision != 8 && frame.precision != 16 {
+                    if !(2..=16).contains(&frame.precision) {
                         return Err(Error::Unsupported(UnsupportedFeature::SamplePrecision(
                             frame.precision,
                         )));
