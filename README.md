@@ -1,3 +1,6 @@
+**WARNING: This crate is in maintenance mode as _image-rs_ seeks so move over to the zune-jpeg crate. However, since other Rust JPEG crates do not support lossless mode, we will continue to welcome PRs related to that functionality.**
+
+---
 # jpeg-decoder
 
 [![Rust CI](https://github.com/image-rs/jpeg-decoder/workflows/Rust%20CI/badge.svg)](https://github.com/image-rs/jpeg-decoder/actions)
