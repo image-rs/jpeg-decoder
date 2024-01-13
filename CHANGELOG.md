@@ -2,7 +2,7 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## v0.3.1 (2024-01-12)
+## v0.3.1 (2024-01-13)
 
 - Added a WASM SIMD implementation.
 - Allow reading the XMP packet.
