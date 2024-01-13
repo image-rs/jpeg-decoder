@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.3.1 (2024-01-13)
+
+- Added a WASM SIMD implementation.
+- Allow reading the XMP packet.
+- Admit more precision values in JPEG Lossless.
+
 ## v0.3.0 (2022-10-17)
 
 - The MSRV policy is now managed by the `rust-version` field in `Cargo.toml`.
