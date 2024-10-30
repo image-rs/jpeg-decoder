@@ -1,5 +1,6 @@
 //! Must be a separate test because it modifies the _global_ rayon pool.
 use std::{fs::File, path::Path};
+
 use jpeg_decoder::Decoder;
 
 #[test]
@@ -17,6 +18,6 @@ fn decoding_in_global_pool() {
                 let mut decoder = Decoder::new(File::open(&path).unwrap());
                 let _ = decoder.decode().unwrap();
             });
-        }).collect();
+        })
+        .collect();
 }
-

@@ -3,10 +3,11 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::iter;
 use std::io::Read;
-use crate::read_u8;
+
 use crate::error::{Error, Result};
 use crate::marker::Marker;
 use crate::parser::ScanInfo;
+use crate::read_u8;
 
 const LUT_BITS: u8 = 8;
 
@@ -38,11 +39,10 @@ impl HuffmanDecoder {
         if size > 0 {
             self.consume_bits(size);
             Ok(value)
-        }
-        else {
+        } else {
             let bits = self.peek_bits(16);
 
-            for i in LUT_BITS .. 16 {
+            for i in LUT_BITS..16 {
                 let code = (bits >> (15 - i)) as i32;
 
                 if code <= table.maxcode[i as usize] {
@@ -57,7 +57,11 @@ impl HuffmanDecoder {
         }
     }
 
-    pub fn decode_fast_ac<R: Read>(&mut self, reader: &mut R, table: &HuffmanTable) -> Result<Option<(i16, u8)>> {
+    pub fn decode_fast_ac<R: Read>(
+        &mut self,
+        reader: &mut R,
+        table: &HuffmanTable,
+    ) -> Result<Option<(i16, u8)>> {
         if let Some(ref ac_lut) = table.ac_lut {
             if self.num_bits < LUT_BITS {
                 self.read_bits(reader)?;
@@ -144,8 +148,12 @@ impl HuffmanDecoder {
                     }
 
                     match next_byte {
-                        0x00 => return Err(Error::Format("FF 00 found where marker was expected".to_owned())),
-                        _    => self.marker = Some(Marker::from_u8(next_byte).unwrap()),
+                        0x00 => {
+                            return Err(Error::Format(
+                                "FF 00 found where marker was expected".to_owned(),
+                            ))
+                        }
+                        _ => self.marker = Some(Marker::from_u8(next_byte).unwrap()),
                     }
 
                     continue;
@@ -198,7 +206,7 @@ impl HuffmanTable {
         let mut maxcode = [-1i32; 16];
         let mut j = 0;
 
-        for i in 0 .. 16 {
+        for i in 0..16 {
             if bits[i] != 0 {
                 delta[i] = j as i32 - huffcode[j] as i32;
                 j += bits[i] as usize;
@@ -209,7 +217,11 @@ impl HuffmanTable {
         // Build a lookup table for faster decoding.
         let mut lut = [(0u8, 0u8); 1 << LUT_BITS];
 
-        for (i, &size) in huffsize.iter().enumerate().filter(|&(_, &size)| size <= LUT_BITS) {
+        for (i, &size) in huffsize
+            .iter()
+            .enumerate()
+            .filter(|&(_, &size)| size <= LUT_BITS)
+        {
             let bits_remaining = LUT_BITS - size;
             let start = (huffcode[i] << bits_remaining) as usize;
 
@@ -231,7 +243,9 @@ impl HuffmanTable {
                     let magnitude_category = value & 0x0f;
 
                     if magnitude_category > 0 && size + magnitude_category <= LUT_BITS {
-                        let unextended_ac_value = (((i << size) & ((1 << LUT_BITS) - 1)) >> (LUT_BITS - magnitude_category)) as u16;
+                        let unextended_ac_value = (((i << size) & ((1 << LUT_BITS) - 1))
+                            >> (LUT_BITS - magnitude_category))
+                            as u16;
                         let ac_value = extend(unextended_ac_value, magnitude_category);
 
                         table[i] = (ac_value, (run_length << 4) | (size + magnitude_category));
@@ -239,7 +253,7 @@ impl HuffmanTable {
                 }
 
                 Some(table)
-            },
+            }
         };
 
         Ok(HuffmanTable {
@@ -255,12 +269,13 @@ impl HuffmanTable {
 // Section C.2
 fn derive_huffman_codes(bits: &[u8; 16]) -> Result<(Vec<u16>, Vec<u8>)> {
     // Figure C.1
-    let huffsize = bits.iter()
-                       .enumerate()
-                       .fold(Vec::new(), |mut acc, (i, &value)| {
-                           acc.extend(iter::repeat((i + 1) as u8).take(value as usize));
-                           acc
-                       });
+    let huffsize = bits
+        .iter()
+        .enumerate()
+        .fold(Vec::new(), |mut acc, (i, &value)| {
+            acc.extend(iter::repeat((i + 1) as u8).take(value as usize));
+            acc
+        });
 
     // Figure C.2
     let mut huffcode = vec![0u16; huffsize.len()];
@@ -292,9 +307,12 @@ fn derive_huffman_codes(bits: &[u8; 16]) -> Result<(Vec<u16>, Vec<u8>)> {
 //  MJPEG frames and decode them with a regular JPEG decoder, but you have to prepend the DHT
 //  segment to them, or else the decoder won't have any idea how to decompress the data.
 //  The exact table necessary is given in the OpenDML spec.""
-pub fn fill_default_mjpeg_tables(scan: &ScanInfo,
-                                 dc_huffman_tables: &mut[Option<HuffmanTable>],
-                                 ac_huffman_tables: &mut[Option<HuffmanTable>]) {
+#[rustfmt::skip]
+pub fn fill_default_mjpeg_tables(
+    scan: &ScanInfo,
+    dc_huffman_tables: &mut[Option<HuffmanTable>],
+    ac_huffman_tables: &mut[Option<HuffmanTable>],
+) {
     // Section K.3.3
 
     if dc_huffman_tables[0].is_none() && scan.dc_table_indices.iter().any(|&i| i == 0) {

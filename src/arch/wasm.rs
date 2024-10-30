@@ -89,14 +89,14 @@ fn transpose8(data: &mut [v128; 8]) {
     // A0 B0 A1 B1 ...
     // dABCDll contains elements from the lower quarter (ll) of vectors A, B, C, D, interleaved -
     // A0 B0 C0 D0 A1 B1 C1 D1 ...
-    let d01l = i16x8_shuffle::<0,  8,  1,  9,  2, 10, 3, 11>(data[0], data[1]);
-    let d23l = i16x8_shuffle::<0,  8,  1,  9,  2, 10, 3, 11>(data[2], data[3]);
-    let d45l = i16x8_shuffle::<0,  8,  1,  9,  2, 10, 3, 11>(data[4], data[5]);
-    let d67l = i16x8_shuffle::<0,  8,  1,  9,  2, 10, 3, 11>(data[6], data[7]);
-    let d01h = i16x8_shuffle::<4, 12,  5, 13,  6, 14, 7, 15>(data[0], data[1]);
-    let d23h = i16x8_shuffle::<4, 12,  5, 13,  6, 14, 7, 15>(data[2], data[3]);
-    let d45h = i16x8_shuffle::<4, 12,  5, 13,  6, 14, 7, 15>(data[4], data[5]);
-    let d67h = i16x8_shuffle::<4, 12,  5, 13,  6, 14, 7, 15>(data[6], data[7]);
+    let d01l = i16x8_shuffle::<0, 8, 1, 9, 2, 10, 3, 11>(data[0], data[1]);
+    let d23l = i16x8_shuffle::<0, 8, 1, 9, 2, 10, 3, 11>(data[2], data[3]);
+    let d45l = i16x8_shuffle::<0, 8, 1, 9, 2, 10, 3, 11>(data[4], data[5]);
+    let d67l = i16x8_shuffle::<0, 8, 1, 9, 2, 10, 3, 11>(data[6], data[7]);
+    let d01h = i16x8_shuffle::<4, 12, 5, 13, 6, 14, 7, 15>(data[0], data[1]);
+    let d23h = i16x8_shuffle::<4, 12, 5, 13, 6, 14, 7, 15>(data[2], data[3]);
+    let d45h = i16x8_shuffle::<4, 12, 5, 13, 6, 14, 7, 15>(data[4], data[5]);
+    let d67h = i16x8_shuffle::<4, 12, 5, 13, 6, 14, 7, 15>(data[6], data[7]);
 
     // Operating on 32-bits will interleave *consecutive pairs* of 16-bit integers.
     let d0123ll = i32x4_shuffle::<0, 4, 1, 5>(d01l, d23l);
@@ -176,10 +176,7 @@ pub fn dequantize_and_idct_block_8x8(
         // `output_linestride * i + 7` < output.len(), so all accesses are in-bounds.
         unsafe {
             v128_store64_lane::<0>(
-                u8x16_narrow_i16x8(
-                    i16x8_shr(data_with_offset, SHIFT + 3),
-                    i16x8_splat(0),
-                ),
+                u8x16_narrow_i16x8(i16x8_shr(data_with_offset, SHIFT + 3), i16x8_splat(0)),
                 output.as_mut_ptr().wrapping_add(output_linestride * i) as *mut _,
             );
         }
@@ -188,8 +185,12 @@ pub fn dequantize_and_idct_block_8x8(
 
 #[cfg(target_arch = "wasm32")]
 #[target_feature(enable = "simd128")]
-pub fn color_convert_line_ycbcr(y_slice: &[u8], cb_slice: &[u8], cr_slice: &[u8], output: &mut [u8]) -> usize {
-
+pub fn color_convert_line_ycbcr(
+    y_slice: &[u8],
+    cb_slice: &[u8],
+    cr_slice: &[u8],
+    output: &mut [u8],
+) -> usize {
     assert!(output.len() % 3 == 0);
     let num = output.len() / 3;
     assert!(num <= y_slice.len());
@@ -242,6 +243,7 @@ pub fn color_convert_line_ycbcr(y_slice: &[u8], cb_slice: &[u8], cr_slice: &[u8]
 
         // Shuffle rrrrrrrrggggggggbbbbbbbb to rgbrgbrgb...
 
+        #[rustfmt::skip]
         let rg_lanes = i8x16_shuffle::<0, 16,
                                        1, 17,
                                        2, 18,
@@ -251,6 +253,7 @@ pub fn color_convert_line_ycbcr(y_slice: &[u8], cb_slice: &[u8], cr_slice: &[u8]
                                        6, 22,
                                        7, 23>(r, g);
 
+        #[rustfmt::skip]
         let rgb_low = i8x16_shuffle::<0, 1, 16,         // r0, g0, b0
                                       2, 3, 17,         // r1, g1, b1
                                       4, 5, 18,         // r2, g2, b2
@@ -258,6 +261,7 @@ pub fn color_convert_line_ycbcr(y_slice: &[u8], cb_slice: &[u8], cr_slice: &[u8]
                                       8, 9, 20,         // r4, g4, b4
                                       10>(rg_lanes, b); // r5
 
+        #[rustfmt::skip]
         let rgb_hi = i8x16_shuffle::<11, 21, 12,       // g5, b5, r6
                                      13, 22, 14,       // g6, b6, r7
                                      15, 23,  0,       // g7, b7, --
@@ -269,7 +273,10 @@ pub fn color_convert_line_ycbcr(y_slice: &[u8], cb_slice: &[u8], cr_slice: &[u8]
         // `output.len() - 1`.
         unsafe {
             v128_store(output.as_mut_ptr().wrapping_add(24 * i) as *mut _, rgb_low);
-            v128_store64_lane::<0>(rgb_hi, output.as_mut_ptr().wrapping_add(24 * i + 16) as *mut _);
+            v128_store64_lane::<0>(
+                rgb_hi,
+                output.as_mut_ptr().wrapping_add(24 * i + 16) as *mut _,
+            );
         }
     }
 
