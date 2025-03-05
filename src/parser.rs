@@ -405,6 +405,12 @@ pub fn parse_sos<R: Read>(reader: &mut R, frame: &FrameInfo) -> Result<ScanInfo>
     let predictor_selection;
     let point_transform = successive_approximation_low;
 
+    if point_transform >= frame.precision {
+        return Err(Error::Format(
+            "invalid point transform, must be less than the frame precision".to_owned(),
+        ));
+    }
+
     if frame.coding_process == CodingProcess::DctProgressive {
         predictor_selection = Predictor::NoPrediction;
         if spectral_selection_end > 63 || spectral_selection_start > spectral_selection_end ||
