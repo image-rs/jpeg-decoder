@@ -520,10 +520,6 @@ pub fn parse_dqt<R: Read>(reader: &mut R) -> Result<[Option<[u16; 64]>; 4]> {
             };
         }
 
-        if table.iter().any(|&val| val == 0) {
-            return Err(Error::Format("quantization table contains element with a zero value".to_owned()));
-        }
-
         tables[index] = Some(table);
         length -= 65 + 64 * precision;
     }
