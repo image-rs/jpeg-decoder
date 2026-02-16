@@ -45,6 +45,16 @@ impl<R: Read> Decoder<R> {
 
         let width = frame.image_size.width as usize;
         let height = frame.image_size.height as usize;
+        let point_transform = scan.point_transform;
+        let restart_interval = self.restart_interval as usize;
+        let prediction_baseline = if frame.precision > 1 + point_transform {
+            1i32 << (frame.precision - point_transform - 1)
+        } else {
+            0
+        };
+        let is_restart_boundary = |pixel_index: usize| {
+            restart_interval > 0 && pixel_index > 0 && pixel_index % restart_interval == 0
+        };
 
         let mut differences = vec![Vec::with_capacity(npixel); ncomp];
         for _mcu_y in 0..height {
@@ -107,32 +117,22 @@ impl<R: Read> Decoder<R> {
 
         if scan.predictor_selection == Predictor::Ra {
             for (i, _component) in components.iter().enumerate() {
-                // calculate the top left pixel
-                let diff = differences[i][0];
-                let prediction = 1 << (frame.precision - scan.point_transform - 1) as i32;
-                let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
-                let result = result << scan.point_transform;
-                results[i][0] = result;
-
-                // calculate leftmost column, using top pixel as predictor
-                let mut previous = result;
-                for mcu_y in 1..height {
-                    let diff = differences[i][mcu_y * width];
-                    let prediction = previous as i32;
-                    let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
-                    let result = result << scan.point_transform;
-                    results[i][mcu_y * width] = result;
-                    previous = result;
-                }
-
-                // calculate rows, using left pixel as predictor
                 for mcu_y in 0..height {
-                    for mcu_x in 1..width {
-                        let diff = differences[i][mcu_y * width + mcu_x];
-                        let prediction = results[i][mcu_y * width + mcu_x - 1] as i32;
+                    for mcu_x in 0..width {
+                        let pixel_index = mcu_y * width + mcu_x;
+                        let diff = differences[i][pixel_index];
+                        let restart = is_restart_boundary(pixel_index);
+
+                        let prediction = if (mcu_x == 0 && mcu_y == 0) || restart {
+                            prediction_baseline
+                        } else if mcu_x == 0 {
+                            results[i][pixel_index - width] as i32
+                        } else {
+                            results[i][pixel_index - 1] as i32
+                        };
+
                         let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
-                        let result = result << scan.point_transform;
-                        results[i][mcu_y * width + mcu_x] = result;
+                        results[i][pixel_index] = result << point_transform;
                     }
                 }
             }
@@ -140,21 +140,21 @@ impl<R: Read> Decoder<R> {
             for mcu_y in 0..height {
                 for mcu_x in 0..width {
                     for (i, _component) in components.iter().enumerate() {
-                        let diff = differences[i][mcu_y * width + mcu_x];
+                        let pixel_index = mcu_y * width + mcu_x;
+                        let diff = differences[i][pixel_index];
 
                         // The following lines could be further optimized, e.g. moving the checks
                         // and updates of the previous values into the prediction function or
                         // iterating such that diagonals with mcu_x + mcu_y = const are computed at
                         // the same time to exploit independent predictions in this case
                         if mcu_x > 0 {
-                            ra[i] = results[i][mcu_y * frame.image_size.width as usize + mcu_x - 1];
+                            ra[i] = results[i][pixel_index - 1];
                         }
                         if mcu_y > 0 {
-                            rb[i] =
-                                results[i][(mcu_y - 1) * frame.image_size.width as usize + mcu_x];
+                            let top_index = pixel_index - width;
+                            rb[i] = results[i][top_index];
                             if mcu_x > 0 {
-                                rc[i] = results[i]
-                                    [(mcu_y - 1) * frame.image_size.width as usize + (mcu_x - 1)];
+                                rc[i] = results[i][top_index - 1];
                             }
                         }
                         let prediction = predict(
@@ -162,15 +162,14 @@ impl<R: Read> Decoder<R> {
                             rb[i] as i32,
                             rc[i] as i32,
                             scan.predictor_selection,
-                            scan.point_transform,
+                            point_transform,
                             frame.precision,
                             mcu_x,
                             mcu_y,
-                            self.restart_interval > 0
-                                && mcus_left_until_restart == self.restart_interval - 1,
+                            is_restart_boundary(pixel_index),
                         );
                         let result = ((prediction + diff) & 0xFFFF) as u16; // modulo 2^16
-                        results[i][mcu_y * width + mcu_x] = result << scan.point_transform;
+                        results[i][pixel_index] = result << point_transform;
                     }
                 }
             }
