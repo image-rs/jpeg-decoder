@@ -168,3 +168,18 @@ fn read_xmp_data() {
     let xmp_data = decoder.xmp_data().unwrap();
     assert_eq!(&xmp_data[0..9], b"<?xpacket");
 }
+
+#[test]
+fn decode_without_color_transform() {
+    let path = Path::new("tests").join("reftest").join("images").join("rgb.jpg");
+
+    let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
+    decoder.set_color_transform(jpeg::ColorTransform::RGB);
+    let rgb = decoder.decode().unwrap();
+
+    let mut decoder = jpeg::Decoder::new(File::open(&path).unwrap());
+    decoder.set_color_transform(jpeg::ColorTransform::None);
+    let untransformed = decoder.decode().unwrap();
+
+    assert_eq!(untransformed, rgb);
+}

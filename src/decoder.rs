@@ -1474,11 +1474,9 @@ fn color_convert_line_cmyk(data: &[Vec<u8>], output: &mut [u8]) {
 }
 
 fn color_no_convert(data: &[Vec<u8>], output: &mut [u8]) {
-    let mut output_iter = output.iter_mut();
-
-    for pixel in data {
-        for d in pixel {
-            *(output_iter.next().unwrap()) = *d;
+    for (i, chunk) in output.chunks_exact_mut(data.len()).enumerate() {
+        for (value, component) in chunk.iter_mut().zip(data) {
+            *value = component[i];
         }
     }
 }
